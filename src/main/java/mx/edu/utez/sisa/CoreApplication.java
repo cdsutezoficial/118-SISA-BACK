@@ -1,4 +1,4 @@
-package mx.edu.utez.sisa.core;
+package mx.edu.utez.sisa;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
