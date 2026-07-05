@@ -1,4 +1,4 @@
-package mx.edu.utez.sisa.core;
+package mx.edu.utez.sisa;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
