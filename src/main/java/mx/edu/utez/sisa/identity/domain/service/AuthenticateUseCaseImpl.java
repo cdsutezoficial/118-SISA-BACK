@@ -50,8 +50,18 @@ public class AuthenticateUseCaseImpl implements AuthenticateUseCase {
 		this.refreshTokenTtl = refreshTokenTtl;
 	}
 
+	/**
+	 * {@code noRollbackFor = InvalidCredentialsException.class}: a wrong
+	 * password is an expected business outcome, not a failure this
+	 * transaction should undo — the {@code registerFailedLogin()} side
+	 * effect saved just before throwing (attempt count / auto-LOCK) MUST
+	 * persist, or repeated wrong attempts would never actually lock the
+	 * account (caught by {@code AuthFlowIT}, task 6.3/6.4 — the mocked
+	 * {@code AuthenticateUseCaseImplTest} can't catch this since it never
+	 * exercises a real transaction).
+	 */
 	@Override
-	@Transactional
+	@Transactional(noRollbackFor = InvalidCredentialsException.class)
 	public AuthenticationResult authenticate(AuthenticateCommand command) {
 		User user = userRepository.findByUsername(command.username())
 				.orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
