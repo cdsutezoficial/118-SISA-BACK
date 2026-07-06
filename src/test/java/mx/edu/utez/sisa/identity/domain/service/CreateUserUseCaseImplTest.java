@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -39,26 +40,31 @@ class CreateUserUseCaseImplTest {
 	private CreateUserUseCaseImpl useCase;
 
 	private User adminCaller;
+	private UUID callerId;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new CreateUserUseCaseImpl(userRepository, personRepository, passwordHasher);
 		adminCaller = new User(UUID.randomUUID(), "admin@utez.edu.mx", "hashed-admin-pw");
 		adminCaller.changePassword("hashed-admin-pw-2"); // clears mustChangePassword so the caller can operate
+		// User#id is JPA-generated and null pre-persistence; assign a deterministic
+		// id so distinct mocked User instances across tests don't collide on
+		// findById(null).
+		callerId = UUID.randomUUID();
+		ReflectionTestUtils.setField(adminCaller, "id", callerId);
 	}
 
 	@Test
 	void createUser_successfulStaffAccountCreation() {
 		UUID personId = UUID.randomUUID();
 		Person person = new Person("CURP000000HDFRRN01", "Jane", "Doe", null, "jane.doe@utez.edu.mx");
-		when(userRepository.findById(adminCaller.getId())).thenReturn(Optional.of(adminCaller));
+		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.findByPersonId(personId)).thenReturn(Optional.empty());
 		when(personRepository.findById(personId)).thenReturn(Optional.of(person));
 		when(passwordHasher.hash("temp-password")).thenReturn("hashed-temp-pw");
 		when(userRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-		UserCreationResult result = useCase
-				.createUser(new CreateUserCommand(adminCaller.getId(), personId, "temp-password"));
+		UserCreationResult result = useCase.createUser(new CreateUserCommand(callerId, personId, "temp-password"));
 
 		assertThat(result.username()).isEqualTo("jane.doe@utez.edu.mx");
 		assertThat(result.mustChangePassword()).isTrue();
@@ -71,12 +77,11 @@ class CreateUserUseCaseImplTest {
 	@Test
 	void createUser_rejectsDuplicateAccountForTheSamePerson() {
 		UUID personId = UUID.randomUUID();
-		when(userRepository.findById(adminCaller.getId())).thenReturn(Optional.of(adminCaller));
+		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.findByPersonId(personId))
 				.thenReturn(Optional.of(new User(personId, "existing@utez.edu.mx", "hash")));
 
-		assertThatThrownBy(
-				() -> useCase.createUser(new CreateUserCommand(adminCaller.getId(), personId, "temp-password")))
+		assertThatThrownBy(() -> useCase.createUser(new CreateUserCommand(callerId, personId, "temp-password")))
 				.isInstanceOf(PersonAlreadyHasUserException.class);
 	}
 
@@ -84,22 +89,23 @@ class CreateUserUseCaseImplTest {
 	void createUser_rejectsCreationWithoutInstitutionalEmail() {
 		UUID personId = UUID.randomUUID();
 		Person person = new Person("CURP000000HDFRRN01", "Jane", "Doe", null, null);
-		when(userRepository.findById(adminCaller.getId())).thenReturn(Optional.of(adminCaller));
+		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.findByPersonId(personId)).thenReturn(Optional.empty());
 		when(personRepository.findById(personId)).thenReturn(Optional.of(person));
 
-		assertThatThrownBy(
-				() -> useCase.createUser(new CreateUserCommand(adminCaller.getId(), personId, "temp-password")))
+		assertThatThrownBy(() -> useCase.createUser(new CreateUserCommand(callerId, personId, "temp-password")))
 				.isInstanceOf(MissingInstitutionalEmailException.class);
 	}
 
 	@Test
 	void createUser_mustChangePasswordCallerIsBlocked() {
 		User blockedCaller = new User(UUID.randomUUID(), "admin@utez.edu.mx", "hashed-admin-pw");
-		when(userRepository.findById(blockedCaller.getId())).thenReturn(Optional.of(blockedCaller));
+		UUID blockedCallerId = UUID.randomUUID();
+		ReflectionTestUtils.setField(blockedCaller, "id", blockedCallerId);
+		when(userRepository.findById(blockedCallerId)).thenReturn(Optional.of(blockedCaller));
 
 		assertThatThrownBy(() -> useCase
-				.createUser(new CreateUserCommand(blockedCaller.getId(), UUID.randomUUID(), "temp-password")))
+				.createUser(new CreateUserCommand(blockedCallerId, UUID.randomUUID(), "temp-password")))
 				.isInstanceOf(MustChangePasswordException.class);
 	}
 }
