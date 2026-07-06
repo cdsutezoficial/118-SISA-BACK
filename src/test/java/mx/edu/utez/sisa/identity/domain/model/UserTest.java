@@ -59,6 +59,18 @@ class UserTest {
 		assertThatCode(user::assertCanOperate).doesNotThrowAnyException();
 	}
 
+	@Test
+	void recordSuccessfulLogin_resetsFailedAttemptsAndSetsLastLoginAt() {
+		User user = newActiveUser();
+		user.registerFailedLogin();
+		user.registerFailedLogin();
+
+		user.recordSuccessfulLogin();
+
+		assertThat(user.getFailedLoginAttempts()).isZero();
+		assertThat(user.getLastLoginAt()).isNotNull();
+	}
+
 	private User newActiveUser() {
 		return new User(UUID.randomUUID(), "jane.doe@utez.edu.mx", "hashed-pw");
 	}
