@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -125,5 +126,29 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().message()).contains("username");
+	}
+
+	@Test
+	void methodArgumentTypeMismatchMapsTo400() {
+		MethodArgumentTypeMismatchException ex = org.mockito.Mockito.mock(MethodArgumentTypeMismatchException.class);
+		when(ex.getName()).thenReturn("userId");
+		when(ex.getValue()).thenReturn("not-a-uuid");
+
+		ResponseEntity<ErrorResponse> response = handler.handleTypeMismatch(ex, request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).contains("userId").contains("not-a-uuid");
+	}
+
+	@Test
+	void unexpectedExceptionMapsTo500WithoutLeakingMessage() {
+		RuntimeException ex = new RuntimeException("npe at line 42, internal state XYZ");
+
+		ResponseEntity<ErrorResponse> response = handler.handleUnexpected(ex, request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).doesNotContain("npe at line 42", "internal state XYZ");
 	}
 }
