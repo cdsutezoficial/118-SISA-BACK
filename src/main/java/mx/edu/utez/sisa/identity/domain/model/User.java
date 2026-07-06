@@ -98,6 +98,17 @@ public class User {
 	}
 
 	/**
+	 * Records a successful login: resets {@code failedLoginAttempts} back to
+	 * zero and stamps {@code lastLoginAt} (design.md — Decision: Auth
+	 * ownership; task 3.4 "reset attempts on success").
+	 */
+	public void recordSuccessfulLogin() {
+		this.failedLoginAttempts = 0;
+		this.lastLoginAt = Instant.now();
+		this.updatedAt = Instant.now();
+	}
+
+	/**
 	 * Guards every operation except {@code ChangePasswordUseCase} while a
 	 * first-access password change is pending (design.md — Decision:
 	 * mustChangePassword gate). Callers load the caller {@code User} and
