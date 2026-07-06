@@ -8,11 +8,14 @@ import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -20,10 +23,16 @@ import java.util.stream.Collectors;
 /**
  * Maps the 8 identity domain exceptions (plus bean validation failures) to
  * HTTP status codes per design.md's "Exception -> HTTP mapping" table (task
- * 5.2).
+ * 5.2), plus two consistency handlers added on review: malformed
+ * {@code @PathVariable} values (e.g. non-UUID {@code userId}) and a
+ * catch-all for unexpected exceptions, so every error response uses the
+ * same {@link ErrorResponse} envelope instead of Spring's default whitelabel
+ * page.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	@ExceptionHandler(InvalidCredentialsException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException ex,
@@ -77,6 +86,24 @@ public class GlobalExceptionHandler {
 				.map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
 				.collect(Collectors.joining("; "));
 		return build(HttpStatus.BAD_REQUEST, message.isBlank() ? "Validation failed" : message, request);
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
+			HttpServletRequest request) {
+		String message = "%s: invalid value '%s'".formatted(ex.getName(), ex.getValue());
+		return build(HttpStatus.BAD_REQUEST, message, request);
+	}
+
+	/**
+	 * Last-resort handler so unexpected failures still return the standard
+	 * {@link ErrorResponse} envelope. The internal exception message is
+	 * logged but never returned to the caller.
+	 */
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+		log.error("Unhandled exception on {}", request.getRequestURI(), ex);
+		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
