@@ -30,6 +30,13 @@ import java.time.Instant;
  * Spring Security evaluates {@code authorizeHttpRequests} rules in
  * declaration order and applies the first match, so the specific GET rule
  * must be declared first or it would never be reached.
+ * {@code /divisions} (academic_config — design.md's "Security matcher
+ * (order matters)") gets FOUR separate matchers, one per HTTP verb (GET,
+ * POST, PUT, PATCH), all currently granting the same
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair — split by verb now (rather
+ * than one blanket {@code /divisions/**} rule) so a future read-only-only
+ * role is a one-line addition to just the GET matcher. All four MUST precede
+ * {@code anyRequest()}.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -61,6 +68,12 @@ public class SecurityFilterConfig {
 						.requestMatchers("/auth/login", "/auth/refresh", "/h2-console/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/users").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers("/users/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.GET, "/divisions", "/divisions/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/divisions").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/divisions/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/divisions/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();

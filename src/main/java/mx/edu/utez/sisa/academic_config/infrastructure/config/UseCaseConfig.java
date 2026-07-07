@@ -21,8 +21,14 @@ import org.springframework.context.annotation.Configuration;
  * the only place that constructs them with their out-port dependencies. A
  * sibling of {@code identity.UseCaseConfig}, not an extension of it — keeps
  * the module independently removable.
+ *
+ * <p>Explicit {@code @Configuration} bean name ({@code
+ * academicConfigUseCaseConfig}): both this class and
+ * {@code identity.infrastructure.config.UseCaseConfig} share the same simple
+ * class name, which otherwise collide under Spring's default
+ * annotation-derived bean naming.
  */
-@Configuration
+@Configuration("academicConfigUseCaseConfig")
 public class UseCaseConfig {
 
 	@Bean
