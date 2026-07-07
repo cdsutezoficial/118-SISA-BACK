@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
@@ -16,6 +17,7 @@ import mx.edu.utez.sisa.identity.domain.service.AssignRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.AuthenticateUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ChangePasswordUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.CreateUserUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.ListUsersUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RefreshAccessTokenUseCaseImpl;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -62,5 +64,10 @@ public class UseCaseConfig {
 			UserRepository userRepository, UserRoleRepository userRoleRepository, AccessTokenIssuer accessTokenIssuer) {
 		return new RefreshAccessTokenUseCaseImpl(refreshTokenRepository, userRepository, userRoleRepository,
 				accessTokenIssuer);
+	}
+
+	@Bean
+	public ListUsersUseCase listUsersUseCase(UserRepository userRepository, UserRoleRepository userRoleRepository) {
+		return new ListUsersUseCaseImpl(userRepository, userRoleRepository);
 	}
 }

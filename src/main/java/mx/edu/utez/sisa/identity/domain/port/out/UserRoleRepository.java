@@ -22,4 +22,11 @@ public interface UserRoleRepository {
 	 * of checking table emptiness.
 	 */
 	boolean existsByRoleType(RoleType roleType);
+
+	/**
+	 * Batch-loads every role grant for a page of users (used by
+	 * {@code ListUsersUseCaseImpl} to attach {@code UserRole[]} to each result
+	 * row without one query per user).
+	 */
+	List<UserRole> findByUserIdIn(List<UUID> userIds);
 }

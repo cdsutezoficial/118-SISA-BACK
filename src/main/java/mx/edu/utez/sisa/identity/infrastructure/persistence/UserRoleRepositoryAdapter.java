@@ -35,4 +35,12 @@ public class UserRoleRepositoryAdapter implements UserRoleRepository {
 	public boolean existsByRoleType(RoleType roleType) {
 		return jpaRepository.existsByRoleType(roleType);
 	}
+
+	@Override
+	public List<UserRole> findByUserIdIn(List<UUID> userIds) {
+		if (userIds.isEmpty()) {
+			return List.of();
+		}
+		return jpaRepository.findByUserIdIn(userIds);
+	}
 }
