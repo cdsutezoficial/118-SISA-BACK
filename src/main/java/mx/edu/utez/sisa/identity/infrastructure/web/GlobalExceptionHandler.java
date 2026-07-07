@@ -1,13 +1,13 @@
 package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
-import mx.edu.utez.sisa.identity.infrastructure.web.dto.ErrorResponse;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
+import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

@@ -1,7 +1,7 @@
 package mx.edu.utez.sisa.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import mx.edu.utez.sisa.identity.infrastructure.web.dto.ErrorResponse;
+import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;

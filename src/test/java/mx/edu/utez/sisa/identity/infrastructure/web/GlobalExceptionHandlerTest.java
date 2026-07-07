@@ -1,7 +1,7 @@
 package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
-import mx.edu.utez.sisa.identity.infrastructure.web.dto.ErrorResponse;
+import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
