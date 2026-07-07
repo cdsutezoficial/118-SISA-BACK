@@ -1,16 +1,23 @@
 package mx.edu.utez.sisa.identity.infrastructure.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.ErrorResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
+
+import java.time.Instant;
 
 /**
  * Stateless security filter chain (design.md — Security filter chain): CSRF
@@ -34,10 +41,13 @@ public class SecurityFilterConfig {
 
 	private final CorsConfigurationSource corsConfigurationSource;
 
+	private final ObjectMapper objectMapper;
+
 	public SecurityFilterConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-			CorsConfigurationSource corsConfigurationSource) {
+			CorsConfigurationSource corsConfigurationSource, ObjectMapper objectMapper) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 		this.corsConfigurationSource = corsConfigurationSource;
+		this.objectMapper = objectMapper;
 	}
 
 	@Bean
@@ -46,6 +56,7 @@ public class SecurityFilterConfig {
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
+				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/auth/login", "/auth/refresh", "/h2-console/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/users").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
@@ -53,5 +64,27 @@ public class SecurityFilterConfig {
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();
+	}
+
+	/**
+	 * Without this, Spring Security's stateless-REST default returns 403 for
+	 * BOTH "not authenticated at all" (missing/invalid token) and
+	 * "authenticated but wrong role" — losing a distinction REST clients rely
+	 * on (e.g. the frontend forces re-login only on 401, never on 403, since
+	 * 403 can legitimately mean "logged in, just not allowed here"). This
+	 * entry point fires only for the "not authenticated" case; role mismatches
+	 * still fall through to Spring's default 403 {@code AccessDeniedHandler}.
+	 * Found via live browser verification of the frontend's 401-handling hook,
+	 * which never fired because the backend never actually sent a 401.
+	 */
+	private AuthenticationEntryPoint authenticationEntryPoint() {
+		return (request, response, authException) -> {
+			response.setStatus(HttpStatus.UNAUTHORIZED.value());
+			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+			ErrorResponse body = new ErrorResponse(Instant.now(), HttpStatus.UNAUTHORIZED.value(),
+					HttpStatus.UNAUTHORIZED.getReasonPhrase(), "Invalid or missing authentication token",
+					request.getRequestURI());
+			objectMapper.writeValue(response.getWriter(), body);
+		};
 	}
 }
