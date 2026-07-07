@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionSta
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase.AcademicDivisionResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase.CreateAcademicDivisionCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.DivisionSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.ListAcademicDivisionsQuery;
@@ -39,7 +40,8 @@ import java.util.UUID;
  * Thin controller for {@code AcademicDivision} CRUD (spec: "Academic
  * Division Management"): {@code POST /divisions} (201),
  * {@code PUT /divisions/{id}}, {@code GET /divisions} (paginated),
- * {@code PATCH /divisions/{id}/status}. Role authorization (ADMIN or
+ * {@code GET /divisions/{id}}, {@code PATCH /divisions/{id}/status}. Role
+ * authorization (ADMIN or
  * SERVICIOS_ESCOLARES on every verb) is enforced by
  * {@code identity.SecurityFilterConfig}'s split {@code /divisions} matchers,
  * not here.
@@ -56,14 +58,18 @@ public class AcademicDivisionController {
 
 	private final ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase;
 
+	private final GetAcademicDivisionUseCase getAcademicDivisionUseCase;
+
 	public AcademicDivisionController(CreateAcademicDivisionUseCase createAcademicDivisionUseCase,
 			UpdateAcademicDivisionUseCase updateAcademicDivisionUseCase,
 			ListAcademicDivisionsUseCase listAcademicDivisionsUseCase,
-			ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase) {
+			ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase,
+			GetAcademicDivisionUseCase getAcademicDivisionUseCase) {
 		this.createAcademicDivisionUseCase = createAcademicDivisionUseCase;
 		this.updateAcademicDivisionUseCase = updateAcademicDivisionUseCase;
 		this.listAcademicDivisionsUseCase = listAcademicDivisionsUseCase;
 		this.changeAcademicDivisionStatusUseCase = changeAcademicDivisionStatusUseCase;
+		this.getAcademicDivisionUseCase = getAcademicDivisionUseCase;
 	}
 
 	@PostMapping
@@ -79,6 +85,12 @@ public class AcademicDivisionController {
 			@Valid @RequestBody UpdateAcademicDivisionRequest request) {
 		AcademicDivisionResult result = updateAcademicDivisionUseCase.updateDivision(new UpdateAcademicDivisionCommand(
 				id, request.name(), request.code(), request.description(), request.directorPersonId()));
+		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/{id}")
+	public ResponseEntity<AcademicDivisionResponse> getDivision(@PathVariable UUID id) {
+		AcademicDivisionResult result = getAcademicDivisionUseCase.getById(id);
 		return ResponseEntity.ok(toResponse(result));
 	}
 

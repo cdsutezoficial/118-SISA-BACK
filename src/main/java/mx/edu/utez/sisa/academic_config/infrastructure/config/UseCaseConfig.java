@@ -2,12 +2,14 @@ package mx.edu.utez.sisa.academic_config.infrastructure.config;
 
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUseCaseImpl;
 import org.springframework.context.annotation.Bean;
@@ -46,6 +48,11 @@ public class UseCaseConfig {
 	@Bean
 	public ListAcademicDivisionsUseCase listAcademicDivisionsUseCase(AcademicDivisionRepository divisionRepository) {
 		return new ListAcademicDivisionsUseCaseImpl(divisionRepository);
+	}
+
+	@Bean
+	public GetAcademicDivisionUseCase getAcademicDivisionUseCase(AcademicDivisionRepository divisionRepository) {
+		return new GetAcademicDivisionUseCaseImpl(divisionRepository);
 	}
 
 	@Bean

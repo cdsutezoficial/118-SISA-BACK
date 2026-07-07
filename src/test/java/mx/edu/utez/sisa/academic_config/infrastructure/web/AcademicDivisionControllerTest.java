@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionSta
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase.AcademicDivisionResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase.CreateAcademicDivisionCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.DivisionSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.ListAcademicDivisionsQuery;
@@ -72,6 +73,9 @@ class AcademicDivisionControllerTest {
 
 	@MockitoBean
 	private ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase;
+
+	@MockitoBean
+	private GetAcademicDivisionUseCase getAcademicDivisionUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -171,6 +175,28 @@ class AcademicDivisionControllerTest {
 		mockMvc.perform(put("/divisions/" + divisionId).contentType("application/json")
 				.content(objectMapper.writeValueAsString(new UpdateDivisionBody("New Name", "NEW", "desc", null))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void getDivisionReturns200WithBody() throws Exception {
+		UUID divisionId = UUID.randomUUID();
+		when(getAcademicDivisionUseCase.getById(divisionId)).thenReturn(
+				new AcademicDivisionResult(divisionId, "Ingeniería en Software", "ISW", "desc", null,
+						DivisionStatus.ACTIVE));
+
+		mockMvc.perform(get("/divisions/" + divisionId)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(divisionId.toString()))
+				.andExpect(jsonPath("$.name").value("Ingeniería en Software"))
+				.andExpect(jsonPath("$.code").value("ISW"));
+	}
+
+	@Test
+	void getUnknownDivisionReturns404() throws Exception {
+		UUID divisionId = UUID.randomUUID();
+		when(getAcademicDivisionUseCase.getById(divisionId))
+				.thenThrow(new AcademicDivisionNotFoundException("Academic division not found: " + divisionId));
+
+		mockMvc.perform(get("/divisions/" + divisionId)).andExpect(status().isNotFound());
 	}
 
 	@Test

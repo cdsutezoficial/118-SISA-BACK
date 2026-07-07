@@ -74,6 +74,22 @@ class AcademicDivisionControllerIT {
 	}
 
 	@Test
+	void getUnknownDivisionReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(get("/divisions/" + UUID.randomUUID()).header("Authorization", "Bearer " + token))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnGetById() throws Exception {
+		String token = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(get("/divisions/" + UUID.randomUUID()).header("Authorization", "Bearer " + token))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
 	void unauthenticatedCreateReturns401() throws Exception {
 		mockMvc.perform(post("/divisions").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateBody("Unauth Division", "UNA", null, null))))
@@ -98,6 +114,10 @@ class AcademicDivisionControllerIT {
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(new UpdateBody(name + " Updated", code, "desc updated", null))))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.name").value(name + " Updated"));
+
+		mockMvc.perform(get("/divisions/" + divisionId).header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.id").value(divisionId.toString()))
+				.andExpect(jsonPath("$.name").value(name + " Updated"));
 
 		mockMvc.perform(get("/divisions").header("Authorization", "Bearer " + token).param("search", code))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.items").isNotEmpty());
