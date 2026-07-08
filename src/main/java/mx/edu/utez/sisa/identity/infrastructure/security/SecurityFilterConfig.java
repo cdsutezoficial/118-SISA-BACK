@@ -37,6 +37,10 @@ import java.time.Instant;
  * than one blanket {@code /divisions/**} rule) so a future read-only-only
  * role is a one-line addition to just the GET matcher. All four MUST precede
  * {@code anyRequest()}.
+ * {@code /programs} (academic_config — HU-PROG-010, second aggregate) gets
+ * the identical FOUR verb-split matchers, same
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
+ * {@code /divisions} matchers for the same one-line-future-change rationale.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -73,6 +77,12 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.POST, "/divisions").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/divisions/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/divisions/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/programs", "/programs/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/programs").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/programs/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/programs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

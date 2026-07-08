@@ -69,8 +69,8 @@ Note: 118-SISA-BACK is local-only git (no push/PR) — the "PR" split maps to sd
 
 ## Phase 7: Security
 
-- [ ] 7.1 `SecurityFilterConfig.java` — add 4 verb-split `/programs` matchers (GET/POST/PUT/PATCH), ADMIN+SERVICIOS_ESCOLARES, placed after `/divisions` matchers, before `anyRequest()`
-- [ ] 7.2 `AcademicProgramControllerIT` — ADMIN full CRUD; SERVICIOS_ESCOLARES full CRUD; other role 403; unauthenticated 401
+- [x] 7.1 `SecurityFilterConfig.java` — add 4 verb-split `/programs` matchers (GET/POST/PUT/PATCH), ADMIN+SERVICIOS_ESCOLARES, placed after `/divisions` matchers, before `anyRequest()`
+- [x] 7.2 `AcademicProgramControllerIT` — ADMIN full CRUD; SERVICIOS_ESCOLARES full CRUD; other role 403; unauthenticated 401
 
 ## Phase 8: Documentation & Final Verify
 
