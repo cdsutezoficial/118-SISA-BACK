@@ -2,9 +2,13 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicDivisionNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.AcademicProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DirectorNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionNameException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +52,23 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(DirectorNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleDirectorNotFound(DirectorNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(AcademicProgramNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleProgramNotFound(AcademicProgramNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler({ DuplicateProgramCodeException.class, DuplicateOfferNameModalityException.class })
+	public ResponseEntity<ErrorResponse> handleProgramConflict(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DivisionNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleDivisionNotFoundForProgram(DivisionNotFoundException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}

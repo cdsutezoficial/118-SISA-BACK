@@ -1,17 +1,28 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.config;
 
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicProgramStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicProgramUseCaseImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -59,5 +70,33 @@ public class UseCaseConfig {
 	public ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase(
 			AcademicDivisionRepository divisionRepository) {
 		return new ChangeAcademicDivisionStatusUseCaseImpl(divisionRepository);
+	}
+
+	@Bean
+	public CreateAcademicProgramUseCase createAcademicProgramUseCase(AcademicProgramRepository programRepository,
+			AcademicDivisionRepository divisionRepository) {
+		return new CreateAcademicProgramUseCaseImpl(programRepository, divisionRepository);
+	}
+
+	@Bean
+	public UpdateAcademicProgramUseCase updateAcademicProgramUseCase(AcademicProgramRepository programRepository,
+			AcademicDivisionRepository divisionRepository) {
+		return new UpdateAcademicProgramUseCaseImpl(programRepository, divisionRepository);
+	}
+
+	@Bean
+	public ListAcademicProgramsUseCase listAcademicProgramsUseCase(AcademicProgramRepository programRepository) {
+		return new ListAcademicProgramsUseCaseImpl(programRepository);
+	}
+
+	@Bean
+	public GetAcademicProgramUseCase getAcademicProgramUseCase(AcademicProgramRepository programRepository) {
+		return new GetAcademicProgramUseCaseImpl(programRepository);
+	}
+
+	@Bean
+	public ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase(
+			AcademicProgramRepository programRepository) {
+		return new ChangeAcademicProgramStatusUseCaseImpl(programRepository);
 	}
 }

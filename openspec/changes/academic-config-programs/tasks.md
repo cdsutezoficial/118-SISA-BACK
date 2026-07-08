@@ -56,16 +56,16 @@ Note: 118-SISA-BACK is local-only git (no push/PR) — the "PR" split maps to sd
 
 ## Phase 5: Persistence
 
-- [ ] 5.1 `AcademicProgramJpaRepository` — `@Query` search (divisionId/status/search filters), findByCode, findByOfferNameAndModality
-- [ ] 5.2 `AcademicProgramRepositoryAdapter` — sort by `name` ASC, maps nullable `continuityProgramId` column
-- [ ] 5.3 `AcademicProgramRepositoryAdapterSearchIT` (`@DataJpaTest`) — dual-uniqueness DB constraints (unique `code`; composite unique `offer_name`+`modality`), divisionId filter, status filter, search filter
+- [x] 5.1 `AcademicProgramJpaRepository` — `@Query` search (divisionId/status/search filters), findByCode, findByOfferNameAndModality
+- [x] 5.2 `AcademicProgramRepositoryAdapter` — sort by `name` ASC, maps nullable `continuityProgramId` column
+- [x] 5.3 `AcademicProgramRepositoryAdapterSearchIT` (`@DataJpaTest`) — dual-uniqueness DB constraints (unique `code`; composite unique `offer_name`+`modality`), divisionId filter, status filter, search filter
 
 ## Phase 6: Web Layer
 
-- [ ] 6.1 DTOs: Create/Update/ChangeStatus requests, `AcademicProgramResponse`, `AcademicProgramListItemResponse`, `AcademicProgramListResponse`
-- [ ] 6.2 `AcademicProgramController` — POST(201)/PUT `{id}`/GET/GET `{id}`/PATCH `{id}`/status, mapped to `/programs`
-- [ ] 6.3 EXTEND existing `academic_config` `GlobalExceptionHandler` — add 4 `@ExceptionHandler` methods (additive only, no new class)
-- [ ] 6.4 EXTEND existing `academic_config` `UseCaseConfig` — add 5 `@Bean` methods
+- [x] 6.1 DTOs: Create/Update/ChangeStatus requests, `AcademicProgramResponse`, `AcademicProgramListItemResponse`, `AcademicProgramListResponse`
+- [x] 6.2 `AcademicProgramController` — POST(201)/PUT `{id}`/GET/GET `{id}`/PATCH `{id}`/status, mapped to `/programs`
+- [x] 6.3 EXTEND existing `academic_config` `GlobalExceptionHandler` — add 4 `@ExceptionHandler` methods (additive only, no new class)
+- [x] 6.4 EXTEND existing `academic_config` `UseCaseConfig` — add 5 `@Bean` methods
 
 ## Phase 7: Security
 
