@@ -74,5 +74,5 @@ Note: 118-SISA-BACK is local-only git (no push/PR) — the "PR" split maps to sd
 
 ## Phase 8: Documentation & Final Verify
 
-- [ ] 8.1 `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` — add 5 "Puertos (in)" rows for the new `AcademicProgram` use cases (no field changes needed, already documented)
-- [ ] 8.2 `./mvnw clean verify` — full suite green, zero regressions (~144 existing tests + new), all 17 spec scenarios covered
+- [x] 8.1 `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` — add 5 "Puertos (in)" rows for the new `AcademicProgram` use cases (no field changes needed, already documented)
+- [x] 8.2 `./mvnw clean verify` — full suite green, zero regressions (~144 existing tests + new), all 17 spec scenarios covered
