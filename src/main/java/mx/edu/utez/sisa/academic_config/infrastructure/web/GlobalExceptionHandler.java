@@ -2,13 +2,23 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicDivisionNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DirectorNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionNameException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.SubjectNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -71,6 +81,24 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleDivisionNotFoundForProgram(DivisionNotFoundException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler({ AcademicPlanNotFoundException.class, PlanLevelNotFoundException.class,
+			SubjectNotFoundException.class })
+	public ResponseEntity<ErrorResponse> handlePlanNotFound(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class })
+	public ResponseEntity<ErrorResponse> handlePlanBadRequest(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class,
+			DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class,
+			PlanLevelInUseException.class })
+	public ResponseEntity<ErrorResponse> handlePlanConflict(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {

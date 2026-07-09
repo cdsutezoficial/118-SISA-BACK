@@ -1,28 +1,51 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.config;
 
+import mx.edu.utez.sisa.academic_config.domain.port.in.AddPlanLevelUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.AddSubjectToPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPlanStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicProgramStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
+import mx.edu.utez.sisa.academic_config.domain.service.AddPlanLevelUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.AddSubjectToPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPlanStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPlansUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.RemovePlanLevelUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.RemoveSubjectUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicProgramUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdatePlanLevelUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateSubjectUseCaseImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -98,5 +121,61 @@ public class UseCaseConfig {
 	public ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase(
 			AcademicProgramRepository programRepository) {
 		return new ChangeAcademicProgramStatusUseCaseImpl(programRepository);
+	}
+
+	@Bean
+	public CreateAcademicPlanUseCase createAcademicPlanUseCase(AcademicPlanRepository planRepository,
+			AcademicProgramRepository programRepository) {
+		return new CreateAcademicPlanUseCaseImpl(planRepository, programRepository);
+	}
+
+	@Bean
+	public UpdateAcademicPlanUseCase updateAcademicPlanUseCase(AcademicPlanRepository planRepository) {
+		return new UpdateAcademicPlanUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public ListAcademicPlansUseCase listAcademicPlansUseCase(AcademicPlanRepository planRepository) {
+		return new ListAcademicPlansUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public GetAcademicPlanUseCase getAcademicPlanUseCase(AcademicPlanRepository planRepository) {
+		return new GetAcademicPlanUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public ChangeAcademicPlanStatusUseCase changeAcademicPlanStatusUseCase(AcademicPlanRepository planRepository) {
+		return new ChangeAcademicPlanStatusUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public AddPlanLevelUseCase addPlanLevelUseCase(AcademicPlanRepository planRepository) {
+		return new AddPlanLevelUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public UpdatePlanLevelUseCase updatePlanLevelUseCase(AcademicPlanRepository planRepository) {
+		return new UpdatePlanLevelUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public RemovePlanLevelUseCase removePlanLevelUseCase(AcademicPlanRepository planRepository) {
+		return new RemovePlanLevelUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public AddSubjectToPlanUseCase addSubjectToPlanUseCase(AcademicPlanRepository planRepository) {
+		return new AddSubjectToPlanUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public UpdateSubjectUseCase updateSubjectUseCase(AcademicPlanRepository planRepository) {
+		return new UpdateSubjectUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public RemoveSubjectUseCase removeSubjectUseCase(AcademicPlanRepository planRepository) {
+		return new RemoveSubjectUseCaseImpl(planRepository);
 	}
 }
