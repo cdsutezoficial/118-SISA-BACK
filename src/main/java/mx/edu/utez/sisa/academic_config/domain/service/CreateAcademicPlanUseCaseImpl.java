@@ -73,12 +73,24 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 						CreateAcademicPlanUseCaseImpl::toLevelResult).toList());
 	}
 
-	private static PlanLevelResult toLevelResult(PlanLevel level) {
+	/**
+	 * Package-visible (not {@code private}) so the Phase 4 child-entity use
+	 * cases ({@code AddPlanLevelUseCaseImpl}, {@code UpdatePlanLevelUseCaseImpl})
+	 * can reuse it to build their {@code PlanLevelResult} return shape without
+	 * duplicating the mapping.
+	 */
+	static PlanLevelResult toLevelResult(PlanLevel level) {
 		return new PlanLevelResult(level.getId(), level.getLevelNumber(), level.getType(), level.getDescription(),
 				level.getSubjects().stream().map(CreateAcademicPlanUseCaseImpl::toSubjectResult).toList());
 	}
 
-	private static SubjectResult toSubjectResult(Subject subject) {
+	/**
+	 * Package-visible (not {@code private}) so the Phase 4 child-entity use
+	 * cases ({@code AddSubjectToPlanUseCaseImpl}, {@code UpdateSubjectUseCaseImpl})
+	 * can reuse it to build their {@code SubjectResult} return shape without
+	 * duplicating the mapping.
+	 */
+	static SubjectResult toSubjectResult(Subject subject) {
 		return new SubjectResult(subject.getId(), subject.getCode(), subject.getName(), subject.getCredits(),
 				subject.getWeeklyHours(), subject.getEvaluationUnits(), subject.getDisplayOrder(), subject.getType(),
 				subject.isRetakeable(), subject.getClassificationId());
