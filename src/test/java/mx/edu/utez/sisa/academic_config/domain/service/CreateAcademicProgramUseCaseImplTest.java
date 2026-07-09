@@ -57,7 +57,7 @@ class CreateAcademicProgramUseCaseImplTest {
 
 		AcademicProgramResult result = useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"));
+				ProgramModality.PRESENCIAL, null, "desc", null));
 
 		assertThat(result.status()).isEqualTo(ProgramStatus.ACTIVE);
 		assertThat(result.divisionId()).isEqualTo(divisionId);
@@ -75,7 +75,7 @@ class CreateAcademicProgramUseCaseImplTest {
 
 		AcademicProgramResult result = useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"));
+				ProgramModality.PRESENCIAL, null, "desc", null));
 
 		assertThat(result.continuityProgramId()).isNull();
 	}
@@ -84,7 +84,7 @@ class CreateAcademicProgramUseCaseImplTest {
 	void createProgram_rejectsMissingDivisionId() {
 		assertThatThrownBy(() -> useCase.createProgram(new CreateAcademicProgramCommand(null,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DivisionNotFoundException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DivisionNotFoundException.class);
 
 		verify(programRepository, never()).save(any());
 	}
@@ -95,7 +95,7 @@ class CreateAcademicProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DivisionNotFoundException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DivisionNotFoundException.class);
 
 		verify(programRepository, never()).save(any());
 	}
@@ -105,12 +105,12 @@ class CreateAcademicProgramUseCaseImplTest {
 		when(divisionRepository.findById(divisionId))
 				.thenReturn(Optional.of(new AcademicDivision("Sistemas", "SIS", "desc", null)));
 		AcademicProgram existing = new AcademicProgram(divisionId, "Otro", "Otro", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc");
+				ProgramModality.PRESENCIAL, null, "desc", null);
 		when(programRepository.findByCode("ISC-01")).thenReturn(Optional.of(existing));
 
 		assertThatThrownBy(() -> useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DuplicateProgramCodeException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DuplicateProgramCodeException.class);
 
 		verify(programRepository, never()).save(any());
 	}
@@ -121,13 +121,13 @@ class CreateAcademicProgramUseCaseImplTest {
 				.thenReturn(Optional.of(new AcademicDivision("Sistemas", "SIS", "desc", null)));
 		when(programRepository.findByCode("ISC-02")).thenReturn(Optional.empty());
 		AcademicProgram existing = new AcademicProgram(divisionId, "Ingenieria en Software", "Ingenieria en Software",
-				"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 		when(programRepository.findByOfferNameAndModality("Ingenieria en Software", ProgramModality.PRESENCIAL))
 				.thenReturn(Optional.of(existing));
 
 		assertThatThrownBy(() -> useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-02", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DuplicateOfferNameModalityException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DuplicateOfferNameModalityException.class);
 
 		verify(programRepository, never()).save(any());
 	}
@@ -143,7 +143,7 @@ class CreateAcademicProgramUseCaseImplTest {
 
 		AcademicProgramResult result = useCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-02", AcademicLevel.INGENIERIA,
-				ProgramModality.MIXTA, null, "desc"));
+				ProgramModality.MIXTA, null, "desc", null));
 
 		assertThat(result.modality()).isEqualTo(ProgramModality.MIXTA);
 	}

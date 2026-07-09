@@ -42,9 +42,9 @@ class ListAcademicProgramsUseCaseImplTest {
 	void listPrograms_defaultPaginationUsesDefaultSize() {
 		List<AcademicProgram> content = List.of(
 				new AcademicProgram(UUID.randomUUID(), "Ingenieria en Software", "Ingenieria en Software", "ISC-01",
-						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc"),
+						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null),
 				new AcademicProgram(UUID.randomUUID(), "Ingenieria Industrial", "Ingenieria Industrial", "ISC-02",
-						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc"));
+						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null));
 		when(programRepository.search(any())).thenReturn(new ProgramSearchPage(content, 22, 2));
 
 		ListAcademicProgramsResult result = useCase
@@ -85,7 +85,7 @@ class ListAcademicProgramsUseCaseImplTest {
 	void listPrograms_mapsContentToSummaries() {
 		List<AcademicProgram> content = List
 				.of(new AcademicProgram(UUID.randomUUID(), "Ingenieria en Software", "Ingenieria en Software",
-						"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc"));
+						"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null));
 		when(programRepository.search(any())).thenReturn(new ProgramSearchPage(content, 1, 1));
 
 		ListAcademicProgramsResult result = useCase

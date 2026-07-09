@@ -70,7 +70,7 @@ class AcademicProgramTest {
 		UUID continuityProgramId = UUID.randomUUID();
 
 		program.updateDetails(divisionId, "Ingenieria en Software", "Ingenieria en Software", "ISC-02",
-				AcademicLevel.INGENIERIA, ProgramModality.MIXTA, continuityProgramId, "Nueva descripcion");
+				AcademicLevel.INGENIERIA, ProgramModality.MIXTA, continuityProgramId, "Nueva descripcion", null);
 
 		assertThat(program.getDivisionId()).isEqualTo(divisionId);
 		assertThat(program.getName()).isEqualTo("Ingenieria en Software");
@@ -85,6 +85,6 @@ class AcademicProgramTest {
 
 	private AcademicProgram newProgram() {
 		return new AcademicProgram(UUID.randomUUID(), "Ingenieria en Software", "Ingenieria en Software", "ISC-01",
-				AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 	}
 }

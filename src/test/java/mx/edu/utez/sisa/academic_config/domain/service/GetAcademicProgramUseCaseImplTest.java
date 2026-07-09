@@ -35,7 +35,7 @@ class GetAcademicProgramUseCaseImplTest {
 	void setUp() {
 		useCase = new GetAcademicProgramUseCaseImpl(programRepository);
 		program = new AcademicProgram(UUID.randomUUID(), "Ingenieria en Software", "Ingenieria en Software",
-				"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				"ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 		programId = UUID.randomUUID();
 		ReflectionTestUtils.setField(program, "id", programId);
 	}

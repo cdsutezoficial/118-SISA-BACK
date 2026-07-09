@@ -103,10 +103,10 @@ class AcademicProgramControllerTest {
 		UUID programId = UUID.randomUUID();
 		when(createAcademicProgramUseCase.createProgram(new CreateAcademicProgramCommand(divisionId,
 				"Ingeniería en Software", "Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc")))
+				ProgramModality.PRESENCIAL, null, "desc", null)))
 				.thenReturn(new AcademicProgramResult(programId, divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
-						"desc", ProgramStatus.ACTIVE));
+						"desc", null, ProgramStatus.ACTIVE));
 
 		mockMvc.perform(post("/programs").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateProgramBody(divisionId, "Ingeniería en Software",
@@ -173,9 +173,10 @@ class AcademicProgramControllerTest {
 	void updateProgramReturns200WithBody() throws Exception {
 		UUID programId = UUID.randomUUID();
 		when(updateAcademicProgramUseCase.updateProgram(new UpdateAcademicProgramCommand(programId, divisionId,
-				"New Name", "New Offer", "ISC-02", AcademicLevel.LICENCIATURA, ProgramModality.MIXTA, null, "desc")))
+				"New Name", "New Offer", "ISC-02", AcademicLevel.LICENCIATURA, ProgramModality.MIXTA, null, "desc",
+				null)))
 				.thenReturn(new AcademicProgramResult(programId, divisionId, "New Name", "New Offer", "ISC-02",
-						AcademicLevel.LICENCIATURA, ProgramModality.MIXTA, null, "desc", ProgramStatus.ACTIVE));
+						AcademicLevel.LICENCIATURA, ProgramModality.MIXTA, null, "desc", null, ProgramStatus.ACTIVE));
 
 		mockMvc.perform(put("/programs/" + programId).contentType("application/json")
 				.content(objectMapper.writeValueAsString(new UpdateProgramBody(divisionId, "New Name", "New Offer",
@@ -202,7 +203,7 @@ class AcademicProgramControllerTest {
 		when(getAcademicProgramUseCase.getById(programId))
 				.thenReturn(new AcademicProgramResult(programId, divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
-						"desc", ProgramStatus.ACTIVE));
+						"desc", null, ProgramStatus.ACTIVE));
 
 		mockMvc.perform(get("/programs/" + programId)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(programId.toString()))
@@ -223,7 +224,7 @@ class AcademicProgramControllerTest {
 		UUID programId = UUID.randomUUID();
 		ProgramSummary summary = new ProgramSummary(programId, divisionId, "Ingeniería en Software",
 				"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, "desc",
-				ProgramStatus.ACTIVE);
+				null, ProgramStatus.ACTIVE);
 		when(listAcademicProgramsUseCase
 				.listPrograms(new ListAcademicProgramsQuery(ProgramStatus.ACTIVE, "software", divisionId, 0, 20)))
 				.thenReturn(new ListAcademicProgramsResult(List.of(summary), 1L, 1, 0, 20));
@@ -257,7 +258,8 @@ class AcademicProgramControllerTest {
 		when(changeAcademicProgramStatusUseCase
 				.changeStatus(new ChangeStatusCommand(callerId, programId, ProgramStatus.INACTIVE)))
 				.thenReturn(new AcademicProgramResult(programId, divisionId, "Name", "Offer", "COD",
-						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", ProgramStatus.INACTIVE));
+						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null,
+						ProgramStatus.INACTIVE));
 
 		mockMvc.perform(patch("/programs/" + programId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ProgramStatus.INACTIVE))))

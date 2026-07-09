@@ -140,6 +140,6 @@ class AcademicProgramRepositoryAdapterSearchIT {
 	private static AcademicProgram newProgram(UUID divisionId, String name, String offerName, String code,
 			ProgramModality modality) {
 		return new AcademicProgram(divisionId, name, offerName, code, AcademicLevel.INGENIERIA, modality, null,
-				"Description for " + name);
+				"Description for " + name, null);
 	}
 }

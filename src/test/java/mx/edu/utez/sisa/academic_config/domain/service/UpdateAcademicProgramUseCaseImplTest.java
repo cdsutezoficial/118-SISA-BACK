@@ -47,7 +47,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 		useCase = new UpdateAcademicProgramUseCaseImpl(programRepository, divisionRepository);
 		divisionId = UUID.randomUUID();
 		programA = new AcademicProgram(divisionId, "Ingenieria en Software", "Ingenieria en Software", "ISC-01",
-				AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 		programAId = UUID.randomUUID();
 		ReflectionTestUtils.setField(programA, "id", programAId);
 	}
@@ -64,7 +64,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		AcademicProgramResult result = useCase.updateProgram(new UpdateAcademicProgramCommand(programAId, divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-02", AcademicLevel.INGENIERIA,
-				ProgramModality.MIXTA, null, "nueva desc"));
+				ProgramModality.MIXTA, null, "nueva desc", null));
 
 		assertThat(result.code()).isEqualTo("ISC-02");
 		assertThat(result.modality()).isEqualTo(ProgramModality.MIXTA);
@@ -83,7 +83,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		AcademicProgramResult result = useCase.updateProgram(new UpdateAcademicProgramCommand(programAId, divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "nueva desc"));
+				ProgramModality.PRESENCIAL, null, "nueva desc", null));
 
 		assertThat(result.description()).isEqualTo("nueva desc");
 	}
@@ -91,7 +91,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 	@Test
 	void updateProgram_rejectsCodeConflictWithAnotherProgram() {
 		AcademicProgram programB = new AcademicProgram(divisionId, "Ingenieria Industrial", "Ingenieria Industrial",
-				"ISC-02", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				"ISC-02", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 		UUID programBId = UUID.randomUUID();
 		ReflectionTestUtils.setField(programB, "id", programBId);
 		when(programRepository.findById(programBId)).thenReturn(Optional.of(programB));
@@ -101,7 +101,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.updateProgram(new UpdateAcademicProgramCommand(programBId, divisionId,
 				"Ingenieria Industrial", "Ingenieria Industrial", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DuplicateProgramCodeException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DuplicateProgramCodeException.class);
 
 		assertThat(programB.getCode()).isEqualTo("ISC-02");
 	}
@@ -109,7 +109,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 	@Test
 	void updateProgram_rejectsOfferNameModalityConflictWithAnotherProgram() {
 		AcademicProgram programB = new AcademicProgram(divisionId, "Ingenieria Industrial", "Ingenieria Industrial",
-				"ISC-02", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc");
+				"ISC-02", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null);
 		UUID programBId = UUID.randomUUID();
 		ReflectionTestUtils.setField(programB, "id", programBId);
 		when(programRepository.findById(programBId)).thenReturn(Optional.of(programB));
@@ -121,7 +121,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.updateProgram(new UpdateAcademicProgramCommand(programBId, divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-02", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc")))
+				ProgramModality.PRESENCIAL, null, "desc", null)))
 				.isInstanceOf(DuplicateOfferNameModalityException.class);
 
 		assertThat(programB.getOfferName()).isEqualTo("Ingenieria Industrial");
@@ -134,7 +134,7 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.updateProgram(new UpdateAcademicProgramCommand(programAId, divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(DivisionNotFoundException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(DivisionNotFoundException.class);
 	}
 
 	@Test
@@ -144,6 +144,6 @@ class UpdateAcademicProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.updateProgram(new UpdateAcademicProgramCommand(unknownId, divisionId,
 				"Ingenieria en Software", "Ingenieria en Software", "ISC-01", AcademicLevel.INGENIERIA,
-				ProgramModality.PRESENCIAL, null, "desc"))).isInstanceOf(AcademicProgramNotFoundException.class);
+				ProgramModality.PRESENCIAL, null, "desc", null))).isInstanceOf(AcademicProgramNotFoundException.class);
 	}
 }
