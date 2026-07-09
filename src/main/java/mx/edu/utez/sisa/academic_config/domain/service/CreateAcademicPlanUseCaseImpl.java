@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +51,7 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 		}
 		if (command.minPassingGrade() == null || command.minPassingGrade().compareTo(MIN_PASSING_GRADE_FLOOR) < 0
 				|| command.minPassingGrade().compareTo(MIN_PASSING_GRADE_CEILING) > 0) {
-			throw new IllegalArgumentException("minPassingGrade must be within [0, 10]: " + command.minPassingGrade());
+			throw new InvalidPlanDataException("minPassingGrade must be within [0, 10]: " + command.minPassingGrade());
 		}
 		if (planRepository.findByProgramIdAndVersion(command.programId(), command.version()).isPresent()) {
 			throw new DuplicatePlanVersionException(

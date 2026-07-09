@@ -13,6 +13,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModal
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
@@ -89,7 +90,8 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
 	}
 
-	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class })
+	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class,
+			InvalidPlanDataException.class })
 	public ResponseEntity<ErrorResponse> handlePlanBadRequest(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}

@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,7 +66,7 @@ class AddPlanLevelUseCaseImplTest {
 		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
 
 		assertThatThrownBy(() -> useCase.addLevel(new AddPlanLevelCommand(planId, 7, PlanLevelType.REGULAR, null)))
-				.isInstanceOf(IllegalArgumentException.class);
+				.isInstanceOf(InvalidPlanDataException.class);
 
 		verify(planRepository, never()).save(any());
 	}

@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.CreateAcademicPlanCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
@@ -163,7 +164,7 @@ class CreateAcademicPlanUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.createPlan(new CreateAcademicPlanCommand(programId, "2022-A",
 				"Septiembre 2022", "TIT-001", LocalDate.of(2022, 9, 1), 6, BigDecimal.valueOf(70), 3, false, null)))
-				.isInstanceOf(IllegalArgumentException.class);
+				.isInstanceOf(InvalidPlanDataException.class);
 
 		verify(planRepository, never()).save(any());
 	}

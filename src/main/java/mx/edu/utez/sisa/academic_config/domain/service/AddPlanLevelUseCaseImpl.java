@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.AddPlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.PlanLevelResult;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -29,7 +30,7 @@ public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
 		if (command.levelNumber() < 1 || command.levelNumber() > plan.getTotalLevels()) {
-			throw new IllegalArgumentException(
+			throw new InvalidPlanDataException(
 					"levelNumber must be within [1, totalLevels=" + plan.getTotalLevels() + "]: " + command.levelNumber());
 		}
 
