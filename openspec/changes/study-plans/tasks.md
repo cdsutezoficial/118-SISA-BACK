@@ -49,14 +49,14 @@ Note: 118-SISA-BACK is local-only git (no push/PR). "Chained PRs" here means seq
 - [x] 3.4 `ListAcademicPlansUseCaseImpl` — default returns all statuses; filter by `programId`; filter by `status`
 - [x] 3.5 `ChangeAcademicPlanStatusUseCaseImpl` — deactivate active; reactivate inactive (independent of other plans under same `programId`)
 
-## Phase 4: Child Use Case Implementations (TDD)
+## Phase 4: Child Use Case Implementations (TDD) — COMPLETE (Batch 2)
 
-- [ ] 4.1 `AddPlanLevelUseCaseImpl` — success; `levelNumber` outside `[1,totalLevels]` rejected; duplicate `levelNumber` rejected
-- [ ] 4.2 `UpdatePlanLevelUseCaseImpl` — success; level not found rejected
-- [ ] 4.3 `RemovePlanLevelUseCaseImpl` — success; rejected when == `socialServiceMinLevelId`; rejected when level still has subjects
-- [ ] 4.4 `AddSubjectToPlanUseCaseImpl` — success; `planLevelId` from a different plan rejected; duplicate `code` within plan rejected; `classificationId` accepted without existence validation
-- [ ] 4.5 `UpdateSubjectUseCaseImpl` — success; subject not found rejected
-- [ ] 4.6 `RemoveSubjectUseCaseImpl` — removes subject from its level
+- [x] 4.1 `AddPlanLevelUseCaseImpl` — success; `levelNumber` outside `[1,totalLevels]` rejected; duplicate `levelNumber` rejected
+- [x] 4.2 `UpdatePlanLevelUseCaseImpl` — success; level not found rejected
+- [x] 4.3 `RemovePlanLevelUseCaseImpl` — success; rejected when == `socialServiceMinLevelId`; rejected when level still has subjects
+- [x] 4.4 `AddSubjectToPlanUseCaseImpl` — success; `planLevelId` from a different plan rejected; duplicate `code` within plan rejected; `classificationId` accepted without existence validation
+- [x] 4.5 `UpdateSubjectUseCaseImpl` — success; subject not found rejected
+- [x] 4.6 `RemoveSubjectUseCaseImpl` — removes subject from its level
 
 ## Phase 5: Persistence
 
