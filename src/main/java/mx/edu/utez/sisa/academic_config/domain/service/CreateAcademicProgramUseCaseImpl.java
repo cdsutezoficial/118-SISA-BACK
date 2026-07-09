@@ -43,7 +43,7 @@ public class CreateAcademicProgramUseCaseImpl implements CreateAcademicProgramUs
 
 		AcademicProgram program = new AcademicProgram(command.divisionId(), command.name(), command.offerName(),
 				command.code(), command.level(), command.modality(), command.continuityProgramId(),
-				command.description());
+				command.description(), command.dgpCode());
 		AcademicProgram saved = programRepository.save(program);
 
 		return toResult(saved);
@@ -52,6 +52,7 @@ public class CreateAcademicProgramUseCaseImpl implements CreateAcademicProgramUs
 	static AcademicProgramResult toResult(AcademicProgram program) {
 		return new AcademicProgramResult(program.getId(), program.getDivisionId(), program.getName(),
 				program.getOfferName(), program.getCode(), program.getLevel(), program.getModality(),
-				program.getContinuityProgramId(), program.getDescription(), program.getStatus());
+				program.getContinuityProgramId(), program.getDescription(), program.getDgpCode(),
+				program.getStatus());
 	}
 }

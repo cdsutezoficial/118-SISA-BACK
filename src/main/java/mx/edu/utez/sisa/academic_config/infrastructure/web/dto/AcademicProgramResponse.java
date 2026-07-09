@@ -14,5 +14,5 @@ import java.util.UUID;
  */
 public record AcademicProgramResponse(UUID id, UUID divisionId, String name, String offerName, String code,
 		AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description,
-		ProgramStatus status) {
+		String dgpCode, ProgramStatus status) {
 }

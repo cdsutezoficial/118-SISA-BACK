@@ -28,7 +28,8 @@ public interface CreateAcademicProgramUseCase {
 	 *                            be omitted or null at creation")
 	 */
 	record CreateAcademicProgramCommand(UUID divisionId, String name, String offerName, String code,
-			AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description) {
+			AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description,
+			String dgpCode) {
 	}
 
 	/**
@@ -40,6 +41,6 @@ public interface CreateAcademicProgramUseCase {
 	 */
 	record AcademicProgramResult(UUID id, UUID divisionId, String name, String offerName, String code,
 			AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description,
-			ProgramStatus status) {
+			String dgpCode, ProgramStatus status) {
 	}
 }

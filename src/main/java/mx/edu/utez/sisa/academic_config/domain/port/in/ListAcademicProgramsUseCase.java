@@ -44,6 +44,6 @@ public interface ListAcademicProgramsUseCase {
 	 * name, offerName, code, level, modality, and status").
 	 */
 	record ProgramSummary(UUID id, UUID divisionId, String name, String offerName, String code, AcademicLevel level,
-			ProgramModality modality, String description, ProgramStatus status) {
+			ProgramModality modality, String description, String dgpCode, ProgramStatus status) {
 	}
 }

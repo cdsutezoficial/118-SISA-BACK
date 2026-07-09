@@ -75,7 +75,7 @@ public class AcademicProgramController {
 			@Valid @RequestBody CreateAcademicProgramRequest request) {
 		AcademicProgramResult result = createAcademicProgramUseCase.createProgram(new CreateAcademicProgramCommand(
 				request.divisionId(), request.name(), request.offerName(), request.code(), request.level(),
-				request.modality(), request.continuityProgramId(), request.description()));
+				request.modality(), request.continuityProgramId(), request.description(), request.dgpCode()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
 	}
 
@@ -84,7 +84,7 @@ public class AcademicProgramController {
 			@Valid @RequestBody UpdateAcademicProgramRequest request) {
 		AcademicProgramResult result = updateAcademicProgramUseCase.updateProgram(new UpdateAcademicProgramCommand(id,
 				request.divisionId(), request.name(), request.offerName(), request.code(), request.level(),
-				request.modality(), request.continuityProgramId(), request.description()));
+				request.modality(), request.continuityProgramId(), request.description(), request.dgpCode()));
 		return ResponseEntity.ok(toResponse(result));
 	}
 
@@ -127,12 +127,12 @@ public class AcademicProgramController {
 	private static AcademicProgramResponse toResponse(AcademicProgramResult result) {
 		return new AcademicProgramResponse(result.id(), result.divisionId(), result.name(), result.offerName(),
 				result.code(), result.level(), result.modality(), result.continuityProgramId(), result.description(),
-				result.status());
+				result.dgpCode(), result.status());
 	}
 
 	private static AcademicProgramListItemResponse toItem(ProgramSummary summary) {
 		return new AcademicProgramListItemResponse(summary.id(), summary.divisionId(), summary.name(),
 				summary.offerName(), summary.code(), summary.level(), summary.modality(), summary.description(),
-				summary.status());
+				summary.dgpCode(), summary.status());
 	}
 }

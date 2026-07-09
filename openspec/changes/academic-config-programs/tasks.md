@@ -76,3 +76,17 @@ Note: 118-SISA-BACK is local-only git (no push/PR) — the "PR" split maps to sd
 
 - [x] 8.1 `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` — add 5 "Puertos (in)" rows for the new `AcademicProgram` use cases (no field changes needed, already documented)
 - [x] 8.2 `./mvnw clean verify` — full suite green, zero regressions (~144 existing tests + new), all 17 spec scenarios covered
+
+---
+
+## Post-delivery amendment: campo `dgpCode` (2026-07-08)
+
+Campo opcional añadido tras la entrega para cubrir la necesidad del frontend
+de mostrar la clave DGP. Ver `CHANGELOG.md` para la lista completa de archivos
+modificados.
+
+- [x] A.1 `domain/model/AcademicProgram.java` — campo `dgpCode: String` (nullable), getter, `updateDetails()`
+- [x] A.2 Ports (in): `CreateAcademicProgramCommand`, `AcademicProgramResult`, `UpdateAcademicProgramCommand`, `ProgramSummary`
+- [x] A.3 Services: `CreateAcademicProgramUseCaseImpl.toResult()`, `UpdateAcademicProgramUseCaseImpl`, `ListAcademicProgramsUseCaseImpl.toSummary()`
+- [x] A.4 Web layer: `AcademicProgramController`, DTOs `AcademicProgramResponse`, `AcademicProgramListItemResponse`, `CreateAcademicProgramRequest`, `UpdateAcademicProgramRequest`
+- [x] A.5 Spec `openspec/specs/academic-program-management/spec.md` — `dgpCode` añadido a Create, Update y List requirements

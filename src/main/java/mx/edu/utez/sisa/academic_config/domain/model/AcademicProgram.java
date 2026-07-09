@@ -57,6 +57,9 @@ public class AcademicProgram {
 	private UUID continuityProgramId;
 
 	@Column
+	private String dgpCode;
+
+	@Column
 	private String description;
 
 	@Enumerated(EnumType.STRING)
@@ -68,6 +71,8 @@ public class AcademicProgram {
 	}
 
 	/**
+	 * @param dgpCode             optional — DGP (Dirección General de Profesiones) registration code;
+	 *                            {@code null} is allowed when not yet assigned
 	 * @param divisionId          required — MUST reference an existing {@code AcademicDivision} (spec:
 	 *                            "divisionId MUST be required")
 	 * @param continuityProgramId optional — {@code null} is allowed; schema-only in this change, no
@@ -75,7 +80,7 @@ public class AcademicProgram {
 	 *                            or null at creation")
 	 */
 	public AcademicProgram(UUID divisionId, String name, String offerName, String code, AcademicLevel level,
-			ProgramModality modality, UUID continuityProgramId, String description) {
+			ProgramModality modality, UUID continuityProgramId, String description, String dgpCode) {
 		this.divisionId = divisionId;
 		this.name = name;
 		this.offerName = offerName;
@@ -84,6 +89,7 @@ public class AcademicProgram {
 		this.modality = modality;
 		this.continuityProgramId = continuityProgramId;
 		this.description = description;
+		this.dgpCode = dgpCode;
 		this.status = ProgramStatus.ACTIVE;
 	}
 
@@ -110,7 +116,7 @@ public class AcademicProgram {
 	 * sole responsibility of {@link #activate()}/{@link #deactivate()}.
 	 */
 	public void updateDetails(UUID divisionId, String name, String offerName, String code, AcademicLevel level,
-			ProgramModality modality, UUID continuityProgramId, String description) {
+			ProgramModality modality, UUID continuityProgramId, String description, String dgpCode) {
 		this.divisionId = divisionId;
 		this.name = name;
 		this.offerName = offerName;
@@ -119,6 +125,7 @@ public class AcademicProgram {
 		this.modality = modality;
 		this.continuityProgramId = continuityProgramId;
 		this.description = description;
+		this.dgpCode = dgpCode;
 	}
 
 	public UUID getId() {
@@ -151,6 +158,10 @@ public class AcademicProgram {
 
 	public UUID getContinuityProgramId() {
 		return continuityProgramId;
+	}
+
+	public String getDgpCode() {
+		return dgpCode;
 	}
 
 	public String getDescription() {

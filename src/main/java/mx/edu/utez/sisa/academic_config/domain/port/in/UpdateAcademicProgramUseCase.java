@@ -20,6 +20,7 @@ public interface UpdateAcademicProgramUseCase {
 	AcademicProgramResult updateProgram(UpdateAcademicProgramCommand command);
 
 	record UpdateAcademicProgramCommand(UUID programId, UUID divisionId, String name, String offerName, String code,
-			AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description) {
+			AcademicLevel level, ProgramModality modality, UUID continuityProgramId, String description,
+			String dgpCode) {
 	}
 }

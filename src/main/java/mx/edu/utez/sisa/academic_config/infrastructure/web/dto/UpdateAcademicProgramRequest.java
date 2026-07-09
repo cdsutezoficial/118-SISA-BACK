@@ -10,9 +10,10 @@ import java.util.UUID;
 /**
  * Request body for {@code PUT /programs/{id}} (design.md — REST endpoints).
  * {@code status} is deliberately absent — status transitions go through
- * {@code PATCH /programs/{id}/status}.
+ * {@code PATCH /programs/{id}/status}. {@code dgpCode} is optional — MAY be
+ * null or omitted when the program has not yet been registered with DGP.
  */
 public record UpdateAcademicProgramRequest(@NotNull UUID divisionId, @NotBlank String name,
 		@NotBlank String offerName, @NotBlank String code, @NotNull AcademicLevel level,
-		@NotNull ProgramModality modality, UUID continuityProgramId, String description) {
+		@NotNull ProgramModality modality, UUID continuityProgramId, String description, String dgpCode) {
 }

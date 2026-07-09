@@ -13,9 +13,10 @@ import java.util.UUID;
  * MUST NOT be omitted or null), unlike
  * {@code CreateAcademicDivisionRequest.directorPersonId}. {@code
  * continuityProgramId} is optional — schema-only in this change, no
- * validation or linking logic applied.
+ * validation or linking logic applied. {@code dgpCode} is optional — MAY be
+ * null or omitted when the program has not yet been registered with DGP.
  */
 public record CreateAcademicProgramRequest(@NotNull UUID divisionId, @NotBlank String name,
 		@NotBlank String offerName, @NotBlank String code, @NotNull AcademicLevel level,
-		@NotNull ProgramModality modality, UUID continuityProgramId, String description) {
+		@NotNull ProgramModality modality, UUID continuityProgramId, String description, String dgpCode) {
 }

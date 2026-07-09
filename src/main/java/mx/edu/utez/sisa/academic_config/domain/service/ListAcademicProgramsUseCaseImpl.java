@@ -36,7 +36,7 @@ public class ListAcademicProgramsUseCaseImpl implements ListAcademicProgramsUseC
 	private ProgramSummary toSummary(AcademicProgram program) {
 		return new ProgramSummary(program.getId(), program.getDivisionId(), program.getName(), program.getOfferName(),
 				program.getCode(), program.getLevel(), program.getModality(), program.getDescription(),
-				program.getStatus());
+				program.getDgpCode(), program.getStatus());
 	}
 
 	/**

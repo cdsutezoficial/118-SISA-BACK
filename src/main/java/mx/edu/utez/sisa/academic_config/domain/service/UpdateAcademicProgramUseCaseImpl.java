@@ -49,7 +49,8 @@ public class UpdateAcademicProgramUseCaseImpl implements UpdateAcademicProgramUs
 				});
 
 		program.updateDetails(command.divisionId(), command.name(), command.offerName(), command.code(),
-				command.level(), command.modality(), command.continuityProgramId(), command.description());
+				command.level(), command.modality(), command.continuityProgramId(), command.description(),
+				command.dgpCode());
 		AcademicProgram saved = programRepository.save(program);
 
 		return CreateAcademicProgramUseCaseImpl.toResult(saved);
