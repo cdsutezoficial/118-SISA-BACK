@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase.UpdatePlanLevelCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,17 @@ class UpdatePlanLevelUseCaseImplTest {
 		assertThatThrownBy(() -> useCase
 				.updateLevel(new UpdatePlanLevelCommand(unknownPlanId, levelId, 1, PlanLevelType.REGULAR, null)))
 				.isInstanceOf(AcademicPlanNotFoundException.class);
+
+		verify(planRepository, never()).save(any());
+	}
+
+	@Test
+	void updateLevel_rejectsLevelNumberOutsideTotalLevelsRange() {
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+
+		assertThatThrownBy(() -> useCase
+				.updateLevel(new UpdatePlanLevelCommand(planId, levelId, 99, PlanLevelType.REGULAR, null)))
+				.isInstanceOf(InvalidPlanDataException.class);
 
 		verify(planRepository, never()).save(any());
 	}

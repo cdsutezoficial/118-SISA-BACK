@@ -6,8 +6,11 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 /**
  * Updates an existing {@code AcademicPlan}'s catalog fields (spec: "Update
@@ -17,8 +20,16 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code socialServiceMinLevelId} ownership rule (design.md — validated via
  * {@link AcademicPlan#hasLevel(java.util.UUID)}: "Rejects
  * socialServiceMinLevelId referencing a PlanLevel from a different plan").
+ * Also enforces the {@code [0, 10]} range of {@code minPassingGrade}
+ * (post-verify fast-follow bugfix — {@code CreateAcademicPlanUseCaseImpl}
+ * enforced this at creation, but the same field is updatable per spec's
+ * "Update Academic Plan" requirement and had no equivalent guard here,
+ * silently accepting/persisting an out-of-range value).
  */
 public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase {
+
+	private static final BigDecimal MIN_PASSING_GRADE_FLOOR = BigDecimal.ZERO;
+	private static final BigDecimal MIN_PASSING_GRADE_CEILING = BigDecimal.TEN;
 
 	private final AcademicPlanRepository planRepository;
 
@@ -31,6 +42,11 @@ public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase 
 	public AcademicPlanResult updatePlan(UpdateAcademicPlanCommand command) {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
+
+		if (command.minPassingGrade() == null || command.minPassingGrade().compareTo(MIN_PASSING_GRADE_FLOOR) < 0
+				|| command.minPassingGrade().compareTo(MIN_PASSING_GRADE_CEILING) > 0) {
+			throw new InvalidPlanDataException("minPassingGrade must be within [0, 10]: " + command.minPassingGrade());
+		}
 
 		planRepository.findByProgramIdAndVersion(plan.getProgramId(), command.version())
 				.filter(found -> !found.getId().equals(plan.getId())).ifPresent(found -> {

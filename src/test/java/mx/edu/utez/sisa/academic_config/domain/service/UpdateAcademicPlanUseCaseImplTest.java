@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -129,5 +132,16 @@ class UpdateAcademicPlanUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.updatePlan(new UpdateAcademicPlanCommand(unknownId, "2022-A",
 				"Septiembre 2022", "TIT-001", LocalDate.of(2022, 9, 1), 6, BigDecimal.valueOf(6.0), 3, false, null)))
 				.isInstanceOf(AcademicPlanNotFoundException.class);
+	}
+
+	@Test
+	void updatePlan_rejectsOutOfRangeMinPassingGrade() {
+		when(planRepository.findById(planAId)).thenReturn(Optional.of(planA));
+
+		assertThatThrownBy(() -> useCase.updatePlan(new UpdateAcademicPlanCommand(planAId, "2022-A",
+				"Septiembre 2022", "TIT-001", LocalDate.of(2022, 9, 1), 6, BigDecimal.valueOf(70), 3, false, null)))
+				.isInstanceOf(InvalidPlanDataException.class);
+
+		verify(planRepository, never()).save(any());
 	}
 }

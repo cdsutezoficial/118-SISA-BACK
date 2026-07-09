@@ -174,6 +174,26 @@ class AcademicPlanControllerIT {
 	}
 
 	@Test
+	void updatePlanWithOutOfRangeMinPassingGradeReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		String version = "UPD-GRADE-" + UUID.randomUUID().toString().substring(0, 6);
+		var createResult = mockMvc
+				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
+						.content(objectMapper.writeValueAsString(new CreatePlanBody(programId, version, "2022-2028",
+								"CLAVE-" + version, LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), 2, false,
+								null))))
+				.andExpect(status().isCreated()).andReturn();
+		JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
+		UUID planId = UUID.fromString(created.get("id").asText());
+
+		mockMvc.perform(put("/plans/" + planId).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdatePlanBody(version, "2022-2029", "CLAVE-" + version,
+						LocalDate.of(2022, 1, 10), 9, new BigDecimal("70"), 2, false, null))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void addLevelWithLevelNumberOutsideTotalLevelsRangeReturns400() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		String version = "LVL-" + UUID.randomUUID().toString().substring(0, 6);
@@ -187,6 +207,33 @@ class AcademicPlanControllerIT {
 		UUID planId = UUID.fromString(created.get("id").asText());
 
 		mockMvc.perform(post("/plans/" + planId + "/levels").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Fuera de rango"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void updateLevelWithLevelNumberOutsideTotalLevelsRangeReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		String version = "UPD-LVL-" + UUID.randomUUID().toString().substring(0, 6);
+		var createResult = mockMvc
+				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
+						.content(objectMapper.writeValueAsString(new CreatePlanBody(programId, version, "2022-2028",
+								"CLAVE-" + version, LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), 2, false,
+								null))))
+				.andExpect(status().isCreated()).andReturn();
+		JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
+		UUID planId = UUID.fromString(created.get("id").asText());
+
+		var levelResult = mockMvc
+				.perform(post("/plans/" + planId + "/levels").header("Authorization", "Bearer " + token)
+						.contentType("application/json")
+						.content(objectMapper.writeValueAsString(new AddLevelBody(1, "REGULAR", "Primer cuatrimestre"))))
+				.andExpect(status().isCreated()).andReturn();
+		JsonNode level = objectMapper.readTree(levelResult.getResponse().getContentAsString());
+		UUID levelId = UUID.fromString(level.get("id").asText());
+
+		mockMvc.perform(put("/plans/" + planId + "/levels/" + levelId).header("Authorization", "Bearer " + token)
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Fuera de rango"))))
 				.andExpect(status().isBadRequest());
