@@ -131,6 +131,37 @@ class AcademicPlanControllerIT {
 		mockMvc.perform(get("/plans")).andExpect(status().isUnauthorized());
 	}
 
+	@Test
+	void createPlanWithNegativeMaxExtraordinaryExamsPerPeriodReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreatePlanBody(programId,
+						"NEG-" + UUID.randomUUID().toString().substring(0, 6), "2022-2028", "CLAVE-NEG",
+						LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), -1, false, null))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void updatePlanWithNegativeMaxExtraordinaryExamsPerPeriodReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		String version = "UPD-NEG-" + UUID.randomUUID().toString().substring(0, 6);
+		var createResult = mockMvc
+				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
+						.content(objectMapper.writeValueAsString(new CreatePlanBody(programId, version, "2022-2028",
+								"CLAVE-" + version, LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), 2, false,
+								null))))
+				.andExpect(status().isCreated()).andReturn();
+		JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
+		UUID planId = UUID.fromString(created.get("id").asText());
+
+		mockMvc.perform(put("/plans/" + planId).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdatePlanBody(version, "2022-2029", "CLAVE-" + version,
+						LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), -1, false, null))))
+				.andExpect(status().isBadRequest());
+	}
+
 	private void exerciseFullCrud(String token, String version) throws Exception {
 		var createResult = mockMvc
 				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
