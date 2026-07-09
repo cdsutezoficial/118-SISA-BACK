@@ -41,6 +41,14 @@ import java.time.Instant;
  * the identical FOUR verb-split matchers, same
  * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
  * {@code /divisions} matchers for the same one-line-future-change rationale.
+ * {@code /plans} (academic_config — third aggregate, "Academic Plan
+ * Management") gets FIVE verb-split matchers — the same four verbs as
+ * Program plus {@code DELETE}, since unlike the root aggregates (never
+ * hard-deleted), the nested {@code PlanLevel}/{@code Subject} child
+ * endpoints support real deletion (design.md — "Unlike the root ... children
+ * DO support real DELETE"). A single {@code "/plans/**"} pattern per verb
+ * covers both the root and every nested level/subject path. Placed right
+ * after the {@code /programs} matchers for the same rationale.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -83,6 +91,15 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.POST, "/programs").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/programs/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/programs/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/plans", "/plans/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/plans", "/plans/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/plans/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/plans/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.DELETE, "/plans/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
