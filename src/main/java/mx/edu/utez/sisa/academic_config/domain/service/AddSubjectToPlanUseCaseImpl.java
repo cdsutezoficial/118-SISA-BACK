@@ -30,11 +30,20 @@ public class AddSubjectToPlanUseCaseImpl implements AddSubjectToPlanUseCase {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
 
-		Subject subject = plan.addSubject(command.planLevelId(), command.code(), command.name(), command.credits(),
+		plan.addSubject(command.planLevelId(), command.code(), command.name(), command.credits(),
 				command.weeklyHours(), command.evaluationUnits(), command.displayOrder(), command.type(),
 				command.isRetakeable(), command.classificationId());
-		planRepository.save(plan);
+		AcademicPlan saved = planRepository.save(plan);
 
-		return CreateAcademicPlanUseCaseImpl.toSubjectResult(subject);
+		/*
+		 * Re-fetched from the SAVED plan by code (unique within the plan),
+		 * not the in-memory reference returned by addSubject() above — same
+		 * apply-phase discovery/rationale as AddPlanLevelUseCaseImpl.
+		 */
+		Subject savedSubject = saved.getLevels().stream().flatMap(level -> level.getSubjects().stream())
+				.filter(candidate -> candidate.getCode().equals(command.code())).findFirst()
+				.orElseThrow(() -> new IllegalStateException("Added subject disappeared: " + command.code()));
+
+		return CreateAcademicPlanUseCaseImpl.toSubjectResult(savedSubject);
 	}
 }

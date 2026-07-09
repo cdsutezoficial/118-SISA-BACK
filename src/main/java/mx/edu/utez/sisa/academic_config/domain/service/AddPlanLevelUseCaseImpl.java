@@ -33,9 +33,22 @@ public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 					"levelNumber must be within [1, totalLevels=" + plan.getTotalLevels() + "]: " + command.levelNumber());
 		}
 
-		PlanLevel level = plan.addLevel(command.levelNumber(), command.type(), command.description());
-		planRepository.save(plan);
+		plan.addLevel(command.levelNumber(), command.type(), command.description());
+		AcademicPlan saved = planRepository.save(plan);
 
-		return CreateAcademicPlanUseCaseImpl.toLevelResult(level);
+		/*
+		 * Re-fetched from the SAVED plan by levelNumber (unique within the
+		 * plan), not the in-memory reference returned by addLevel() above —
+		 * apply-phase discovery: on a real JPA repository, save() on an
+		 * already-managed AcademicPlan does not guarantee the original child
+		 * object instance is the one carrying the generated id after the
+		 * flush; searching the persisted graph by a known unique business
+		 * key is the reliable way to obtain the id-bearing instance.
+		 */
+		PlanLevel savedLevel = saved.getLevels().stream()
+				.filter(candidate -> candidate.getLevelNumber() == command.levelNumber()).findFirst().orElseThrow(
+						() -> new IllegalStateException("Added level disappeared: " + command.levelNumber()));
+
+		return CreateAcademicPlanUseCaseImpl.toLevelResult(savedLevel);
 	}
 }
