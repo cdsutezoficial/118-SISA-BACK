@@ -58,25 +58,25 @@ Note: 118-SISA-BACK is local-only git (no push/PR). "Chained PRs" here means seq
 - [x] 4.5 `UpdateSubjectUseCaseImpl` — success; subject not found rejected
 - [x] 4.6 `RemoveSubjectUseCaseImpl` — removes subject from its level
 
-## Phase 5: Persistence
+## Phase 5: Persistence — COMPLETE (Batch 3)
 
-- [ ] 5.1 `AcademicPlanJpaRepository` — `@Query` search (programId/status/search filters), `findByProgramIdAndVersion`
-- [ ] 5.2 `AcademicPlanRepositoryAdapter` — sort by `version` ASC, maps full plan graph (levels+subjects) via cascade
-- [ ] 5.3 `AcademicPlanRepositoryAdapterSearchIT` (`@DataJpaTest`) — unique `(program_id, version)` DB constraint, `programId` filter, `status` filter, `search` filter, cascade persists levels/subjects on save
+- [x] 5.1 `AcademicPlanJpaRepository` — `@Query` search (programId/status/search filters), `findByProgramIdAndVersion`
+- [x] 5.2 `AcademicPlanRepositoryAdapter` — sort by `version` ASC, maps full plan graph (levels+subjects) via cascade
+- [x] 5.3 `AcademicPlanRepositoryAdapterSearchIT` (`@DataJpaTest`) — unique `(program_id, version)` DB constraint, `programId` filter, `status` filter, `search` filter, cascade persists levels/subjects on save
 
-## Phase 6: Web Layer
+## Phase 6: Web Layer — COMPLETE (Batch 3)
 
-- [ ] 6.1 DTOs: Create/Update/ChangeStatus plan requests, Add/Update level requests, Add/Update subject requests, `AcademicPlanResponse` (nested levels/subjects), `AcademicPlanListItemResponse`, `AcademicPlanListResponse`, `PlanLevelResponse`, `SubjectResponse`
-- [ ] 6.2 `AcademicPlanController` — 11 endpoints: POST/PUT `{id}`/GET/GET `{id}`/PATCH `{id}`/status on `/plans`; POST/PUT `{levelId}`/DELETE `{levelId}` on `/plans/{id}/levels`; POST/PUT `{subjectId}`/DELETE `{subjectId}` on `/plans/{id}/levels/{levelId}/subjects`
-- [ ] 6.3 EXTEND existing `academic_config` `GlobalExceptionHandler` — add 9 `@ExceptionHandler` methods (additive only)
-- [ ] 6.4 EXTEND existing `academic_config` `UseCaseConfig` — add 11 `@Bean` methods
+- [x] 6.1 DTOs: Create/Update/ChangeStatus plan requests, Add/Update level requests, Add/Update subject requests, `AcademicPlanResponse` (nested levels/subjects), `AcademicPlanListItemResponse`, `AcademicPlanListResponse`, `PlanLevelResponse`, `SubjectResponse`
+- [x] 6.2 `AcademicPlanController` — 11 endpoints: POST/PUT `{id}`/GET/GET `{id}`/PATCH `{id}`/status on `/plans`; POST/PUT `{levelId}`/DELETE `{levelId}` on `/plans/{id}/levels`; POST/PUT `{subjectId}`/DELETE `{subjectId}` on `/plans/{id}/levels/{levelId}/subjects`
+- [x] 6.3 EXTEND existing `academic_config` `GlobalExceptionHandler` — add 10 `@ExceptionHandler` methods grouped into 3 handler methods (additive only; 10 not 9 — includes `DuplicatePlanVersionException` per the Batch 1 deviation)
+- [x] 6.4 EXTEND existing `academic_config` `UseCaseConfig` — add 11 `@Bean` methods
 
-## Phase 7: Security
+## Phase 7: Security — COMPLETE (Batch 3)
 
-- [ ] 7.1 `SecurityFilterConfig.java` — add `/plans/**` matchers (GET/POST/PUT/PATCH/DELETE, incl. nested `/levels` and `/subjects` paths), ADMIN+SERVICIOS_ESCOLARES, placed after `/programs` matchers, before `anyRequest()`
-- [ ] 7.2 `AcademicPlanControllerIT` — ADMIN full CRUD incl. nested level/subject flows; SERVICIOS_ESCOLARES full write access; other role 403; unauthenticated 401
+- [x] 7.1 `SecurityFilterConfig.java` — add `/plans/**` matchers (GET/POST/PUT/PATCH/DELETE, incl. nested `/levels` and `/subjects` paths), ADMIN+SERVICIOS_ESCOLARES, placed after `/programs` matchers, before `anyRequest()`
+- [x] 7.2 `AcademicPlanControllerIT` — ADMIN full CRUD incl. nested level/subject flows; SERVICIOS_ESCOLARES full write access; other role 403; unauthenticated 401
 
-## Phase 8: Documentation & Final Verify
+## Phase 8: Documentation & Final Verify — COMPLETE (Batch 3)
 
-- [ ] 8.1 `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` — add 11 "Puertos (in)" rows for the new `AcademicPlan`/`PlanLevel`/`Subject` use cases
-- [ ] 8.2 `./mvnw clean verify` — full suite green, zero regressions (existing ~201 tests + new), all 33 spec scenarios covered
+- [x] 8.1 `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` — replaced the 3 placeholder "Puertos (in)" rows with the complete 11 `AcademicPlan`/`PlanLevel`/`Subject` use-case rows
+- [x] 8.2 `./mvnw clean verify` — full suite green, zero regressions: 228 unit tests (surefire) + 57 integration tests (failsafe) = 285 total, all 33 spec scenarios covered
