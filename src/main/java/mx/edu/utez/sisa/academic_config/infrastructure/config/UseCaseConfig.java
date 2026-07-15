@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
@@ -25,6 +26,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionReposito
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
+import mx.edu.utez.sisa.academic_config.domain.port.out.SubjectClassificationRepository;
 import mx.edu.utez.sisa.academic_config.domain.service.AddPlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.AddSubjectToPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
@@ -39,6 +41,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCase
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPlansUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ListSubjectClassificationsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemovePlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemoveSubjectUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUseCaseImpl;
@@ -177,5 +180,11 @@ public class UseCaseConfig {
 	@Bean
 	public RemoveSubjectUseCase removeSubjectUseCase(AcademicPlanRepository planRepository) {
 		return new RemoveSubjectUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public ListSubjectClassificationsUseCase listSubjectClassificationsUseCase(
+			SubjectClassificationRepository classificationRepository) {
+		return new ListSubjectClassificationsUseCaseImpl(classificationRepository);
 	}
 }
