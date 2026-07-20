@@ -2,6 +2,8 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import mx.edu.utez.sisa.academic_config.domain.model.ClassificationStatus;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeSubjectClassificationStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeSubjectClassificationStatusUseCase.ChangeStatusCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.ClassificationResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.CreateClassificationCommand;
@@ -15,10 +17,15 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificati
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -36,8 +44,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Thin-controller tests for {@link SubjectClassificationController}: Phase 1
- * (List), Phase 2 (Create), Phase 3 (Get by id), Phase 4 (Update), mirroring
- * {@code AcademicDivisionControllerTest}'s style.
+ * (List), Phase 2 (Create), Phase 3 (Get by id), Phase 4 (Update), Phase 5
+ * (ChangeStatus), mirroring {@code AcademicDivisionControllerTest}'s style.
  */
 @WebMvcTest(SubjectClassificationController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -62,7 +70,24 @@ class SubjectClassificationControllerTest {
 	private UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase;
 
 	@MockitoBean
+	private ChangeSubjectClassificationStatusUseCase changeSubjectClassificationStatusUseCase;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	private UUID callerId;
+
+	@BeforeEach
+	void setUp() {
+		callerId = UUID.randomUUID();
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+				callerId.toString(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
+	}
 
 	@Test
 	void createClassificationReturns201WithBody() throws Exception {
@@ -214,9 +239,41 @@ class SubjectClassificationControllerTest {
 				.andExpect(status().isNotFound());
 	}
 
+	@Test
+	void changeStatusReturns200WithUpdatedStatus() throws Exception {
+		UUID classificationId = UUID.randomUUID();
+		when(changeSubjectClassificationStatusUseCase.changeStatus(
+				new ChangeStatusCommand(callerId, classificationId, ClassificationStatus.INACTIVE)))
+				.thenReturn(new ClassificationResult(classificationId, "Integradora", "INT",
+						ClassificationStatus.INACTIVE));
+
+		mockMvc.perform(patch("/subject-classifications/" + classificationId + "/status")
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
+
+		verify(changeSubjectClassificationStatusUseCase)
+				.changeStatus(new ChangeStatusCommand(callerId, classificationId, ClassificationStatus.INACTIVE));
+	}
+
+	@Test
+	void changeStatusOfUnknownClassificationReturns404() throws Exception {
+		UUID classificationId = UUID.randomUUID();
+		when(changeSubjectClassificationStatusUseCase.changeStatus(any()))
+				.thenThrow(new ClassificationNotFoundException("Classification not found: " + classificationId));
+
+		mockMvc.perform(patch("/subject-classifications/" + classificationId + "/status")
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.ACTIVE))))
+				.andExpect(status().isNotFound());
+	}
+
 	private record CreateClassificationBody(String name, String code) {
 	}
 
 	private record UpdateClassificationBody(String name, String code) {
+	}
+
+	private record ChangeStatusBody(ClassificationStatus status) {
 	}
 }

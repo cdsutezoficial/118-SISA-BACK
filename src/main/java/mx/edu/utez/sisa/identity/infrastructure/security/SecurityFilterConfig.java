@@ -52,12 +52,13 @@ import java.time.Instant;
  * {@code /subject-classifications} (academic_config — fourth aggregate) gets
  * a GET matcher (Phase 1 "Consulta/List", already {@code /subject-classifications/**}
  * so it also covers Phase 3's {@code GET /subject-classifications/{id}}
- * without a new matcher), a POST matcher (Phase 2 "Registro/Create"), and a
+ * without a new matcher), a POST matcher (Phase 2 "Registro/Create"), a
  * PUT matcher (Phase 4 "Actualización/Update", its own line since the GET
- * matcher is verb-scoped and does not cover other verbs' paths), all three
+ * matcher is verb-scoped and does not cover other verbs' paths), and a PATCH
+ * matcher (Phase 5 "Cambio de estado/ChangeStatus", also its own line for the
+ * same verb-scoped reason as PUT), all four
  * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} — same pair as every other verb
- * on this endpoint. PATCH still has no matcher; the future ChangeStatus phase
- * (Phase 5) adds it once that endpoint is implemented.
+ * on this endpoint. The aggregate's full CRUD is now covered.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -115,6 +116,8 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.POST, "/subject-classifications")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/subject-classifications/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/subject-classifications/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

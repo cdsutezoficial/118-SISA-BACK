@@ -22,8 +22,8 @@ import java.util.UUID;
  *
  * <p>Phase 1 of this aggregate covered the read (List) side — see
  * {@code docs/plans/2026-07-15-subject-classification-crud.md}. Create (Phase
- * 2), Get by id (Phase 3), and Update (Phase 4) are implemented; the
- * status-transition behavior is still pending (Phase 5, YAGNI until then).
+ * 2), Get by id (Phase 3), Update (Phase 4), and ChangeStatus (Phase 5) are
+ * all implemented — the aggregate's full CRUD is complete.
  */
 @Entity
 @Table(name = "subject_classification")
@@ -62,6 +62,25 @@ public class SubjectClassification {
 	public void updateDetails(String name, String code) {
 		this.name = name;
 		this.code = code;
+	}
+
+	/**
+	 * Transitions to {@code ACTIVE} (Phase 5 — ChangeStatus). Idempotent —
+	 * calling on an already-{@code ACTIVE} classification is a no-op, same
+	 * convention as {@code AcademicDivision#activate}.
+	 */
+	public void activate() {
+		this.status = ClassificationStatus.ACTIVE;
+	}
+
+	/**
+	 * Transitions to {@code INACTIVE} (Phase 5 — ChangeStatus). Idempotent —
+	 * calling on an already-{@code INACTIVE} classification is a no-op. The
+	 * record itself is never deleted, same convention as
+	 * {@code AcademicDivision#deactivate}.
+	 */
+	public void deactivate() {
+		this.status = ClassificationStatus.INACTIVE;
 	}
 
 	public UUID getId() {

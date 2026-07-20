@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import mx.edu.utez.sisa.academic_config.domain.model.ClassificationStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.SubjectClassification;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.SubjectClassificationJpaRepository;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,10 +25,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * End-to-end integration coverage for the {@code /subject-classifications}
  * security matchers (Phase 1 — List, Phase 2 — Create, Phase 3 — Get by id,
- * Phase 4 — Update): real H2, real JWT filter chain, no mocks — mirroring
- * {@code AcademicDivisionControllerIT}'s style. List/Get tests still seed
- * rows directly via {@link SubjectClassificationJpaRepository#save}; Create
- * and Update tests exercise the real endpoints end-to-end.
+ * Phase 4 — Update, Phase 5 — ChangeStatus): real H2, real JWT filter chain,
+ * no mocks — mirroring {@code AcademicDivisionControllerIT}'s style.
+ * List/Get tests still seed rows directly via
+ * {@link SubjectClassificationJpaRepository#save}; Create, Update and
+ * ChangeStatus tests exercise the real endpoints end-to-end.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -254,6 +257,59 @@ class SubjectClassificationControllerIT {
 				.andExpect(jsonPath("$.code").value("INT-UPD-SELF"));
 	}
 
+	@Test
+	void adminCanChangeStatus() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-STA-ADM"));
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(patch("/subject-classifications/{id}/status", saved.getId())
+				.header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
+	}
+
+	@Test
+	void serviciosEscolaresCanChangeStatus() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Regular", "REG-STA-SE"));
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+
+		mockMvc.perform(patch("/subject-classifications/{id}/status", saved.getId())
+				.header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnChangeStatus() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-STA-DOC"));
+		String token = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(patch("/subject-classifications/{id}/status", saved.getId())
+				.header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedChangeStatusReturns401() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-STA-UNA"));
+
+		mockMvc.perform(patch("/subject-classifications/{id}/status", saved.getId()).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void changeStatusWithUnknownIdReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID unknownId = UUID.randomUUID();
+
+		mockMvc.perform(patch("/subject-classifications/{id}/status", unknownId)
+				.header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.INACTIVE))))
+				.andExpect(status().isNotFound());
+	}
+
 	private String tokenFor(RoleType role) {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
 	}
@@ -262,5 +318,8 @@ class SubjectClassificationControllerIT {
 	}
 
 	private record UpdateBody(String name, String code) {
+	}
+
+	private record ChangeStatusBody(ClassificationStatus status) {
 	}
 }

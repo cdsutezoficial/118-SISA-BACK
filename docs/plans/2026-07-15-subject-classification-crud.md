@@ -175,3 +175,36 @@ Implementado `UpdateSubjectClassificationUseCase` clonando exactamente el patró
 - Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`.
 
 **Resultado de tests:** `./mvnw test` → 260 tests (antes 251 en Fase 3, +9 nuevos: 4 unit de use case + 5 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 260 unit + 93 IT = 353 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
+
+### Fase 5 — Cambio de estado — COMPLETADA (2026-07-20)
+
+Implementado `ChangeSubjectClassificationStatusUseCase` clonando exactamente el patrón de `ChangeAcademicDivisionStatusUseCase`: interactor único parametrizado por status destino (`ACTIVE`/`INACTIVE`), transiciones idempotentes (aplicar el mismo status que ya tiene no es error), y `PATCH /subject-classifications/{id}/status` con el mismo shape de body (`{ "status": "ACTIVE" | "INACTIVE" }`). Esta era la ÚLTIMA fase del plan — con ella el CRUD completo de `SubjectClassification` queda implementado.
+
+**Archivos creados:**
+- `domain/port/in/ChangeSubjectClassificationStatusUseCase.java` — `ChangeStatusCommand(callerId, classificationId, target)`, reutiliza `ClassificationResult` de `CreateSubjectClassificationUseCase` (mismo shape que Get/Update), mismo patrón que `ChangeAcademicDivisionStatusUseCase`/`ChangeAcademicProgramStatusUseCase` (incluyendo el `callerId` reservado para auditoría futura, no consultado todavía).
+- `domain/service/ChangeSubjectClassificationStatusUseCaseImpl.java` — `findById` + 404, aplica `activate()`/`deactivate()` según el target, guarda y mapea con el helper estático de Create.
+- `infrastructure/web/dto/ChangeClassificationStatusRequest.java` (`@NotNull status`).
+- Tests: `ChangeSubjectClassificationStatusUseCaseImplTest` (4 tests: desactiva una activa, reactiva una inactiva, idempotente cuando el target coincide con el status actual, rechaza id desconocido).
+
+**Archivos modificados:**
+- `domain/model/SubjectClassification.java` — agregados `activate()`/`deactivate()` (idempotentes, mismo comportamiento que `AcademicDivision#activate`/`#deactivate` — deliberadamente diferidos como YAGNI desde la Fase 1 hasta esta fase, según lo anotado en su momento). Javadoc de clase actualizado: ya no dice "status-transition behavior... pending", ahora indica que las 5 fases están completas.
+- `infrastructure/web/SubjectClassificationController.java` — agregado `PATCH /subject-classifications/{id}/status` (200 con body, 404 si no existe) y el helper `currentUserId()` (extrae el id del JWT vía `SecurityContextHolder`, mismo mecanismo que `AcademicDivisionController#currentUserId`, reimplementado aquí porque `identity.AuthenticatedCaller` es package-private).
+- `infrastructure/config/UseCaseConfig.java` — registrado el bean `changeSubjectClassificationStatusUseCase` (composition root — se aplicó desde el principio, quinta vez seguida evitando el gotcha de Fase 1).
+- `identity/infrastructure/security/SecurityFilterConfig.java` — agregado matcher `PATCH /subject-classifications/**` (roles `ADMIN`/`SERVICIOS_ESCOLARES`), confirmado leyendo el archivo real antes de asumir: igual que PUT en Fase 4, el matcher GET existente es verb-scoped y no cubre PATCH pese al wildcard `/**` en el path, así que hacía falta su propia línea — tal como anticipaba el enunciado de esta fase. Javadoc de clase actualizado: el CRUD de `/subject-classifications` queda completo con las 4 líneas de matcher (GET/POST/PUT/PATCH).
+- Tests extendidos: `SubjectClassificationTest` (+4 tests: activate/deactivate y sus casos idempotentes). `SubjectClassificationControllerTest` (+2 tests: 200 con status actualizado, 404 no encontrado — `@WebMvcTest` con `addFilters = false`, se agregó el mismo setup/teardown de `SecurityContextHolder` con `callerId` que usa `AcademicDivisionControllerTest`, porque el controlador ahora lee `currentUserId()` de la autenticación simulada). `SubjectClassificationControllerIT` (+5 tests: ADMIN puede cambiar estado, SERVICIOS_ESCOLARES puede cambiar estado, DOCENTE 403, sin token 401, id desconocido 404).
+
+**Decisión de diseño no obvia:** igual que Division/Program, el `ChangeStatusCommand` incluye `callerId` reservado para auditoría futura pero no consultado por el use case todavía — se clonó la forma exacta del patrón existente en vez de omitir el campo, para no divergir de la convención ya establecida en este módulo si en el futuro se agrega un sink de auditoría.
+
+**Gotcha evitado (no repetido):** el wiring en `UseCaseConfig.java` se hizo en el mismo commit que el resto de la Fase 5 — quinta vez seguida sin repetir el gotcha de Fase 1.
+
+**Revisión adversarial fresca (post-implementación, pre-commit):** se verificó explícitamente cada punto pedido:
+- El nuevo matcher de seguridad SÍ tiene efecto real: `otherRoleIsForbiddenOnChangeStatus` (IT, DOCENTE → 403) es la prueba que importa — si el matcher PATCH faltara, la petición caería en la regla `anyRequest().authenticated()` (que solo exige estar autenticado, no el rol correcto) y DOCENTE recibiría 200 en vez de 403. Como el test espera y obtiene 403, el matcher está confirmado funcionando. `SubjectClassificationControllerTest` (WebMvcTest, `addFilters = false`) NO puede probar esto — solo valida el contrato HTTP del controlador con la cadena de seguridad desactivada.
+- `unauthenticatedChangeStatusReturns401` (IT) confirma que la cadena JWT sigue exigiendo autenticación en este endpoint.
+- Los 5 escenarios pedidos están cubiertos en el IT: ADMIN succeeds (`adminCanChangeStatus`), SERVICIOS_ESCOLARES succeeds (`serviciosEscolaresCanChangeStatus`), DOCENTE → 403 (`otherRoleIsForbiddenOnChangeStatus`), sin token → 401 (`unauthenticatedChangeStatusReturns401`), id desconocido → 404 (`changeStatusWithUnknownIdReturns404`).
+- Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`/`AcademicProgram`.
+
+**Resultado de tests:** `./mvnw test` → 270 tests (antes 260 en Fase 4, +10 nuevos: 4 de modelo de dominio + 4 unit de use case + 2 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 270 unit + 98 IT = 368 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
+
+## Plan CERRADO (2026-07-20)
+
+Las 5 fases de este plan están completas: Consulta (List), Registro (Create), Detalle (Get by id), Actualización (Update) y Cambio de estado (ChangeStatus). El aggregate `SubjectClassification` tiene su CRUD completo en `118-SISA-BACK`, siguiendo exactamente el patrón hexagonal ya establecido por `AcademicDivision`/`AcademicProgram`/`AcademicPlan` en el módulo `academic_config`. Ninguna regla de negocio cambió entre fases (confirmado contra `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` líneas 15-24 en cada fase). Lo que queda explícitamente **fuera de alcance** (ver sección 4 arriba) sigue fuera: `GradeScale`/`GradeScaleEntry`, el wiring de frontend, y la validación real de `Subject.classificationId` contra este catálogo — son decisiones de PO separadas, no deuda de este plan.
