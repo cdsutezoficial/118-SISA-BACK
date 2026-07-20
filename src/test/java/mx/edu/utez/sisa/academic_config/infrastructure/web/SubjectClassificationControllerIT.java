@@ -16,16 +16,17 @@ import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * End-to-end integration coverage for the {@code /subject-classifications}
- * security matchers (Phase 1 — List, Phase 2 — Create): real H2, real JWT
- * filter chain, no mocks — mirroring {@code AcademicDivisionControllerIT}'s
- * style. List tests still seed rows directly via
- * {@link SubjectClassificationJpaRepository#save}; Create tests exercise the
- * real {@code POST} endpoint end-to-end.
+ * security matchers (Phase 1 — List, Phase 2 — Create, Phase 3 — Get by id,
+ * Phase 4 — Update): real H2, real JWT filter chain, no mocks — mirroring
+ * {@code AcademicDivisionControllerIT}'s style. List/Get tests still seed
+ * rows directly via {@link SubjectClassificationJpaRepository#save}; Create
+ * and Update tests exercise the real endpoints end-to-end.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -174,10 +175,92 @@ class SubjectClassificationControllerIT {
 				.andExpect(status().isNotFound());
 	}
 
+	@Test
+	void adminCanUpdate() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-UPD-ADM"));
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(put("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Integradora renombrada", "INT-UPD-ADM-2"))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Integradora renombrada"))
+				.andExpect(jsonPath("$.code").value("INT-UPD-ADM-2"));
+	}
+
+	@Test
+	void serviciosEscolaresCanUpdate() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Regular", "REG-UPD-SE"));
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+
+		mockMvc.perform(put("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Regular renombrada", "REG-UPD-SE-2"))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.code").value("REG-UPD-SE-2"));
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnUpdate() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-UPD-DOC"));
+		String token = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(put("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Forbidden", "INT-UPD-DOC-2"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedUpdateReturns401() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-UPD-UNA"));
+
+		mockMvc.perform(put("/subject-classifications/{id}", saved.getId()).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Unauth", "INT-UPD-UNA-2"))))
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void updateWithUnknownIdReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID unknownId = UUID.randomUUID();
+
+		mockMvc.perform(put("/subject-classifications/{id}", unknownId).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Fantasma", "INT-UPD-404"))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void updateWithCodeCollidingWithAnotherRecordReturns409() throws Exception {
+		jpaRepository.save(new SubjectClassification("Integradora", "INT-UPD-DUP-A"));
+		SubjectClassification target = jpaRepository.save(new SubjectClassification("Regular", "REG-UPD-DUP-B"));
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(
+				put("/subject-classifications/{id}", target.getId()).header("Authorization", "Bearer " + token)
+						.contentType("application/json")
+						.content(objectMapper.writeValueAsString(new UpdateBody("Regular", "INT-UPD-DUP-A"))))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void updateWithUnchangedCodeOnOwnRecordSucceeds() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-UPD-SELF"));
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(put("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateBody("Integradora renombrada", "INT-UPD-SELF"))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Integradora renombrada"))
+				.andExpect(jsonPath("$.code").value("INT-UPD-SELF"));
+	}
+
 	private String tokenFor(RoleType role) {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
 	}
 
 	private record CreateBody(String name, String code) {
+	}
+
+	private record UpdateBody(String name, String code) {
 	}
 }

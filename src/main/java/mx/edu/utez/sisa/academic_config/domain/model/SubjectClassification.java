@@ -20,11 +20,10 @@ import java.util.UUID;
  * {@code name} is deliberately NOT unique — only {@code code} is (domain doc
  * does not mark {@code name} as a uniqueness constraint).
  *
- * <p>Phase 1 of this aggregate only covers the read (List) side — see
- * {@code docs/plans/2026-07-15-subject-classification-crud.md}. Create,
- * Update, and status-transition behavior are intentionally not implemented
- * yet (YAGNI): they are added in their own phase once the frontend consumes
- * this endpoint.
+ * <p>Phase 1 of this aggregate covered the read (List) side — see
+ * {@code docs/plans/2026-07-15-subject-classification-crud.md}. Create (Phase
+ * 2), Get by id (Phase 3), and Update (Phase 4) are implemented; the
+ * status-transition behavior is still pending (Phase 5, YAGNI until then).
  */
 @Entity
 @Table(name = "subject_classification")
@@ -52,6 +51,17 @@ public class SubjectClassification {
 		this.name = name;
 		this.code = code;
 		this.status = ClassificationStatus.ACTIVE;
+	}
+
+	/**
+	 * Updates the catalog fields (Phase 4 — Update). {@code status} is
+	 * deliberately absent: status transitions are the sole responsibility of
+	 * {@code ChangeSubjectClassificationStatusUseCase} (Phase 5), same
+	 * separation as {@code AcademicDivision#updateDetails}.
+	 */
+	public void updateDetails(String name, String code) {
+		this.name = name;
+		this.code = code;
 	}
 
 	public UUID getId() {

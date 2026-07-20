@@ -10,6 +10,8 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassification
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ClassificationSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase.UpdateClassificationCommand;
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -28,13 +30,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Thin-controller tests for {@link SubjectClassificationController}: Phase 1
- * (List) and Phase 2 (Create), mirroring {@code AcademicDivisionControllerTest}'s
- * style.
+ * (List), Phase 2 (Create), Phase 3 (Get by id), Phase 4 (Update), mirroring
+ * {@code AcademicDivisionControllerTest}'s style.
  */
 @WebMvcTest(SubjectClassificationController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -54,6 +57,9 @@ class SubjectClassificationControllerTest {
 
 	@MockitoBean
 	private GetSubjectClassificationUseCase getSubjectClassificationUseCase;
+
+	@MockitoBean
+	private UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -159,6 +165,58 @@ class SubjectClassificationControllerTest {
 		mockMvc.perform(get("/subject-classifications/{id}", unknownId)).andExpect(status().isNotFound());
 	}
 
+	@Test
+	void updateClassificationReturns200WithBody() throws Exception {
+		UUID classificationId = UUID.randomUUID();
+		when(updateSubjectClassificationUseCase
+				.updateClassification(new UpdateClassificationCommand(classificationId, "Regular", "REG")))
+				.thenReturn(new ClassificationResult(classificationId, "Regular", "REG", ClassificationStatus.ACTIVE));
+
+		mockMvc.perform(put("/subject-classifications/{id}", classificationId).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateClassificationBody("Regular", "REG"))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.id").value(classificationId.toString()))
+				.andExpect(jsonPath("$.name").value("Regular")).andExpect(jsonPath("$.code").value("REG"))
+				.andExpect(jsonPath("$.status").value("ACTIVE"));
+	}
+
+	@Test
+	void updateClassificationWithBlankNameReturns400() throws Exception {
+		mockMvc.perform(put("/subject-classifications/{id}", UUID.randomUUID()).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateClassificationBody("", "REG"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void updateClassificationWithBlankCodeReturns400() throws Exception {
+		mockMvc.perform(put("/subject-classifications/{id}", UUID.randomUUID()).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateClassificationBody("Regular", ""))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void updateClassificationWithDuplicateCodeReturns409() throws Exception {
+		when(updateSubjectClassificationUseCase.updateClassification(any()))
+				.thenThrow(new DuplicateClassificationCodeException("Classification code already in use: REG"));
+
+		mockMvc.perform(put("/subject-classifications/{id}", UUID.randomUUID()).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateClassificationBody("Regular", "REG"))))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void updateClassificationReturns404WhenNotFound() throws Exception {
+		UUID unknownId = UUID.randomUUID();
+		when(updateSubjectClassificationUseCase.updateClassification(any()))
+				.thenThrow(new ClassificationNotFoundException("Classification not found: " + unknownId));
+
+		mockMvc.perform(put("/subject-classifications/{id}", unknownId).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new UpdateClassificationBody("Regular", "REG"))))
+				.andExpect(status().isNotFound());
+	}
+
 	private record CreateClassificationBody(String name, String code) {
+	}
+
+	private record UpdateClassificationBody(String name, String code) {
 	}
 }

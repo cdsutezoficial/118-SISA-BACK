@@ -10,15 +10,19 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassification
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ClassificationSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase.UpdateClassificationCommand;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateSubjectClassificationRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationResponse;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateSubjectClassificationRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,10 +32,11 @@ import java.util.UUID;
 
 /**
  * Thin controller for {@code SubjectClassification} — Phase 1 (List), Phase 2
- * (Create), Phase 3 (Get by id): {@code GET /subject-classifications}
- * (paginated), {@code POST /subject-classifications} (201), and
- * {@code GET /subject-classifications/{id}} (404 if missing). Update/
- * ChangeStatus are future phases (see
+ * (Create), Phase 3 (Get by id), Phase 4 (Update): {@code GET /subject-classifications}
+ * (paginated), {@code POST /subject-classifications} (201),
+ * {@code GET /subject-classifications/{id}} (404 if missing), and
+ * {@code PUT /subject-classifications/{id}} (404 if missing, 409 on code
+ * conflict with a different record). ChangeStatus is a future phase (see
  * {@code docs/plans/2026-07-15-subject-classification-crud.md}). Role
  * authorization (ADMIN or SERVICIOS_ESCOLARES) is enforced by
  * {@code identity.SecurityFilterConfig}'s {@code /subject-classifications}
@@ -47,12 +52,16 @@ public class SubjectClassificationController {
 
 	private final GetSubjectClassificationUseCase getSubjectClassificationUseCase;
 
+	private final UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase;
+
 	public SubjectClassificationController(ListSubjectClassificationsUseCase listSubjectClassificationsUseCase,
 			CreateSubjectClassificationUseCase createSubjectClassificationUseCase,
-			GetSubjectClassificationUseCase getSubjectClassificationUseCase) {
+			GetSubjectClassificationUseCase getSubjectClassificationUseCase,
+			UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase) {
 		this.listSubjectClassificationsUseCase = listSubjectClassificationsUseCase;
 		this.createSubjectClassificationUseCase = createSubjectClassificationUseCase;
 		this.getSubjectClassificationUseCase = getSubjectClassificationUseCase;
+		this.updateSubjectClassificationUseCase = updateSubjectClassificationUseCase;
 	}
 
 	@PostMapping
@@ -61,6 +70,14 @@ public class SubjectClassificationController {
 		ClassificationResult result = createSubjectClassificationUseCase
 				.createClassification(new CreateClassificationCommand(request.name(), request.code()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
+	}
+
+	@PutMapping("/{id}")
+	public ResponseEntity<SubjectClassificationResponse> updateClassification(@PathVariable UUID id,
+			@Valid @RequestBody UpdateSubjectClassificationRequest request) {
+		ClassificationResult result = updateSubjectClassificationUseCase
+				.updateClassification(new UpdateClassificationCommand(id, request.name(), request.code()));
+		return ResponseEntity.ok(toResponse(result));
 	}
 
 	@GetMapping("/{id}")

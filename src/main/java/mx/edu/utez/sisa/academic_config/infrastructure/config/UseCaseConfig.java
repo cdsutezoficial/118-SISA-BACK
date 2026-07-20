@@ -23,6 +23,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUse
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
@@ -52,6 +53,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUse
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdatePlanLevelUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateSubjectUseCaseImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -202,5 +204,11 @@ public class UseCaseConfig {
 	public GetSubjectClassificationUseCase getSubjectClassificationUseCase(
 			SubjectClassificationRepository classificationRepository) {
 		return new GetSubjectClassificationUseCaseImpl(classificationRepository);
+	}
+
+	@Bean
+	public UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase(
+			SubjectClassificationRepository classificationRepository) {
+		return new UpdateSubjectClassificationUseCaseImpl(classificationRepository);
 	}
 }

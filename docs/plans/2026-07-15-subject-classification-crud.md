@@ -146,3 +146,32 @@ Implementado `GetSubjectClassificationUseCase` clonando exactamente el patrón d
 - Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`.
 
 **Resultado de tests:** `./mvnw test` → 251 tests (antes 247 en Fase 2, +4 nuevos: 2 unit de use case + 2 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 251 unit + 86 IT = 337 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
+
+### Fase 4 — Actualización (Update) — COMPLETADA (2026-07-20)
+
+Implementado `UpdateSubjectClassificationUseCase` clonando exactamente el patrón de `UpdateAcademicDivisionUseCase`: revalidación de `code` único EXCLUYENDO la propia fila (self-update con el mismo código debe tener éxito), sin regla de unicidad de `name` (sin cambios respecto a Fases 1-3), y `status` deliberadamente fuera de este comando (eso es Fase 5, `ChangeStatus`, un PATCH separado).
+
+**Archivos creados:**
+- `domain/port/in/UpdateSubjectClassificationUseCase.java` — `UpdateClassificationCommand(classificationId, name, code)`, reutiliza `ClassificationResult` de `CreateSubjectClassificationUseCase` (mismo shape, misma convención que `GetSubjectClassificationUseCase` en Fase 3).
+- `domain/service/UpdateSubjectClassificationUseCaseImpl.java` — `findById` + 404, revalida `findByCode` filtrando por id propio (`!found.getId().equals(classification.getId())`) antes de lanzar `DuplicateClassificationCodeException`, aplica `classification.updateDetails(...)`, guarda y mapea con el helper estático de Create.
+- `infrastructure/web/dto/UpdateSubjectClassificationRequest.java` (`@NotBlank name`, `@NotBlank code`, sin `status`).
+- Tests: `UpdateSubjectClassificationUseCaseImplTest` (4 tests: actualización exitosa con status sin cambios, mantiene su propio código actual, rechaza colisión de código con otro registro, rechaza id desconocido).
+
+**Archivos modificados:**
+- `domain/model/SubjectClassification.java` — agregado `updateDetails(String name, String code)` (sin tocar `status`, misma separación que `AcademicDivision#updateDetails`). Javadoc de clase actualizado: ya no dice "Update... no implementado" (quedó desactualizado desde Fase 2).
+- `infrastructure/web/SubjectClassificationController.java` — agregado `PUT /subject-classifications/{id}` (200 con body, 404 si no existe, 409 si el código colisiona con otro registro).
+- `infrastructure/config/UseCaseConfig.java` — registrado el bean `updateSubjectClassificationUseCase` (composition root — se aplicó desde el principio, cuarta vez seguida evitando el gotcha de Fase 1).
+- `identity/infrastructure/security/SecurityFilterConfig.java` — agregado matcher `PUT /subject-classifications/**` (roles `ADMIN`/`SERVICIOS_ESCOLARES`). Confirmado leyendo el archivo real (no asumido): el matcher GET existente es verb-scoped (`HttpMethod.GET, ...`), NO cubre otros verbos pese al wildcard `/**` en el path — a diferencia de lo que podría sugerir el patrón de Fase 3 (que sí reutilizó el GET wildcard porque también era GET). PUT necesitaba su propia línea, tal como anticipaba el enunciado de esta fase.
+- Tests extendidos: `SubjectClassificationControllerTest` (+5 tests: 200 con body, 400 nombre en blanco, 400 código en blanco, 409 código duplicado, 404 no encontrado — `@WebMvcTest` con `addFilters = false`, confirmado que se mantiene así). `SubjectClassificationControllerIT` (+7 tests: ADMIN puede actualizar, SERVICIOS_ESCOLARES puede actualizar, DOCENTE 403, sin token 401, id desconocido 404, código colisionando con OTRO registro 409, código sin cambios en el PROPIO registro 200 — este último cubre explícitamente la dirección "self-update no es falso conflicto").
+
+**Decisión de diseño no obvia:** `GlobalExceptionHandler` NO necesitó ningún cambio — `DuplicateClassificationCodeException` (409) y `ClassificationNotFoundException` (404) ya estaban wireados desde las Fases 2 y 3 respectivamente, y este use case reutiliza las mismas excepciones (no se crearon excepciones nuevas "Update-specific").
+
+**Gotcha evitado (no repetido):** el wiring en `UseCaseConfig.java` se hizo en el mismo commit que el resto de la Fase 4 — cuarta vez seguida sin repetir el gotcha de Fase 1.
+
+**Revisión adversarial fresca (post-implementación, pre-commit):** se verificó explícitamente cada punto pedido:
+- El caso self-update-mismo-código SÍ está testeado en ambas capas, no solo el caso de rechazo con código diferente: `updateClassification_allowsKeepingItsOwnCurrentCode` (unit, mockeando `findByCode` para que devuelva la propia entidad) y `updateWithUnchangedCodeOnOwnRecordSucceeds` (IT real, un solo registro, PUT con su propio código sin cambios → 200).
+- `SubjectClassificationControllerTest` SÍ sigue corriendo con `addFilters = false` (confirmado leyendo la anotación de clase directamente) — el matcher `PUT` nuevo no tiene cobertura ahí; esa cobertura viene solo de `SubjectClassificationControllerIT`.
+- `SubjectClassificationControllerIT` cubre los 5 casos pedidos sobre el endpoint PUT real con JWT real: ADMIN succeeds (`adminCanUpdate`), SERVICIOS_ESCOLARES succeeds (`serviciosEscolaresCanUpdate`), DOCENTE → 403 (`otherRoleIsForbiddenOnUpdate`), sin token → 401 (`unauthenticatedUpdateReturns401`), id desconocido → 404 (`updateWithUnknownIdReturns404`), más el caso de negocio código-colisiona-con-otro-registro → 409 (`updateWithCodeCollidingWithAnotherRecordReturns409`) y el caso complementario código-propio-sin-cambios → 200 (`updateWithUnchangedCodeOnOwnRecordSucceeds`).
+- Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`.
+
+**Resultado de tests:** `./mvnw test` → 260 tests (antes 251 en Fase 3, +9 nuevos: 4 unit de use case + 5 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 260 unit + 93 IT = 353 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
