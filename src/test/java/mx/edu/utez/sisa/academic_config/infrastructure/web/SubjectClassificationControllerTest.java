@@ -5,10 +5,12 @@ import mx.edu.utez.sisa.academic_config.domain.model.ClassificationStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.ClassificationResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.CreateClassificationCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ClassificationSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsResult;
+import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import org.junit.jupiter.api.Test;
@@ -49,6 +51,9 @@ class SubjectClassificationControllerTest {
 
 	@MockitoBean
 	private CreateSubjectClassificationUseCase createSubjectClassificationUseCase;
+
+	@MockitoBean
+	private GetSubjectClassificationUseCase getSubjectClassificationUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -130,6 +135,28 @@ class SubjectClassificationControllerTest {
 	void listClassificationsWithInvalidStatusQueryParamReturns400() throws Exception {
 		mockMvc.perform(get("/subject-classifications").param("status", "NOT_A_STATUS"))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void getClassificationReturns200WithBodyWhenFound() throws Exception {
+		UUID classificationId = UUID.randomUUID();
+		when(getSubjectClassificationUseCase.getById(classificationId)).thenReturn(
+				new ClassificationResult(classificationId, "Integradora", "INT", ClassificationStatus.ACTIVE));
+
+		mockMvc.perform(get("/subject-classifications/{id}", classificationId)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(classificationId.toString()))
+				.andExpect(jsonPath("$.name").value("Integradora"))
+				.andExpect(jsonPath("$.code").value("INT"))
+				.andExpect(jsonPath("$.status").value("ACTIVE"));
+	}
+
+	@Test
+	void getClassificationReturns404WhenNotFound() throws Exception {
+		UUID unknownId = UUID.randomUUID();
+		when(getSubjectClassificationUseCase.getById(unknownId))
+				.thenThrow(new ClassificationNotFoundException("Classification not found: " + unknownId));
+
+		mockMvc.perform(get("/subject-classifications/{id}", unknownId)).andExpect(status().isNotFound());
 	}
 
 	private record CreateClassificationBody(String name, String code) {

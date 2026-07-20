@@ -115,3 +115,34 @@ Implementado `CreateSubjectClassificationUseCase` clonando exactamente el patró
 - Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`/`AcademicProgram`.
 
 **Resultado de tests:** `./mvnw test` → 247 tests (antes 240 en Fase 1, +7 nuevos: 3 unit de use case + 4 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 247 unit + 79 IT = 326 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
+
+### Fase 3 — Detalle (Get by id) — COMPLETADA (2026-07-20)
+
+Implementado `GetSubjectClassificationUseCase` clonando exactamente el patrón de `GetAcademicDivisionUseCase`: 404 si no existe, sin reglas de negocio adicionales (confirmado contra `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` líneas 15-24 — sin cambios respecto a Fases 1 y 2, y sin FK que valide contra este catálogo todavía).
+
+**Archivos creados:**
+- `domain/port/in/GetSubjectClassificationUseCase.java` — `getById(UUID id)`, reutiliza `CreateSubjectClassificationUseCase.ClassificationResult` (mismo shape que Create, misma convención que `GetAcademicDivisionUseCase` reutilizando `AcademicDivisionResult`).
+- `domain/service/GetSubjectClassificationUseCaseImpl.java` — `findById` + `orElseThrow(ClassificationNotFoundException)`, delega el mapeo a `CreateSubjectClassificationUseCaseImpl.toResult` (mismo helper estático que usa Create).
+- `shared/exception/ClassificationNotFoundException.java` — mismo patrón que `AcademicDivisionNotFoundException`.
+- Tests: `GetSubjectClassificationUseCaseImplTest` (2 tests: encontrado, no encontrado).
+
+**Archivos modificados:**
+- `domain/port/out/SubjectClassificationRepository.java` — agregado `findById(UUID)` (antes YAGNI, como documentaba el javadoc de Fase 1/2).
+- `infrastructure/persistence/SubjectClassificationRepositoryAdapter.java` — implementa `findById` delegando a `SubjectClassificationJpaRepository#findById` (heredado gratis de `JpaRepository`, ya lo usaban los tests de integración para sembrar filas desde Fase 1).
+- `infrastructure/web/SubjectClassificationController.java` — agregado `GET /subject-classifications/{id}` (200 con body, reutiliza `SubjectClassificationResponse` — mismo shape que `ClassificationResult`).
+- `infrastructure/config/UseCaseConfig.java` — registrado el bean `getSubjectClassificationUseCase` (composition root — se aplicó desde el principio, no como corrección posterior, siguiendo el gotcha aprendido en Fase 1).
+- `infrastructure/web/GlobalExceptionHandler.java` (academic_config) — agregado `@ExceptionHandler(ClassificationNotFoundException.class)` → 404 NOT_FOUND.
+- `identity/infrastructure/security/SecurityFilterConfig.java` — **sin matcher nuevo**: el matcher GET existente (`HttpMethod.GET, "/subject-classifications", "/subject-classifications/**"`, agregado en Fase 1) ya cubre `/subject-classifications/{id}` por el wildcard `/**`. Solo se actualizó el javadoc de la clase para dejar constancia explícita de que Fase 3 no necesitó una línea nueva (a diferencia de Fase 2 que sí agregó su propio matcher POST).
+- Tests extendidos: `SubjectClassificationControllerTest` (+2 tests: 200 con body si existe, 404 si no existe — `@WebMvcTest` con `addFilters = false`, confirmado explícitamente en la revisión adversarial). `SubjectClassificationControllerIT` (+5 tests: ADMIN y SERVICIOS_ESCOLARES obtienen 200, DOCENTE 403, sin token 401, id desconocido → 404 real). `SubjectClassificationRepositoryAdapterSearchIT` (+2 tests: `findById` retorna la entidad si existe, vacío si no).
+
+**Decisión de diseño no obvia:** `GetSubjectClassificationUseCase.ClassificationResult` es el mismo record que ya usa `CreateSubjectClassificationUseCase` — no se creó un DTO nuevo porque el shape (id, name, code, status) es idéntico y no hay campos exclusivos de "detalle" (sin `description`, sin relaciones anidadas, a diferencia de `AcademicDivision`). El controlador tampoco necesitó un nuevo response DTO: `SubjectClassificationResponse` (de Fase 2) se reutiliza tal cual.
+
+**Gotcha evitado (no repetido):** el wiring en `UseCaseConfig.java` se hizo en el mismo commit que el resto de la Fase 3, no como corrección posterior — tercera vez seguida que se evita este gotcha desde que se documentó en Fase 1.
+
+**Revisión adversarial fresca (post-implementación, pre-commit):** se verificó explícitamente cada punto pedido:
+- `ClassificationNotFoundException` SÍ está wireada en `GlobalExceptionHandler` — confirmado con `getClassificationReturns404WhenNotFound` (WebMvcTest) y `getByIdWithUnknownIdReturns404` (IT real).
+- `SubjectClassificationControllerTest` SÍ corre con `addFilters = false` (confirmado leyendo la anotación de clase directamente) — no puede validar el matcher de seguridad; esa cobertura viene solo de `SubjectClassificationControllerIT`.
+- `SubjectClassificationControllerIT` cubre los 4 casos pedidos sobre el endpoint GET/{id} real con JWT real: ADMIN succeeds (`adminCanGetById`), SERVICIOS_ESCOLARES succeeds (`serviciosEscolaresCanGetById`, extra respecto a lo pedido pero consistente con el patrón de Fases 1-2), DOCENTE → 403 (`otherRoleIsForbiddenOnGetById`), sin token → 401 (`unauthenticatedGetByIdReturns401`), id desconocido → 404 (`getByIdWithUnknownIdReturns404`).
+- Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`.
+
+**Resultado de tests:** `./mvnw test` → 251 tests (antes 247 en Fase 2, +4 nuevos: 2 unit de use case + 2 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 251 unit + 86 IT = 337 tests totales, 0 failures, 0 errors, BUILD SUCCESS.

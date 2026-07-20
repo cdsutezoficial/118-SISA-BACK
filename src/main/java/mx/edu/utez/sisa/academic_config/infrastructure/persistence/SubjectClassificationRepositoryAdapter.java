@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * JPA-backed {@link SubjectClassificationRepository} adapter delegating to
@@ -34,6 +35,11 @@ public class SubjectClassificationRepositoryAdapter implements SubjectClassifica
 	@Override
 	public Optional<SubjectClassification> findByCode(String code) {
 		return jpaRepository.findByCodeIgnoreCase(code);
+	}
+
+	@Override
+	public Optional<SubjectClassification> findById(UUID id) {
+		return jpaRepository.findById(id);
 	}
 
 	@Override

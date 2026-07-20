@@ -50,11 +50,12 @@ import java.time.Instant;
  * covers both the root and every nested level/subject path. Placed right
  * after the {@code /programs} matchers for the same rationale.
  * {@code /subject-classifications} (academic_config — fourth aggregate) gets
- * a GET matcher (Phase 1 "Consulta/List") and a POST matcher (Phase 2
- * "Registro/Create"), both {@code ADMIN}/{@code SERVICIOS_ESCOLARES} — same
- * pair as every other verb on this endpoint. PUT/PATCH still have no
- * matcher; future phases (Update, ChangeStatus) add them as those endpoints
- * are implemented.
+ * a GET matcher (Phase 1 "Consulta/List", already {@code /subject-classifications/**}
+ * so it also covers Phase 3's {@code GET /subject-classifications/{id}}
+ * without a new matcher) and a POST matcher (Phase 2 "Registro/Create"), both
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} — same pair as every other verb
+ * on this endpoint. PUT/PATCH still have no matcher; future phases (Update,
+ * ChangeStatus) add them as those endpoints are implemented.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */

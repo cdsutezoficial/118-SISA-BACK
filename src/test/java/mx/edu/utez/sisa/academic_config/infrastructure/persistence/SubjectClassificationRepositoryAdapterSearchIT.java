@@ -112,6 +112,19 @@ class SubjectClassificationRepositoryAdapterSearchIT {
 		assertThat(adapter.findByCode("unknown")).isEmpty();
 	}
 
+	@Test
+	void findByIdReturnsTheClassificationWhenItExists() {
+		SubjectClassification saved = jpaRepository.save(newClassification("Integradora", "INT"));
+
+		assertThat(adapter.findById(saved.getId())).isPresent()
+				.get().extracting(SubjectClassification::getCode).isEqualTo("INT");
+	}
+
+	@Test
+	void findByIdReturnsEmptyWhenClassificationDoesNotExist() {
+		assertThat(adapter.findById(java.util.UUID.randomUUID())).isEmpty();
+	}
+
 	private static SubjectClassification newClassification(String name, String code) {
 		return new SubjectClassification(name, code);
 	}

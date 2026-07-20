@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicDivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicProgramNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DirectorNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionCodeException;
@@ -108,6 +109,12 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleClassificationConflict(DuplicateClassificationCodeException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(ClassificationNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleClassificationNotFound(ClassificationNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {

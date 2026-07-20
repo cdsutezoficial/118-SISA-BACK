@@ -5,14 +5,13 @@ import mx.edu.utez.sisa.academic_config.domain.model.SubjectClassification;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Persistence out-port for {@link SubjectClassification}. Phase 1 (List)
  * only needed the filterable, paginated {@link #search(ClassificationSearchCriteria)}
- * query — Phase 2 (Create) adds {@link #save(SubjectClassification)} and
- * {@link #findByCode(String)}. {@code findById} is still intentionally
- * omitted (YAGNI) and will be added in the phase that first needs it (Get by
- * id).
+ * query — Phase 2 (Create) added {@link #save(SubjectClassification)} and
+ * {@link #findByCode(String)}. Phase 3 (Get by id) adds {@link #findById(UUID)}.
  */
 public interface SubjectClassificationRepository {
 
@@ -25,6 +24,12 @@ public interface SubjectClassificationRepository {
 	 * Data repository); this port only declares the contract.
 	 */
 	Optional<SubjectClassification> findByCode(String code);
+
+	/**
+	 * Backs {@code GetSubjectClassificationUseCase} — same convention as
+	 * {@code AcademicDivisionRepository#findById}.
+	 */
+	Optional<SubjectClassification> findById(UUID id);
 
 	/**
 	 * Filterable, paginated query backing {@code ListSubjectClassificationsUseCase}.

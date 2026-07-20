@@ -129,6 +129,51 @@ class SubjectClassificationControllerIT {
 				.andExpect(status().isConflict());
 	}
 
+	@Test
+	void adminCanGetById() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-GET-ADM"));
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(get("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.id").value(saved.getId().toString()))
+				.andExpect(jsonPath("$.code").value("INT-GET-ADM"));
+	}
+
+	@Test
+	void serviciosEscolaresCanGetById() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Regular", "REG-GET-SE"));
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+
+		mockMvc.perform(get("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.code").value("REG-GET-SE"));
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnGetById() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-GET-DOC"));
+		String token = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(get("/subject-classifications/{id}", saved.getId()).header("Authorization", "Bearer " + token))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedGetByIdReturns401() throws Exception {
+		SubjectClassification saved = jpaRepository.save(new SubjectClassification("Integradora", "INT-GET-UNA"));
+
+		mockMvc.perform(get("/subject-classifications/{id}", saved.getId())).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void getByIdWithUnknownIdReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID unknownId = UUID.randomUUID();
+
+		mockMvc.perform(get("/subject-classifications/{id}", unknownId).header("Authorization", "Bearer " + token))
+				.andExpect(status().isNotFound());
+	}
+
 	private String tokenFor(RoleType role) {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
 	}

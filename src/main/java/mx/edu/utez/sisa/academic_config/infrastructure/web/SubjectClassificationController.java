@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.ClassificationStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.ClassificationResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.CreateClassificationCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ClassificationSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsQuery;
@@ -16,17 +17,21 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassifica
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 /**
- * Thin controller for {@code SubjectClassification} — Phase 1 (List) and
- * Phase 2 (Create): {@code GET /subject-classifications} (paginated) and
- * {@code POST /subject-classifications} (201). Update/Get/ChangeStatus are
- * future phases (see
+ * Thin controller for {@code SubjectClassification} — Phase 1 (List), Phase 2
+ * (Create), Phase 3 (Get by id): {@code GET /subject-classifications}
+ * (paginated), {@code POST /subject-classifications} (201), and
+ * {@code GET /subject-classifications/{id}} (404 if missing). Update/
+ * ChangeStatus are future phases (see
  * {@code docs/plans/2026-07-15-subject-classification-crud.md}). Role
  * authorization (ADMIN or SERVICIOS_ESCOLARES) is enforced by
  * {@code identity.SecurityFilterConfig}'s {@code /subject-classifications}
@@ -40,10 +45,14 @@ public class SubjectClassificationController {
 
 	private final CreateSubjectClassificationUseCase createSubjectClassificationUseCase;
 
+	private final GetSubjectClassificationUseCase getSubjectClassificationUseCase;
+
 	public SubjectClassificationController(ListSubjectClassificationsUseCase listSubjectClassificationsUseCase,
-			CreateSubjectClassificationUseCase createSubjectClassificationUseCase) {
+			CreateSubjectClassificationUseCase createSubjectClassificationUseCase,
+			GetSubjectClassificationUseCase getSubjectClassificationUseCase) {
 		this.listSubjectClassificationsUseCase = listSubjectClassificationsUseCase;
 		this.createSubjectClassificationUseCase = createSubjectClassificationUseCase;
+		this.getSubjectClassificationUseCase = getSubjectClassificationUseCase;
 	}
 
 	@PostMapping
@@ -52,6 +61,12 @@ public class SubjectClassificationController {
 		ClassificationResult result = createSubjectClassificationUseCase
 				.createClassification(new CreateClassificationCommand(request.name(), request.code()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
+	}
+
+	@GetMapping("/{id}")
+	public ResponseEntity<SubjectClassificationResponse> getClassification(@PathVariable UUID id) {
+		ClassificationResult result = getSubjectClassificationUseCase.getById(id);
+		return ResponseEntity.ok(toResponse(result));
 	}
 
 	@GetMapping
