@@ -82,3 +82,36 @@ Implementado el aggregate `SubjectClassification` (paquete `mx.edu.utez.sisa.aca
 **Resultado de tests:** `./mvnw test` completo → 240 tests, 0 failures, 0 errors, BUILD SUCCESS. `./mvnw clean package -DskipTests` → BUILD SUCCESS.
 
 **Revisión adversarial fresca (post-commit `fd13b0d`):** sin hallazgos de correctness, seguridad manual, alcance ni consistencia. Un IMPORTANTE: faltaba `SubjectClassificationControllerIT` (test de seguridad end-to-end con JWT real, mismo patrón que `AcademicDivisionControllerIT`/`AcademicProgramControllerIT`) — `SubjectClassificationControllerTest` es `@WebMvcTest` con `addFilters = false`, corre con la cadena de seguridad desactivada, así que el matcher nuevo no tenía cobertura automatizada real (se verificó manualmente que estaba bien escrito). Corregido: se agregó `SubjectClassificationControllerIT` (4 tests: ADMIN y SERVICIOS_ESCOLARES listan OK, DOCENTE 403, sin token 401), seedeando filas directo vía `SubjectClassificationJpaRepository.save` (no hay `POST` en esta fase). `./mvnw verify` completo (incluye todos los `*IT`) → 72 ITs + suite completa, 0 failures, BUILD SUCCESS.
+
+### Fase 2 — Registro (Create) — COMPLETADA (2026-07-20)
+
+Implementado `CreateSubjectClassificationUseCase` clonando exactamente el patrón de `CreateAcademicDivisionUseCase`, simplificado al shape de este catálogo: sin `description`, sin `directorPersonId`, y — a diferencia de Division — **sin validación de unicidad de `name`** (regla de negocio confirmada en `118-SISA-CLAUDE/docs/design/dominio/02-config-academica.md` líneas 15-24: solo `code` es único en este aggregate).
+
+**Archivos creados:**
+- `domain/port/in/CreateSubjectClassificationUseCase.java` — `CreateClassificationCommand(name, code)` / `ClassificationResult(id, name, code, status)`.
+- `domain/service/CreateSubjectClassificationUseCaseImpl.java` — valida solo `code` único vía `findByCode`, construye la entidad (constructor ya defaultea a `ACTIVE`, heredado de Fase 1), guarda y mapea a `ClassificationResult`.
+- `shared/exception/DuplicateClassificationCodeException.java` — mismo patrón que `DuplicateDivisionCodeException`/`DuplicateProgramCodeException`.
+- `infrastructure/web/dto/CreateSubjectClassificationRequest.java` (`@NotBlank name`, `@NotBlank code`) y `dto/SubjectClassificationResponse.java` (id, name, code, status).
+- Tests: `CreateSubjectClassificationUseCaseImplTest` (3 tests: creación exitosa, rechazo de código duplicado, **acepta nombres duplicados explícitamente** — este último test documenta la regla de negocio que diferencia esta aggregate de `AcademicDivision`).
+
+**Archivos modificados:**
+- `domain/port/out/SubjectClassificationRepository.java` — agregado `save(SubjectClassification)` y `findByCode(String)` (case-insensitive, misma convención que `AcademicDivisionRepository`). `findById` sigue sin existir (YAGNI — se agrega en la fase de Get).
+- `infrastructure/persistence/SubjectClassificationJpaRepository.java` — agregado `findByCodeIgnoreCase(String)`.
+- `infrastructure/persistence/SubjectClassificationRepositoryAdapter.java` — implementa `save`/`findByCode` delegando al JPA repository.
+- `infrastructure/web/SubjectClassificationController.java` — agregado `POST /subject-classifications` (201, body `SubjectClassificationResponse`).
+- `infrastructure/config/UseCaseConfig.java` — registrado el bean `createSubjectClassificationUseCase` (composition root del módulo — ver gotcha de Fase 1, se aplicó desde el principio esta vez).
+- `identity/infrastructure/security/SecurityFilterConfig.java` — agregado matcher `POST /subject-classifications` (roles `ADMIN`/`SERVICIOS_ESCOLARES`, mismo par que el matcher GET).
+- `infrastructure/web/GlobalExceptionHandler.java` (academic_config) — agregado `@ExceptionHandler(DuplicateClassificationCodeException.class)` → 409 CONFLICT.
+- Tests extendidos: `SubjectClassificationControllerTest` (+4 tests: 201 con body, 400 nombre en blanco, 400 código en blanco, 409 código duplicado). `SubjectClassificationControllerIT` (+5 tests: ADMIN puede crear, SERVICIOS_ESCOLARES puede crear, DOCENTE 403, sin token 401, código duplicado real end-to-end → 409). `SubjectClassificationRepositoryAdapterSearchIT` (+2 tests: `save` inserta fila nueva, `findByCode` case-insensitive).
+
+**Decisión de diseño no obvia:** a diferencia de `CreateAcademicDivisionUseCaseImpl` (que valida `findByName` Y `findByCode`), este use case deliberadamente NO llama a ningún método de búsqueda por nombre — el port `SubjectClassificationRepository` ni siquiera declara un `findByName`, para que sea imposible añadir esa validación por accidente al clonar el patrón de Division sin leer la regla de negocio primero.
+
+**Gotcha evitado (no repetido):** el wiring en `UseCaseConfig.java` (composition root) se hizo en el mismo commit que el resto de la Fase 2, no como corrección posterior — se aprendió de la Fase 1.
+
+**Revisión adversarial fresca (post-implementación, pre-commit):** se verificó explícitamente cada punto pedido:
+- `DuplicateClassificationCodeException` SÍ está wireada en `GlobalExceptionHandler` — confirmado con el test `createClassificationWithDuplicateCodeReturns409` (WebMvcTest) y `duplicateCodeReturns409` (IT real, dos POSTs con el mismo código, la segunda devuelve 409).
+- `SubjectClassificationControllerTest` SÍ corre con `addFilters = false` (igual que Fase 1), por lo que el matcher `POST` nuevo en `SecurityFilterConfig` no tiene cobertura ahí — cobertura real viene de `SubjectClassificationControllerIT`, que sí usa la cadena de seguridad completa.
+- `SubjectClassificationControllerIT` cubre los 4 casos pedidos sobre el endpoint POST real con JWT real: ADMIN succeeds (`adminCanCreate`), SERVICIOS_ESCOLARES succeeds (`serviciosEscolaresCanCreate`), DOCENTE → 403 (`otherRoleIsForbiddenOnCreate`), sin token → 401 (`unauthenticatedCreateReturns401`), más el caso de negocio `duplicateCodeReturns409`.
+- Sin hallazgos adicionales de correctness, alcance ni consistencia con el patrón de `AcademicDivision`/`AcademicProgram`.
+
+**Resultado de tests:** `./mvnw test` → 247 tests (antes 240 en Fase 1, +7 nuevos: 3 unit de use case + 4 de controller). `./mvnw verify` completo (incluye todos los `*IT`) → 247 unit + 79 IT = 326 tests totales, 0 failures, 0 errors, BUILD SUCCESS.
