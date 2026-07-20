@@ -11,6 +11,8 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPlanStatusU
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.AcademicPlanResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.CreateAcademicPlanCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.GradeScaleEntryResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.GradeScaleResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.PlanLevelResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase.SubjectResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
@@ -18,12 +20,19 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase.ListAcademicPlansQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase.ListAcademicPlansResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase.PlanSummary;
+import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveGradeScaleUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveGradeScaleUseCase.RemoveGradeScaleCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase.RemovePlanLevelCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveSubjectUseCase.RemoveSubjectCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.SetGradeScaleUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.SetGradeScaleUseCase.GradeScaleEntryCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.SetGradeScaleUseCase.SetGradeScaleCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase.UpdateAcademicPlanCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase.UpdateGradeScaleCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase.UpdatePlanLevelCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
@@ -35,7 +44,11 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AddPlanLevelReque
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AddSubjectRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangePlanStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateAcademicPlanRequest;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GradeScaleEntryRequest;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GradeScaleEntryResponse;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GradeScaleResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.PlanLevelResponse;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SetGradeScaleRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicPlanRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdatePlanLevelRequest;
@@ -55,6 +68,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -96,13 +110,20 @@ public class AcademicPlanController {
 
 	private final RemoveSubjectUseCase removeSubjectUseCase;
 
+	private final SetGradeScaleUseCase setGradeScaleUseCase;
+
+	private final UpdateGradeScaleUseCase updateGradeScaleUseCase;
+
+	private final RemoveGradeScaleUseCase removeGradeScaleUseCase;
+
 	public AcademicPlanController(CreateAcademicPlanUseCase createAcademicPlanUseCase,
 			UpdateAcademicPlanUseCase updateAcademicPlanUseCase, ListAcademicPlansUseCase listAcademicPlansUseCase,
 			GetAcademicPlanUseCase getAcademicPlanUseCase,
 			ChangeAcademicPlanStatusUseCase changeAcademicPlanStatusUseCase, AddPlanLevelUseCase addPlanLevelUseCase,
 			UpdatePlanLevelUseCase updatePlanLevelUseCase, RemovePlanLevelUseCase removePlanLevelUseCase,
 			AddSubjectToPlanUseCase addSubjectToPlanUseCase, UpdateSubjectUseCase updateSubjectUseCase,
-			RemoveSubjectUseCase removeSubjectUseCase) {
+			RemoveSubjectUseCase removeSubjectUseCase, SetGradeScaleUseCase setGradeScaleUseCase,
+			UpdateGradeScaleUseCase updateGradeScaleUseCase, RemoveGradeScaleUseCase removeGradeScaleUseCase) {
 		this.createAcademicPlanUseCase = createAcademicPlanUseCase;
 		this.updateAcademicPlanUseCase = updateAcademicPlanUseCase;
 		this.listAcademicPlansUseCase = listAcademicPlansUseCase;
@@ -114,6 +135,9 @@ public class AcademicPlanController {
 		this.addSubjectToPlanUseCase = addSubjectToPlanUseCase;
 		this.updateSubjectUseCase = updateSubjectUseCase;
 		this.removeSubjectUseCase = removeSubjectUseCase;
+		this.setGradeScaleUseCase = setGradeScaleUseCase;
+		this.updateGradeScaleUseCase = updateGradeScaleUseCase;
+		this.removeGradeScaleUseCase = removeGradeScaleUseCase;
 	}
 
 	@PostMapping
@@ -210,6 +234,30 @@ public class AcademicPlanController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@PostMapping("/{id}/grade-scales")
+	public ResponseEntity<GradeScaleResponse> setGradeScale(@PathVariable UUID id,
+			@Valid @RequestBody SetGradeScaleRequest request) {
+		GradeScaleResult result = setGradeScaleUseCase.setGradeScale(new SetGradeScaleCommand(id,
+				request.classificationId(), request.numericMin(), request.numericMax(),
+				toEntryCommands(request.entries())));
+		return ResponseEntity.status(HttpStatus.CREATED).body(toGradeScaleResponse(result));
+	}
+
+	@PutMapping("/{id}/grade-scales/{scaleId}")
+	public ResponseEntity<GradeScaleResponse> updateGradeScale(@PathVariable UUID id, @PathVariable UUID scaleId,
+			@Valid @RequestBody SetGradeScaleRequest request) {
+		GradeScaleResult result = updateGradeScaleUseCase.updateGradeScale(new UpdateGradeScaleCommand(id, scaleId,
+				request.classificationId(), request.numericMin(), request.numericMax(),
+				toEntryCommands(request.entries())));
+		return ResponseEntity.ok(toGradeScaleResponse(result));
+	}
+
+	@DeleteMapping("/{id}/grade-scales/{scaleId}")
+	public ResponseEntity<Void> removeGradeScale(@PathVariable UUID id, @PathVariable UUID scaleId) {
+		removeGradeScaleUseCase.removeGradeScale(new RemoveGradeScaleCommand(id, scaleId));
+		return ResponseEntity.noContent().build();
+	}
+
 	/**
 	 * Extracts the acting user's id from the JWT principal — see
 	 * {@code AcademicProgramController#currentUserId()} for the identical
@@ -237,7 +285,8 @@ public class AcademicPlanController {
 				result.titulationKey(), result.effectiveFrom(), result.totalLevels(), result.minPassingGrade(),
 				result.maxExtraordinaryExamsPerPeriod(), result.requiresSocialService(),
 				result.socialServiceMinLevelId(), result.status(),
-				result.levels().stream().map(AcademicPlanController::toLevelResponse).toList());
+				result.levels().stream().map(AcademicPlanController::toLevelResponse).toList(),
+				result.gradeScales().stream().map(AcademicPlanController::toGradeScaleResponse).toList());
 	}
 
 	private static AcademicPlanListItemResponse toItem(PlanSummary summary) {
@@ -254,5 +303,20 @@ public class AcademicPlanController {
 		return new SubjectResponse(result.id(), result.code(), result.name(), result.credits(), result.weeklyHours(),
 				result.evaluationUnits(), result.displayOrder(), result.type(), result.isRetakeable(),
 				result.classificationId());
+	}
+
+	private static GradeScaleResponse toGradeScaleResponse(GradeScaleResult result) {
+		return new GradeScaleResponse(result.id(), result.classificationId(), result.numericMin(), result.numericMax(),
+				result.entries().stream().map(AcademicPlanController::toGradeScaleEntryResponse).toList());
+	}
+
+	private static GradeScaleEntryResponse toGradeScaleEntryResponse(GradeScaleEntryResult result) {
+		return new GradeScaleEntryResponse(result.id(), result.fromValue(), result.toValue(), result.letter(),
+				result.description(), result.passed());
+	}
+
+	private static List<GradeScaleEntryCommand> toEntryCommands(List<GradeScaleEntryRequest> entries) {
+		return entries.stream().map(entry -> new GradeScaleEntryCommand(entry.fromValue(), entry.toValue(),
+				entry.letter(), entry.description(), entry.passed())).toList();
 	}
 }

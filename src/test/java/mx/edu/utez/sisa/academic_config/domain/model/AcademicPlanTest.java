@@ -1,7 +1,10 @@
 package mx.edu.utez.sisa.academic_config.domain.model;
 
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
@@ -11,6 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -269,6 +273,161 @@ class AcademicPlanTest {
 
 		assertThat(plan.hasLevel(levelId)).isTrue();
 		assertThat(plan.hasLevel(UUID.randomUUID())).isFalse();
+	}
+
+	@Test
+	void setGradeScale_createsScaleWithExactCoverage() {
+		AcademicPlan plan = newPlan();
+		UUID classificationId = UUID.randomUUID();
+
+		GradeScale scale = plan.setGradeScale(classificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 69, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true)));
+
+		assertThat(plan.getGradeScales()).containsExactly(scale);
+		assertThat(scale.getClassificationId()).isEqualTo(classificationId);
+		assertThat(scale.getEntries()).hasSize(2);
+	}
+
+	@Test
+	void setGradeScale_singleEntryCoveringWholeRangePasses() {
+		AcademicPlan plan = newPlan();
+
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 100, "CO", "Competente", true)));
+
+		assertThat(scale.getEntries()).hasSize(1);
+	}
+
+	@Test
+	void setGradeScale_boundaryAdjacentEntriesPass() {
+		AcademicPlan plan = newPlan();
+
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 69, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true)));
+
+		assertThat(scale.getEntries()).hasSize(2);
+	}
+
+	@Test
+	void setGradeScale_rejectsAGapBetweenEntries() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 60, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true))))
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Gap");
+	}
+
+	@Test
+	void setGradeScale_rejectsAnOverlapBetweenEntries() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 75, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true))))
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Overlap");
+	}
+
+	@Test
+	void setGradeScale_rejectsEntriesNotStartingAtNumericMin() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(1, 100, "CO", "Competente", true)))).isInstanceOf(InvalidGradeScaleEntriesException.class);
+	}
+
+	@Test
+	void setGradeScale_rejectsEntriesNotEndingAtNumericMax() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 99, "CO", "Competente", true)))).isInstanceOf(InvalidGradeScaleEntriesException.class);
+	}
+
+	@Test
+	void setGradeScale_rejectsEmptyEntries() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(
+				() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100), List.of()))
+				.isInstanceOf(InvalidGradeScaleEntriesException.class);
+	}
+
+	@Test
+	void setGradeScale_rejectsDuplicateClassificationWithinTheSamePlan() {
+		AcademicPlan plan = newPlan();
+		UUID classificationId = UUID.randomUUID();
+		plan.setGradeScale(classificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 100, "CO", "Competente", true)));
+
+		assertThatThrownBy(() -> plan.setGradeScale(classificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(10),
+				List.of(entry(0, 10, "AP", "Aprobado", true)))).isInstanceOf(DuplicateGradeScaleException.class);
+	}
+
+	@Test
+	void updateGradeScale_replacesClassificationRangeAndEntries() {
+		AcademicPlan plan = newPlan();
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 100, "CO", "Competente", true)));
+		UUID scaleId = UUID.randomUUID();
+		ReflectionTestUtils.setField(scale, "id", scaleId);
+		UUID newClassificationId = UUID.randomUUID();
+
+		plan.updateGradeScale(scaleId, newClassificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(10),
+				List.of(entry(0, 6, "NA", "No aprobado", false), entry(7, 10, "AP", "Aprobado", true)));
+
+		assertThat(scale.getClassificationId()).isEqualTo(newClassificationId);
+		assertThat(scale.getNumericMax()).isEqualByComparingTo(BigDecimal.valueOf(10));
+		assertThat(scale.getEntries()).hasSize(2);
+	}
+
+	@Test
+	void updateGradeScale_rejectsUnknownScaleId() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.updateGradeScale(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.valueOf(0),
+				BigDecimal.valueOf(100), List.of(entry(0, 100, "CO", "Competente", true))))
+				.isInstanceOf(GradeScaleNotFoundException.class);
+	}
+
+	@Test
+	void updateGradeScale_rejectsDuplicateClassificationAgainstAnotherScale() {
+		AcademicPlan plan = newPlan();
+		GradeScale scaleOne = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 100, "CO", "Competente", true)));
+		UUID scaleOneId = UUID.randomUUID();
+		ReflectionTestUtils.setField(scaleOne, "id", scaleOneId);
+		UUID classificationTwo = UUID.randomUUID();
+		GradeScale scaleTwo = plan.setGradeScale(classificationTwo, BigDecimal.valueOf(0), BigDecimal.valueOf(10),
+				List.of(entry(0, 10, "AP", "Aprobado", true)));
+		ReflectionTestUtils.setField(scaleTwo, "id", UUID.randomUUID());
+
+		assertThatThrownBy(() -> plan.updateGradeScale(scaleOneId, classificationTwo, BigDecimal.valueOf(0),
+				BigDecimal.valueOf(100), List.of(entry(0, 100, "CO", "Competente", true))))
+				.isInstanceOf(DuplicateGradeScaleException.class);
+	}
+
+	@Test
+	void removeGradeScale_succeeds() {
+		AcademicPlan plan = newPlan();
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+				List.of(entry(0, 100, "CO", "Competente", true)));
+		UUID scaleId = UUID.randomUUID();
+		ReflectionTestUtils.setField(scale, "id", scaleId);
+
+		plan.removeGradeScale(scaleId);
+
+		assertThat(plan.getGradeScales()).isEmpty();
+	}
+
+	@Test
+	void removeGradeScale_rejectsUnknownScaleId() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.removeGradeScale(UUID.randomUUID()))
+				.isInstanceOf(GradeScaleNotFoundException.class);
+	}
+
+	private static GradeScaleEntryData entry(int from, int to, String letter, String description, boolean passed) {
+		return new GradeScaleEntryData(BigDecimal.valueOf(from), BigDecimal.valueOf(to), letter, description, passed);
 	}
 
 	private AcademicPlan newPlan() {

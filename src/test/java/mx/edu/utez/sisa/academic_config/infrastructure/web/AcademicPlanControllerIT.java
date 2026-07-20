@@ -7,6 +7,8 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUse
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase.CreateAcademicDivisionCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase.CreateAcademicProgramCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase.CreateClassificationCommand;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
@@ -20,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -58,6 +61,9 @@ class AcademicPlanControllerIT {
 	@Autowired
 	private CreateAcademicProgramUseCase createAcademicProgramUseCase;
 
+	@Autowired
+	private CreateSubjectClassificationUseCase createSubjectClassificationUseCase;
+
 	private UUID programId;
 
 	@BeforeEach
@@ -71,6 +77,24 @@ class AcademicPlanControllerIT {
 						"Oferta " + UUID.randomUUID(), "COD-" + UUID.randomUUID().toString().substring(0, 8),
 						AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null, "desc", null))
 				.id();
+	}
+
+	private UUID newClassificationId() {
+		return createSubjectClassificationUseCase
+				.createClassification(new CreateClassificationCommand("Clasificacion " + UUID.randomUUID(),
+						"COD-" + UUID.randomUUID().toString().substring(0, 8)))
+				.id();
+	}
+
+	private UUID newPlanId(String token, String version) throws Exception {
+		var createResult = mockMvc
+				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
+						.content(objectMapper.writeValueAsString(new CreatePlanBody(programId, version, "2022-2028",
+								"CLAVE-" + version, LocalDate.of(2022, 1, 10), 9, new BigDecimal("7.0"), 2, false,
+								null))))
+				.andExpect(status().isCreated()).andReturn();
+		JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
+		return UUID.fromString(created.get("id").asText());
 	}
 
 	@Test
@@ -239,6 +263,197 @@ class AcademicPlanControllerIT {
 				.andExpect(status().isBadRequest());
 	}
 
+	@Test
+	void adminCanSetUpdateAndRemoveGradeScale() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-ADMIN-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+
+		var setResult = mockMvc
+				.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+						.contentType("application/json")
+						.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId,
+								BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+								List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(69), "NP",
+										"No competente", false),
+										new GradeScaleEntryBody(BigDecimal.valueOf(70), BigDecimal.valueOf(100), "CO",
+												"Competente", true))))))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.classificationId").value(classificationId.toString()))
+				.andExpect(jsonPath("$.entries.length()").value(2)).andReturn();
+		JsonNode scale = objectMapper.readTree(setResult.getResponse().getContentAsString());
+		UUID scaleId = UUID.fromString(scale.get("id").asText());
+
+		mockMvc.perform(get("/plans/" + planId).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.gradeScales.length()").value(1));
+
+		mockMvc.perform(put("/plans/" + planId + "/grade-scales/" + scaleId).header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(10),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(6), "NA",
+								"No aprobado", false),
+								new GradeScaleEntryBody(BigDecimal.valueOf(7), BigDecimal.valueOf(10), "AP", "Aprobado",
+										true))))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.numericMax").value(10));
+
+		mockMvc.perform(
+				delete("/plans/" + planId + "/grade-scales/" + scaleId).header("Authorization", "Bearer " + token))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/plans/" + planId).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.gradeScales").isEmpty());
+	}
+
+	@Test
+	void serviciosEscolaresCanSetGradeScale() throws Exception {
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+		UUID planId = newPlanId(token, "GS-SE-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isCreated());
+	}
+
+	@Test
+	void docenteIsForbiddenOnSetGradeScale() throws Exception {
+		String adminToken = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(adminToken, "GS-DOC-" + UUID.randomUUID().toString().substring(0, 6));
+		String docenteToken = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + docenteToken)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(UUID.randomUUID(), BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedSetGradeScaleReturns401() throws Exception {
+		mockMvc.perform(post("/plans/" + UUID.randomUUID() + "/grade-scales").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(UUID.randomUUID(), BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void setGradeScaleWithUnknownPlanReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID classificationId = newClassificationId();
+
+		mockMvc.perform(
+				post("/plans/" + UUID.randomUUID() + "/grade-scales").header("Authorization", "Bearer " + token)
+						.contentType("application/json")
+						.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId,
+								BigDecimal.valueOf(0), BigDecimal.valueOf(100),
+								List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+										"Competente", true))))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void setGradeScaleWithUnknownClassificationReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-UNKCLS-" + UUID.randomUUID().toString().substring(0, 6));
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(UUID.randomUUID(), BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void updateGradeScaleWithUnknownScaleReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-UNKSCALE-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+
+		mockMvc.perform(put("/plans/" + planId + "/grade-scales/" + UUID.randomUUID())
+				.header("Authorization", "Bearer " + token).contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void removeGradeScaleWithUnknownScaleReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-DELUNK-" + UUID.randomUUID().toString().substring(0, 6));
+
+		mockMvc.perform(delete("/plans/" + planId + "/grade-scales/" + UUID.randomUUID())
+				.header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void setGradeScaleWithDuplicateClassificationReturns409() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-DUP-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO",
+								"Competente", true))))))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(10),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(10), "AP", "Aprobado",
+								true))))))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void setGradeScaleWithGapBetweenEntriesReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-GAP-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(60), "NP",
+								"No competente", false),
+								new GradeScaleEntryBody(BigDecimal.valueOf(70), BigDecimal.valueOf(100), "CO",
+										"Competente", true))))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void setGradeScaleWithOverlappingEntriesReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID planId = newPlanId(token, "GS-OVERLAP-" + UUID.randomUUID().toString().substring(0, 6));
+		UUID classificationId = newClassificationId();
+
+		mockMvc.perform(post("/plans/" + planId + "/grade-scales").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
+						BigDecimal.valueOf(100),
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(75), "NP",
+								"No competente", false),
+								new GradeScaleEntryBody(BigDecimal.valueOf(70), BigDecimal.valueOf(100), "CO",
+										"Competente", true))))))
+				.andExpect(status().isBadRequest());
+	}
+
 	private void exerciseFullCrud(String token, String version) throws Exception {
 		var createResult = mockMvc
 				.perform(post("/plans").header("Authorization", "Bearer " + token).contentType("application/json")
@@ -331,5 +546,13 @@ class AcademicPlanControllerIT {
 	}
 
 	private record StatusBody(PlanStatus status) {
+	}
+
+	private record SetGradeScaleBody(UUID classificationId, BigDecimal numericMin, BigDecimal numericMax,
+			List<GradeScaleEntryBody> entries) {
+	}
+
+	private record GradeScaleEntryBody(BigDecimal fromValue, BigDecimal toValue, String letter, String description,
+			boolean passed) {
 	}
 }

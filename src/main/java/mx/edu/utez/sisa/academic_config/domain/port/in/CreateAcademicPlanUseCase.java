@@ -51,7 +51,7 @@ public interface CreateAcademicPlanUseCase {
 	record AcademicPlanResult(UUID id, UUID programId, String version, String validityPeriod, String titulationKey,
 			LocalDate effectiveFrom, int totalLevels, BigDecimal minPassingGrade, int maxExtraordinaryExamsPerPeriod,
 			boolean requiresSocialService, UUID socialServiceMinLevelId, PlanStatus status,
-			List<PlanLevelResult> levels) {
+			List<PlanLevelResult> levels, List<GradeScaleResult> gradeScales) {
 	}
 
 	/**
@@ -68,5 +68,18 @@ public interface CreateAcademicPlanUseCase {
 	 */
 	record SubjectResult(UUID id, String code, String name, int credits, int weeklyHours, int evaluationUnits,
 			int displayOrder, SubjectType type, boolean isRetakeable, UUID classificationId) {
+	}
+
+	/**
+	 * Reused by the child grade-scale in-ports ({@code SetGradeScaleUseCase},
+	 * {@code UpdateGradeScaleUseCase}) as their return shape — mirrors
+	 * {@link PlanLevelResult}'s reuse pattern.
+	 */
+	record GradeScaleResult(UUID id, UUID classificationId, BigDecimal numericMin, BigDecimal numericMax,
+			List<GradeScaleEntryResult> entries) {
+	}
+
+	record GradeScaleEntryResult(UUID id, BigDecimal fromValue, BigDecimal toValue, String letter, String description,
+			boolean passed) {
 	}
 }

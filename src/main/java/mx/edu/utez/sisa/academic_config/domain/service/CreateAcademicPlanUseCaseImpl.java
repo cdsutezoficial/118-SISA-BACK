@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.academic_config.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicPlan;
+import mx.edu.utez.sisa.academic_config.domain.model.GradeScale;
+import mx.edu.utez.sisa.academic_config.domain.model.GradeScaleEntry;
 import mx.edu.utez.sisa.academic_config.domain.model.PlanLevel;
 import mx.edu.utez.sisa.academic_config.domain.model.Subject;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase;
@@ -70,8 +72,9 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 		return new AcademicPlanResult(plan.getId(), plan.getProgramId(), plan.getVersion(), plan.getValidityPeriod(),
 				plan.getTitulationKey(), plan.getEffectiveFrom(), plan.getTotalLevels(), plan.getMinPassingGrade(),
 				plan.getMaxExtraordinaryExamsPerPeriod(), plan.isRequiresSocialService(),
-				plan.getSocialServiceMinLevelId(), plan.getStatus(), plan.getLevels().stream().map(
-						CreateAcademicPlanUseCaseImpl::toLevelResult).toList());
+				plan.getSocialServiceMinLevelId(), plan.getStatus(),
+				plan.getLevels().stream().map(CreateAcademicPlanUseCaseImpl::toLevelResult).toList(),
+				plan.getGradeScales().stream().map(CreateAcademicPlanUseCaseImpl::toGradeScaleResult).toList());
 	}
 
 	/**
@@ -95,5 +98,22 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 		return new SubjectResult(subject.getId(), subject.getCode(), subject.getName(), subject.getCredits(),
 				subject.getWeeklyHours(), subject.getEvaluationUnits(), subject.getDisplayOrder(), subject.getType(),
 				subject.isRetakeable(), subject.getClassificationId());
+	}
+
+	/**
+	 * Package-visible (not {@code private}) so the grade-scale use cases
+	 * ({@code SetGradeScaleUseCaseImpl}, {@code UpdateGradeScaleUseCaseImpl})
+	 * can reuse it to build their {@code GradeScaleResult} return shape
+	 * without duplicating the mapping — mirrors {@link #toLevelResult}.
+	 */
+	static GradeScaleResult toGradeScaleResult(GradeScale scale) {
+		return new GradeScaleResult(scale.getId(), scale.getClassificationId(), scale.getNumericMin(),
+				scale.getNumericMax(),
+				scale.getEntries().stream().map(CreateAcademicPlanUseCaseImpl::toGradeScaleEntryResult).toList());
+	}
+
+	static GradeScaleEntryResult toGradeScaleEntryResult(GradeScaleEntry entry) {
+		return new GradeScaleEntryResult(entry.getId(), entry.getFromValue(), entry.getToValue(), entry.getLetter(),
+				entry.getDescription(), entry.isPassed());
 	}
 }

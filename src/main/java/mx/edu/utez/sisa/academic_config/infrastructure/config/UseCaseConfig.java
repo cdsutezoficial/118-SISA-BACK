@@ -18,11 +18,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseC
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveSubjectUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.SetGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
@@ -49,11 +52,14 @@ import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseC
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPlansUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListSubjectClassificationsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.RemoveGradeScaleUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemovePlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemoveSubjectUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.SetGradeScaleUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateAcademicProgramUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateGradeScaleUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdatePlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateSubjectUseCaseImpl;
@@ -188,6 +194,23 @@ public class UseCaseConfig {
 	@Bean
 	public RemoveSubjectUseCase removeSubjectUseCase(AcademicPlanRepository planRepository) {
 		return new RemoveSubjectUseCaseImpl(planRepository);
+	}
+
+	@Bean
+	public SetGradeScaleUseCase setGradeScaleUseCase(AcademicPlanRepository planRepository,
+			SubjectClassificationRepository classificationRepository) {
+		return new SetGradeScaleUseCaseImpl(planRepository, classificationRepository);
+	}
+
+	@Bean
+	public UpdateGradeScaleUseCase updateGradeScaleUseCase(AcademicPlanRepository planRepository,
+			SubjectClassificationRepository classificationRepository) {
+		return new UpdateGradeScaleUseCaseImpl(planRepository, classificationRepository);
+	}
+
+	@Bean
+	public RemoveGradeScaleUseCase removeGradeScaleUseCase(AcademicPlanRepository planRepository) {
+		return new RemoveGradeScaleUseCaseImpl(planRepository);
 	}
 
 	@Bean

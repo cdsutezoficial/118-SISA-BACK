@@ -9,12 +9,15 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DirectorNotFoundExcepti
 import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionNameException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
@@ -87,20 +90,20 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler({ AcademicPlanNotFoundException.class, PlanLevelNotFoundException.class,
-			SubjectNotFoundException.class })
+			SubjectNotFoundException.class, GradeScaleNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handlePlanNotFound(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class,
-			InvalidPlanDataException.class })
+			InvalidPlanDataException.class, InvalidGradeScaleEntriesException.class })
 	public ResponseEntity<ErrorResponse> handlePlanBadRequest(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class,
 			DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class,
-			PlanLevelInUseException.class })
+			PlanLevelInUseException.class, DuplicateGradeScaleException.class })
 	public ResponseEntity<ErrorResponse> handlePlanConflict(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}

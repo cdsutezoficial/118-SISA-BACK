@@ -12,8 +12,10 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
@@ -87,6 +89,9 @@ public class AcademicPlan {
 	@OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("levelNumber ASC")
 	private List<PlanLevel> levels = new ArrayList<>();
+
+	@OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
+	private List<GradeScale> gradeScales = new ArrayList<>();
 
 	protected AcademicPlan() {
 		// JPA
@@ -261,6 +266,66 @@ public class AcademicPlan {
 	}
 
 	/**
+	 * Creates a {@link GradeScale} for this plan + {@code classificationId}
+	 * (docs/plans/2026-07-20-grade-scale.md — "SetGradeScaleUseCase ...
+	 * sugiere una operación de reemplazo completo"). Rejects a
+	 * {@code classificationId} already used by another scale of this same
+	 * plan; {@code classificationId} existence and the {@code numericMin <
+	 * numericMax} range are enforced by {@code SetGradeScaleUseCaseImpl}, not
+	 * here (mirrors {@code addLevel}'s split with {@code
+	 * AddPlanLevelUseCaseImpl}). Entry coverage/gap/overlap validation is
+	 * delegated to {@link GradeScale}'s constructor.
+	 */
+	public GradeScale setGradeScale(UUID classificationId, BigDecimal numericMin, BigDecimal numericMax,
+			List<GradeScaleEntryData> entries) {
+		if (hasGradeScaleForClassification(classificationId, null)) {
+			throw new DuplicateGradeScaleException(
+					"Grade scale already defined for this classification in this plan: " + classificationId);
+		}
+		GradeScale scale = new GradeScale(this, classificationId, numericMin, numericMax, entries);
+		gradeScales.add(scale);
+		return scale;
+	}
+
+	/**
+	 * Replaces an existing {@link GradeScale}'s classification, range, and
+	 * entries in full (docs/plans/2026-07-20-grade-scale.md — "PUT ...
+	 * reemplaza clasificación/min/max/rangos completos"). Rejects an unknown
+	 * {@code scaleId} or a {@code classificationId} already used by another
+	 * scale of this same plan.
+	 */
+	public void updateGradeScale(UUID scaleId, UUID classificationId, BigDecimal numericMin, BigDecimal numericMax,
+			List<GradeScaleEntryData> entries) {
+		GradeScale scale = findGradeScale(scaleId)
+				.orElseThrow(() -> new GradeScaleNotFoundException("Grade scale not found: " + scaleId));
+		if (hasGradeScaleForClassification(classificationId, scaleId)) {
+			throw new DuplicateGradeScaleException(
+					"Grade scale already defined for this classification in this plan: " + classificationId);
+		}
+		scale.updateDetails(classificationId, numericMin, numericMax, entries);
+	}
+
+	/**
+	 * Removes a {@link GradeScale} owned by this plan (its {@link GradeScaleEntry}
+	 * children go with it via cascade). Rejects an unknown {@code scaleId}.
+	 */
+	public void removeGradeScale(UUID scaleId) {
+		GradeScale scale = findGradeScale(scaleId)
+				.orElseThrow(() -> new GradeScaleNotFoundException("Grade scale not found: " + scaleId));
+		gradeScales.remove(scale);
+	}
+
+	private boolean hasGradeScaleForClassification(UUID classificationId, UUID excludingScaleId) {
+		return gradeScales.stream().anyMatch(scale -> scale.getClassificationId().equals(classificationId)
+				&& (excludingScaleId == null || !excludingScaleId.equals(scale.getId())));
+	}
+
+	private Optional<GradeScale> findGradeScale(UUID scaleId) {
+		return gradeScales.stream().filter(scale -> scale.getId() != null && scale.getId().equals(scaleId))
+				.findFirst();
+	}
+
+	/**
 	 * Queried by {@code UpdateAcademicPlanUseCaseImpl} to validate that a
 	 * candidate {@code socialServiceMinLevelId} belongs to this same plan
 	 * (spec: "Rejects socialServiceMinLevelId referencing a PlanLevel from a
@@ -343,6 +408,10 @@ public class AcademicPlan {
 
 	public List<PlanLevel> getLevels() {
 		return Collections.unmodifiableList(levels);
+	}
+
+	public List<GradeScale> getGradeScales() {
+		return Collections.unmodifiableList(gradeScales);
 	}
 
 	@Override
