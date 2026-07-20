@@ -12,6 +12,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberExc
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
@@ -100,6 +101,12 @@ public class GlobalExceptionHandler {
 			DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class,
 			PlanLevelInUseException.class })
 	public ResponseEntity<ErrorResponse> handlePlanConflict(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DuplicateClassificationCodeException.class)
+	public ResponseEntity<ErrorResponse> handleClassificationConflict(DuplicateClassificationCodeException ex,
+			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}
 

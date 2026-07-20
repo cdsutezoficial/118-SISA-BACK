@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicProgramStat
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
@@ -35,6 +36,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStat
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicProgramUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
@@ -186,5 +188,11 @@ public class UseCaseConfig {
 	public ListSubjectClassificationsUseCase listSubjectClassificationsUseCase(
 			SubjectClassificationRepository classificationRepository) {
 		return new ListSubjectClassificationsUseCaseImpl(classificationRepository);
+	}
+
+	@Bean
+	public CreateSubjectClassificationUseCase createSubjectClassificationUseCase(
+			SubjectClassificationRepository classificationRepository) {
+		return new CreateSubjectClassificationUseCaseImpl(classificationRepository);
 	}
 }

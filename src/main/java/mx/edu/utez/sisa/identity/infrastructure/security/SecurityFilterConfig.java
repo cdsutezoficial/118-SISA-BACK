@@ -49,11 +49,12 @@ import java.time.Instant;
  * DO support real DELETE"). A single {@code "/plans/**"} pattern per verb
  * covers both the root and every nested level/subject path. Placed right
  * after the {@code /programs} matchers for the same rationale.
- * {@code /subject-classifications} (academic_config — fourth aggregate,
- * Phase 1 "Consulta/List" only) gets a SINGLE GET matcher — no POST/PUT/
- * PATCH endpoints exist yet, so only the read path is granted
- * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} for now; future phases add the
- * remaining verb matchers as those endpoints are implemented.
+ * {@code /subject-classifications} (academic_config — fourth aggregate) gets
+ * a GET matcher (Phase 1 "Consulta/List") and a POST matcher (Phase 2
+ * "Registro/Create"), both {@code ADMIN}/{@code SERVICIOS_ESCOLARES} — same
+ * pair as every other verb on this endpoint. PUT/PATCH still have no
+ * matcher; future phases (Update, ChangeStatus) add them as those endpoints
+ * are implemented.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -107,6 +108,8 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.DELETE, "/plans/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.GET, "/subject-classifications", "/subject-classifications/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/subject-classifications")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -8,16 +8,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Spring Data interface backing {@link SubjectClassificationRepositoryAdapter}.
  * Extends {@link JpaRepository} (giving {@code save}/{@code findById} for
- * free, used directly by integration tests to seed rows) even though the
- * domain out-port only exposes {@code search} in this phase — see
- * {@code SubjectClassificationRepository}'s YAGNI note.
+ * free, used directly by integration tests to seed rows).
  */
 public interface SubjectClassificationJpaRepository extends JpaRepository<SubjectClassification, UUID> {
+
+	/**
+	 * Case-insensitive lookup — backs {@code SubjectClassificationRepository#findByCode}'s
+	 * documented case-insensitive contract, same convention as
+	 * {@code AcademicDivisionJpaRepository#findByCodeIgnoreCase}.
+	 */
+	Optional<SubjectClassification> findByCodeIgnoreCase(String code);
 
 	/**
 	 * Backs {@code ListSubjectClassificationsUseCase}, mirroring

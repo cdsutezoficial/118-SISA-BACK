@@ -95,6 +95,23 @@ class SubjectClassificationRepositoryAdapterSearchIT {
 		assertThat(page.totalElements()).isEqualTo(2L);
 	}
 
+	@Test
+	void saveInsertsANewRow() {
+		SubjectClassification saved = adapter.save(newClassification("Integradora", "INT"));
+
+		assertThat(saved.getId()).isNotNull();
+		assertThat(jpaRepository.findById(saved.getId())).isPresent();
+	}
+
+	@Test
+	void findByCodeIsCaseInsensitive() {
+		jpaRepository.save(newClassification("Integradora", "INT"));
+
+		assertThat(adapter.findByCode("int")).isPresent();
+		assertThat(adapter.findByCode("INT")).isPresent();
+		assertThat(adapter.findByCode("unknown")).isEmpty();
+	}
+
 	private static SubjectClassification newClassification(String name, String code) {
 		return new SubjectClassification(name, code);
 	}

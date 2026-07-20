@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import mx.edu.utez.sisa.academic_config.domain.model.SubjectClassification;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.SubjectClassificationJpaRepository;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -14,15 +15,17 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * End-to-end integration coverage for the {@code /subject-classifications}
- * security matcher (Phase 1 — List only): real H2, real JWT filter chain, no
- * mocks — mirroring {@code AcademicDivisionControllerIT}'s style. Rows are
- * seeded directly via {@link SubjectClassificationJpaRepository#save} since
- * this phase has no {@code POST} endpoint yet.
+ * security matchers (Phase 1 — List, Phase 2 — Create): real H2, real JWT
+ * filter chain, no mocks — mirroring {@code AcademicDivisionControllerIT}'s
+ * style. List tests still seed rows directly via
+ * {@link SubjectClassificationJpaRepository#save}; Create tests exercise the
+ * real {@code POST} endpoint end-to-end.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -30,6 +33,9 @@ class SubjectClassificationControllerIT {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ObjectMapper objectMapper;
 
 	@Autowired
 	private JwtService jwtService;
@@ -71,7 +77,62 @@ class SubjectClassificationControllerIT {
 				.andExpect(jsonPath("$.status").value(401));
 	}
 
+	@Test
+	void adminCanCreate() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(post("/subject-classifications").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Integradora Admin", "INT-C-ADM"))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.code").value("INT-C-ADM"));
+	}
+
+	@Test
+	void serviciosEscolaresCanCreate() throws Exception {
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+
+		mockMvc.perform(post("/subject-classifications").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Integradora SE", "INT-C-SE"))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("ACTIVE"));
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnCreate() throws Exception {
+		String token = tokenFor(RoleType.DOCENTE);
+
+		mockMvc.perform(post("/subject-classifications").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Forbidden", "INT-C-FRB"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedCreateReturns401() throws Exception {
+		mockMvc.perform(post("/subject-classifications").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Unauth", "INT-C-UNA"))))
+				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void duplicateCodeReturns409() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		mockMvc.perform(post("/subject-classifications").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Integradora Dup", "INT-C-DUP"))))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/subject-classifications").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("Otro Nombre", "INT-C-DUP"))))
+				.andExpect(status().isConflict());
+	}
+
 	private String tokenFor(RoleType role) {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
+	}
+
+	private record CreateBody(String name, String code) {
 	}
 }

@@ -7,6 +7,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * JPA-backed {@link SubjectClassificationRepository} adapter delegating to
  * {@link SubjectClassificationJpaRepository}. Results are sorted by
@@ -22,6 +24,16 @@ public class SubjectClassificationRepositoryAdapter implements SubjectClassifica
 
 	public SubjectClassificationRepositoryAdapter(SubjectClassificationJpaRepository jpaRepository) {
 		this.jpaRepository = jpaRepository;
+	}
+
+	@Override
+	public SubjectClassification save(SubjectClassification classification) {
+		return jpaRepository.save(classification);
+	}
+
+	@Override
+	public Optional<SubjectClassification> findByCode(String code) {
+		return jpaRepository.findByCodeIgnoreCase(code);
 	}
 
 	@Override
