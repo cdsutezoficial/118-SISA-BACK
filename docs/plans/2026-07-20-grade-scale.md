@@ -94,3 +94,32 @@ Se clonó exactamente el patrón `PlanLevel`/`Subject` (composición JPA dentro 
 - Baseline antes de empezar: 270 tests unitarios (`./mvnw test`), 0 fallos.
 - Final: **310 tests unitarios** (+40) y **109 tests de integración** (`./mvnw verify`, incluye los `*IT`), 0 fallos/errores, `BUILD SUCCESS`.
 - Nuevos: 18 tests de dominio (`AcademicPlanTest`, cobertura exacta/hueco/solape/single-entry/boundary-adjacent/duplicados/not-found), 7+7+3 tests de casos de uso (`Set`/`Update`/`RemoveGradeScaleUseCaseImplTest`), 9 tests de controller (`AcademicPlanControllerTest`, `@WebMvcTest`), 11 tests de integración con JWT real (`AcademicPlanControllerIT`: ADMIN/SERVICIOS_ESCOLARES éxito, DOCENTE 403, sin token 401, plan/scale desconocidos 404, clasificación desconocida 404, clasificación duplicada 409, hueco 400, solape 400).
+
+### Corrección post-implementación (2026-07-20, mismo día — decisión de PO confirmada)
+
+**Motivo**: la decisión de diseño de la sección anterior ("`numericMin`/`numericMax`/`fromValue`/`toValue` como `BigDecimal` de enteros, `scale = 0`") se marcó explícitamente como una suposición del implementador pendiente de confirmar con el PO — no algo que el dominio o `02-config-academica.md` pidieran. José la corrigió el mismo día: **las calificaciones SÍ son decimales**, con un ejemplo real de escala de 4 tramos:
+
+```
+7.0–7.5  → letra X
+7.6–8.5  → letra Y
+8.6–9.5  → letra Z
+9.6–10.0 → letra W
+```
+
+Es decir, el "siguiente valor" (`STEP`) entre tramos adyacentes es **0.1**, no 1.
+
+**Qué cambió**:
+
+- `GradeScale.STEP`: `BigDecimal.ONE` → `new BigDecimal("0.1")`.
+- `GradeScale.numericMin`/`numericMax` y `GradeScaleEntry.fromValue`/`toValue`: columna `@Column(scale = 0)` → `@Column(scale = 1)` — una cifra decimal, igual que `AcademicPlan.minPassingGrade` (`precision = 3, scale = 1`), que ya establecía la convención de columnas tipo-calificación en este agregado. **`precision` se dejó en `5`** (no se copió el `precision = 3` de `minPassingGrade`) porque el rango de una escala (`numericMin`/`numericMax`) no está acotado a `[0,10]` como una calificación mínima individual — hay escalas existentes en el propio test suite que van de `[0,100]`, y `precision = 3` habría rechazado en silencio un límite de `100.0` (4 dígitos significativos). Documentado en el javadoc de `GradeScale`.
+- Javadoc de la clase `GradeScale` (líneas ~38-47 antes de la corrección): reescrito para describir el diseño decimal confirmado por el PO en vez de plantearlo como una suposición abierta.
+- **Robustez `.equals()` vs `.compareTo()` en `validateEntries`**: se revisó específicamente si la comparación de huecos/solapes dependía de `BigDecimal.equals()` (sensible a `scale`, p. ej. `7.50` ≠ `7.5` aunque sean el mismo número) en vez de `BigDecimal.compareTo()` (insensible a `scale`). **Resultado: no había ningún bug** — las cuatro comparaciones en `validateEntries` (arranque en `numericMin`, cierre en `numericMax`, `fromValue <= toValue`, y el hueco/solape entre entries consecutivas) ya usaban `compareTo()` desde la implementación original, no `equals()`. Se agregó un test (`setGradeScale_toleratesTrailingZeroScaleDifferenceBetweenAdjacentEntries`) que construye un límite como `new BigDecimal("7.50")` adyacente a `new BigDecimal("7.6")` y confirma que NO se marca como hueco, dejando la garantía cubierta por regresión en vez de solo verificada manualmente.
+
+**Tests actualizados/agregados**:
+
+- Fixtures de `AcademicPlanTest`, `SetGradeScaleUseCaseImplTest.setGradeScale_successfulCreation` y `UpdateGradeScaleUseCaseImplTest.updateGradeScale_successfulReplace` que usaban límites adyacentes enteros (p. ej. `[0,69]`+`[70,100]`, `[0,6]`+`[7,10]`) se ajustaron a límites decimales adyacentes con paso `0.1` (`[0,69.9]`+`[70.0,100]`, `[0,6.9]`+`[7.0,10]`) — con `STEP = 0.1` esos límites enteros ya no son adyacentes y el test habría fallado por "Gap detected" al no reflejar la nueva granularidad. Los tests de hueco/solape "genuino" (`rejectsAGapBetweenEntries`, `rejectsAnOverlapBetweenEntries`, y sus equivalentes en los casos de uso) no necesitaron cambios: siguen siendo hueco/solape real bajo cualquier `STEP`.
+- 4 tests nuevos en `AcademicPlanTest` con el ejemplo real de José: `setGradeScale_decimalFourTierScalePasses` (los 4 tramos exactos deben pasar), `setGradeScale_decimalBoundaryOffByOneTenthIsAGap` (un límite corrido 0.1, p. ej. `7.6`→`7.7`, debe fallar como hueco), `setGradeScale_decimalOverlapAtSharedBoundaryIsRejected` (dos tramos compartiendo `7.5` debe fallar como solape), y `setGradeScale_toleratesTrailingZeroScaleDifferenceBetweenAdjacentEntries` (la prueba de robustez `.equals()` vs `.compareTo()` descrita arriba).
+- `AcademicPlanControllerIT.adminCanSetUpdateAndRemoveGradeScale`: mismos límites enteros adyacentes ajustados a decimales (`69.9`/`70.0`, `6.9`/`7.0`) por la misma razón. `AcademicPlanControllerTest` (`@WebMvcTest`, casos de uso mockeados) no necesitó cambios — los use cases están stubbeados con `when(...).thenReturn(...)`, así que `validateEntries` nunca se ejecuta ahí.
+- No se tocaron: DTOs (`SetGradeScaleRequest`/`GradeScaleEntryRequest`/`*Response`) ni casos de uso — todos usan `BigDecimal` genérico sin anotaciones de escala propias, y la validación `numericMin < numericMax` en los use cases ya usaba `compareTo()`.
+
+**Resultados de tests**: baseline antes de la corrección (recomprobado, `./mvnw test`): **310 tests unitarios, 0 fallos**. Después de la corrección (`./mvnw verify`): **314 tests unitarios** (+4, todos nuevos — ningún test se eliminó) y **109 tests de integración**, 0 fallos/errores, `BUILD SUCCESS`.

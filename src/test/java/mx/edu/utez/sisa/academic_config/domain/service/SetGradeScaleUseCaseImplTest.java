@@ -67,7 +67,7 @@ class SetGradeScaleUseCaseImplTest {
 
 		GradeScaleResult result = useCase.setGradeScale(new SetGradeScaleCommand(planId, classificationId,
 				BigDecimal.valueOf(0), BigDecimal.valueOf(100),
-				List.of(entryCommand(0, 69, "NP", "No competente", false), entryCommand(70, 100, "CO", "Competente",
+				List.of(entryCommand(0, 69.9, "NP", "No competente", false), entryCommand(70.0, 100, "CO", "Competente",
 						true))));
 
 		assertThat(result.classificationId()).isEqualTo(classificationId);
@@ -155,7 +155,7 @@ class SetGradeScaleUseCaseImplTest {
 		verify(planRepository, never()).save(any());
 	}
 
-	private static GradeScaleEntryCommand entryCommand(int from, int to, String letter, String description,
+	private static GradeScaleEntryCommand entryCommand(double from, double to, String letter, String description,
 			boolean passed) {
 		return new GradeScaleEntryCommand(BigDecimal.valueOf(from), BigDecimal.valueOf(to), letter, description,
 				passed);

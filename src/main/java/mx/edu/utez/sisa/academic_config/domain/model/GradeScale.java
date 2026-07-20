@@ -37,14 +37,23 @@ import java.util.UUID;
  *
  * <p>
  * {@code numericMin}/{@code numericMax}/{@code GradeScaleEntry.fromValue}/
- * {@code toValue} are persisted as whole-number {@link BigDecimal}
- * ({@code scale = 0}) — a design decision made here (not specified by
- * {@code 02-config-academica.md}, which only says "Decimal") because the
- * PO-confirmed coverage/gap/overlap rule (see {@link #validateEntries}) needs
- * a concrete "next value" step to tell a legitimate boundary (e.g.
- * {@code [0,69]} then {@code [70,100]}) apart from a real gap. If a future
- * requirement needs fractional letter-grade boundaries, both the column scale
- * and {@link #STEP} must change together.
+ * {@code toValue} are persisted as one-decimal-place {@link BigDecimal}
+ * ({@code scale = 1}) — PO-confirmed (2026-07-20, follow-up to the initial
+ * implementation): grades are decimal, e.g. a real scale is
+ * {@code 7.0–7.5}, {@code 7.6–8.5}, {@code 8.6–9.5}, {@code 9.6–10.0}. This
+ * mirrors {@link AcademicPlan#getMinPassingGrade()}'s {@code scale = 1}
+ * convention for grade-like decimal fields in this aggregate; {@code
+ * precision} is kept at {@code 5} rather than matched to {@code
+ * minPassingGrade}'s {@code precision = 3} because a scale's {@code
+ * numericMin}/{@code numericMax} range is not bounded to {@code [0,10]} the
+ * way a single passing grade is (existing scales in this codebase span
+ * {@code [0,100]}), so a {@code precision = 3} would silently reject a
+ * boundary of {@code 100.0}. The PO-confirmed coverage/gap/overlap rule (see
+ * {@link #validateEntries}) needs a concrete "next value" step — now {@code
+ * 0.1} — to tell a legitimate boundary (e.g. {@code [7.0,7.5]} then
+ * {@code [7.6,8.5]}) apart from a real gap. If a future requirement needs a
+ * different grade granularity, both the column scale and {@link #STEP} must
+ * change together.
  */
 @Entity
 @Table(name = "grade_scale")
@@ -52,9 +61,9 @@ public class GradeScale {
 
 	/**
 	 * The smallest representable increment between two adjacent entries, given
-	 * the {@code scale = 0} column definition — see the class javadoc.
+	 * the {@code scale = 1} column definition — see the class javadoc.
 	 */
-	private static final BigDecimal STEP = BigDecimal.ONE;
+	private static final BigDecimal STEP = new BigDecimal("0.1");
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.UUID)
@@ -67,10 +76,10 @@ public class GradeScale {
 	@Column(name = "classification_id", nullable = false)
 	private UUID classificationId;
 
-	@Column(name = "numeric_min", nullable = false, precision = 5, scale = 0)
+	@Column(name = "numeric_min", nullable = false, precision = 5, scale = 1)
 	private BigDecimal numericMin;
 
-	@Column(name = "numeric_max", nullable = false, precision = 5, scale = 0)
+	@Column(name = "numeric_max", nullable = false, precision = 5, scale = 1)
 	private BigDecimal numericMax;
 
 	@OneToMany(mappedBy = "scale", cascade = CascadeType.ALL, orphanRemoval = true)

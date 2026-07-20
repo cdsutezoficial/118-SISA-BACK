@@ -274,9 +274,9 @@ class AcademicPlanControllerIT {
 						.contentType("application/json")
 						.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId,
 								BigDecimal.valueOf(0), BigDecimal.valueOf(100),
-								List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(69), "NP",
+								List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(69.9), "NP",
 										"No competente", false),
-										new GradeScaleEntryBody(BigDecimal.valueOf(70), BigDecimal.valueOf(100), "CO",
+										new GradeScaleEntryBody(BigDecimal.valueOf(70.0), BigDecimal.valueOf(100), "CO",
 												"Competente", true))))))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.classificationId").value(classificationId.toString()))
@@ -291,9 +291,9 @@ class AcademicPlanControllerIT {
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(new SetGradeScaleBody(classificationId, BigDecimal.valueOf(0),
 						BigDecimal.valueOf(10),
-						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(6), "NA",
+						List.of(new GradeScaleEntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(6.9), "NA",
 								"No aprobado", false),
-								new GradeScaleEntryBody(BigDecimal.valueOf(7), BigDecimal.valueOf(10), "AP", "Aprobado",
+								new GradeScaleEntryBody(BigDecimal.valueOf(7.0), BigDecimal.valueOf(10), "AP", "Aprobado",
 										true))))))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.numericMax").value(10));
 

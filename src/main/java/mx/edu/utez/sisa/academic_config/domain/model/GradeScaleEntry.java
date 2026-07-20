@@ -37,10 +37,10 @@ public class GradeScaleEntry {
 	@JoinColumn(name = "scale_id", nullable = false)
 	private GradeScale scale;
 
-	@Column(name = "from_value", nullable = false, precision = 5, scale = 0)
+	@Column(name = "from_value", nullable = false, precision = 5, scale = 1)
 	private BigDecimal fromValue;
 
-	@Column(name = "to_value", nullable = false, precision = 5, scale = 0)
+	@Column(name = "to_value", nullable = false, precision = 5, scale = 1)
 	private BigDecimal toValue;
 
 	@Column(nullable = false)

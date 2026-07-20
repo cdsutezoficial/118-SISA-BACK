@@ -281,7 +281,7 @@ class AcademicPlanTest {
 		UUID classificationId = UUID.randomUUID();
 
 		GradeScale scale = plan.setGradeScale(classificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(100),
-				List.of(entry(0, 69, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true)));
+				List.of(entry(0, 69.9, "NP", "No competente", false), entry(70.0, 100, "CO", "Competente", true)));
 
 		assertThat(plan.getGradeScales()).containsExactly(scale);
 		assertThat(scale.getClassificationId()).isEqualTo(classificationId);
@@ -303,7 +303,7 @@ class AcademicPlanTest {
 		AcademicPlan plan = newPlan();
 
 		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
-				List.of(entry(0, 69, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true)));
+				List.of(entry(0, 69.9, "NP", "No competente", false), entry(70.0, 100, "CO", "Competente", true)));
 
 		assertThat(scale.getEntries()).hasSize(2);
 	}
@@ -372,7 +372,7 @@ class AcademicPlanTest {
 		UUID newClassificationId = UUID.randomUUID();
 
 		plan.updateGradeScale(scaleId, newClassificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(10),
-				List.of(entry(0, 6, "NA", "No aprobado", false), entry(7, 10, "AP", "Aprobado", true)));
+				List.of(entry(0, 6.9, "NA", "No aprobado", false), entry(7.0, 10, "AP", "Aprobado", true)));
 
 		assertThat(scale.getClassificationId()).isEqualTo(newClassificationId);
 		assertThat(scale.getNumericMax()).isEqualByComparingTo(BigDecimal.valueOf(10));
@@ -426,7 +426,63 @@ class AcademicPlanTest {
 				.isInstanceOf(GradeScaleNotFoundException.class);
 	}
 
-	private static GradeScaleEntryData entry(int from, int to, String letter, String description, boolean passed) {
+	/**
+	 * PO-confirmed real example (José, 2026-07-20 follow-up): a 4-tier decimal
+	 * scale with a {@code 0.1} step between adjacent entries must pass
+	 * validation exactly as documented.
+	 */
+	@Test
+	void setGradeScale_decimalFourTierScalePasses() {
+		AcademicPlan plan = newPlan();
+
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
+				List.of(entry(7.0, 7.5, "X", "Excelente", true), entry(7.6, 8.5, "Y", "Muy bien", true),
+						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true)));
+
+		assertThat(scale.getEntries()).hasSize(4);
+	}
+
+	@Test
+	void setGradeScale_decimalBoundaryOffByOneTenthIsAGap() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
+				List.of(entry(7.0, 7.5, "X", "Excelente", true), entry(7.7, 8.5, "Y", "Muy bien", true),
+						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true))))
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Gap");
+	}
+
+	@Test
+	void setGradeScale_decimalOverlapAtSharedBoundaryIsRejected() {
+		AcademicPlan plan = newPlan();
+
+		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
+				List.of(entry(7.0, 7.5, "X", "Excelente", true), entry(7.5, 8.5, "Y", "Muy bien", true),
+						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true))))
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Overlap");
+	}
+
+	/**
+	 * Robustness check: {@link GradeScale#validateEntries} compares boundaries
+	 * with {@code BigDecimal.compareTo} (numeric, scale-insensitive), not
+	 * {@code equals} (scale-sensitive) — a trailing-zero boundary like
+	 * {@code "7.50"} must not be mistaken for a gap against an adjacent
+	 * {@code "7.6"}.
+	 */
+	@Test
+	void setGradeScale_toleratesTrailingZeroScaleDifferenceBetweenAdjacentEntries() {
+		AcademicPlan plan = newPlan();
+
+		GradeScale scale = plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
+				List.of(
+						new GradeScaleEntryData(new BigDecimal("7.0"), new BigDecimal("7.50"), "X", "Excelente", true),
+						new GradeScaleEntryData(new BigDecimal("7.6"), new BigDecimal("8.5"), "Y", "Muy bien", true),
+						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true)));
+
+		assertThat(scale.getEntries()).hasSize(4);
+	}
+
+	private static GradeScaleEntryData entry(double from, double to, String letter, String description, boolean passed) {
 		return new GradeScaleEntryData(BigDecimal.valueOf(from), BigDecimal.valueOf(to), letter, description, passed);
 	}
 

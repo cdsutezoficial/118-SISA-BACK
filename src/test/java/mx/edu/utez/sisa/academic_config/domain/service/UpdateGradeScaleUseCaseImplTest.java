@@ -75,7 +75,7 @@ class UpdateGradeScaleUseCaseImplTest {
 
 		GradeScaleResult result = useCase.updateGradeScale(new UpdateGradeScaleCommand(planId, scaleId,
 				classificationId, BigDecimal.valueOf(0), BigDecimal.valueOf(10),
-				List.of(entryCommand(0, 6, "NA", "No aprobado", false), entryCommand(7, 10, "AP", "Aprobado", true))));
+				List.of(entryCommand(0, 6.9, "NA", "No aprobado", false), entryCommand(7.0, 10, "AP", "Aprobado", true))));
 
 		assertThat(result.numericMax()).isEqualByComparingTo(BigDecimal.valueOf(10));
 		assertThat(result.entries()).hasSize(2);
@@ -167,7 +167,7 @@ class UpdateGradeScaleUseCaseImplTest {
 		verify(planRepository, never()).save(any());
 	}
 
-	private static GradeScaleEntryCommand entryCommand(int from, int to, String letter, String description,
+	private static GradeScaleEntryCommand entryCommand(double from, double to, String letter, String description,
 			boolean passed) {
 		return new GradeScaleEntryCommand(BigDecimal.valueOf(from), BigDecimal.valueOf(to), letter, description,
 				passed);
