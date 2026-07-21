@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicDivisionNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
@@ -12,12 +13,14 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionNameEx
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePeriodException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
@@ -118,6 +121,23 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleClassificationNotFound(ClassificationNotFoundException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(AcademicPeriodNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handlePeriodNotFound(AcademicPeriodNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DuplicatePeriodException.class)
+	public ResponseEntity<ErrorResponse> handlePeriodConflict(DuplicatePeriodException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidPeriodStatusTransitionException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPeriodStatusTransition(InvalidPeriodStatusTransitionException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {

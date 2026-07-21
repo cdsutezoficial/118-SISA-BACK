@@ -59,6 +59,13 @@ import java.time.Instant;
  * same verb-scoped reason as PUT), all four
  * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} — same pair as every other verb
  * on this endpoint. The aggregate's full CRUD is now covered.
+ * {@code /periods} (academic_config — fifth aggregate, a full standalone
+ * aggregate root like {@code /subject-classifications} rather than a
+ * child-of-another-aggregate like {@code GradeScale}) gets the identical
+ * GET/POST/PUT/PATCH four-matcher shape, same
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
+ * {@code /subject-classifications} matchers for the same one-line-future-change
+ * rationale.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -119,6 +126,11 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/subject-classifications/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/periods", "/periods/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/periods").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();
