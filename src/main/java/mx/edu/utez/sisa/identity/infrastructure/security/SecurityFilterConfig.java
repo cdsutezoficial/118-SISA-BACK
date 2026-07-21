@@ -66,6 +66,11 @@ import java.time.Instant;
  * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
  * {@code /subject-classifications} matchers for the same one-line-future-change
  * rationale.
+ * {@code /generations} (academic_config — sixth aggregate, plan:
+ * {@code docs/plans/2026-07-20-generation-group.md}) gets the identical
+ * GET/POST/PUT/PATCH four-matcher shape, same
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
+ * {@code /periods} matchers for the same one-line-future-change rationale.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -131,6 +136,12 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.POST, "/periods").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/generations", "/generations/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/generations").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/generations/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/generations/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();

@@ -6,21 +6,25 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicDivisionSta
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPeriodStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPlanStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicProgramStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGenerationStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeSubjectClassificationStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPeriodUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPeriodUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPeriodsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemovePlanLevelUseCase;
@@ -30,6 +34,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUse
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPeriodUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
@@ -38,6 +43,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionReposito
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
 import mx.edu.utez.sisa.academic_config.domain.port.out.SubjectClassificationRepository;
 import mx.edu.utez.sisa.academic_config.domain.service.AddPlanLevelUseCaseImpl;
@@ -46,22 +52,27 @@ import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionSta
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPeriodStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPlanStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ChangeGenerationStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeSubjectClassificationStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicPeriodUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateAcademicProgramUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreateGenerationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPeriodUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetGenerationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPeriodsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPlansUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ListGenerationsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListSubjectClassificationsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdateGenerationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemoveGradeScaleUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemovePlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemoveSubjectUseCaseImpl;
@@ -278,5 +289,32 @@ public class UseCaseConfig {
 	public ChangeAcademicPeriodStatusUseCase changeAcademicPeriodStatusUseCase(
 			AcademicPeriodRepository periodRepository) {
 		return new ChangeAcademicPeriodStatusUseCaseImpl(periodRepository);
+	}
+
+	@Bean
+	public CreateGenerationUseCase createGenerationUseCase(GenerationRepository generationRepository,
+			AcademicPlanRepository planRepository, AcademicPeriodRepository periodRepository) {
+		return new CreateGenerationUseCaseImpl(generationRepository, planRepository, periodRepository);
+	}
+
+	@Bean
+	public UpdateGenerationUseCase updateGenerationUseCase(GenerationRepository generationRepository,
+			AcademicPlanRepository planRepository, AcademicPeriodRepository periodRepository) {
+		return new UpdateGenerationUseCaseImpl(generationRepository, planRepository, periodRepository);
+	}
+
+	@Bean
+	public ListGenerationsUseCase listGenerationsUseCase(GenerationRepository generationRepository) {
+		return new ListGenerationsUseCaseImpl(generationRepository);
+	}
+
+	@Bean
+	public GetGenerationUseCase getGenerationUseCase(GenerationRepository generationRepository) {
+		return new GetGenerationUseCaseImpl(generationRepository);
+	}
+
+	@Bean
+	public ChangeGenerationStatusUseCase changeGenerationStatusUseCase(GenerationRepository generationRepository) {
+		return new ChangeGenerationStatusUseCaseImpl(generationRepository);
 	}
 }

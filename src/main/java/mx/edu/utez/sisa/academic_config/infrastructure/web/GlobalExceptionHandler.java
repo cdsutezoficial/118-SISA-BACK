@@ -17,15 +17,19 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePeriodExceptio
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.SubjectNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
@@ -137,6 +141,23 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidPeriodStatusTransitionException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidPeriodStatusTransition(InvalidPeriodStatusTransitionException ex,
 			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(GenerationNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleGenerationNotFound(GenerationNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DuplicateGenerationNumberException.class)
+	public ResponseEntity<ErrorResponse> handleGenerationConflict(DuplicateGenerationNumberException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler({ PlanNotFoundException.class, PeriodNotFoundException.class })
+	public ResponseEntity<ErrorResponse> handleGenerationBadRequest(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
