@@ -42,7 +42,7 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 		caller.assertCanOperate();
 
 		UserSearchCriteria criteria = new UserSearchCriteria(query.roleType(), query.status(), query.search(),
-				normalizePage(query.page()), normalizeSize(query.size()));
+				normalizePage(query.page()), normalizeSize(query.size()), query.divisionId());
 
 		UserSearchPage page = userRepository.search(criteria);
 

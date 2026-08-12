@@ -46,7 +46,8 @@ public class UserRepositoryAdapter implements UserRepository {
 	@Override
 	public UserSearchPage search(UserSearchCriteria criteria) {
 		PageRequest pageRequest = PageRequest.of(criteria.page(), criteria.size(), Sort.by(Sort.Direction.ASC, "username"));
-		Page<User> page = jpaRepository.search(criteria.roleType(), criteria.status(), criteria.search(), pageRequest);
+		Page<User> page = jpaRepository.search(criteria.roleType(), criteria.status(), criteria.search(),
+				criteria.divisionId(), pageRequest);
 
 		List<User> users = page.getContent();
 		List<UUID> personIds = users.stream().map(User::getPersonId).distinct().toList();

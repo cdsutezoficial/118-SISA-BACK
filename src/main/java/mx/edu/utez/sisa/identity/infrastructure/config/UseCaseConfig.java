@@ -3,9 +3,14 @@ package mx.edu.utez.sisa.identity.infrastructure.config;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.CreatePersonUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ListPersonsUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RevokeRoleUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
@@ -16,9 +21,14 @@ import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.domain.service.AssignRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.AuthenticateUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ChangePasswordUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.CreatePersonUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.CreateUserUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.GetUserUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.ListPersonsUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ListUsersUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RefreshAccessTokenUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.RevokeRoleUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.UnlockUserUseCaseImpl;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,10 +36,13 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * Composition root wiring the 5 use case interactors as Spring beans. The
+ * Composition root wiring the use case interactors as Spring beans. The
  * {@code XxxUseCaseImpl} classes are plain, framework-agnostic classes (no
  * stereotype annotations, per PR2/PR3 convention) so this is the only place
- * that constructs them with their out-port dependencies.
+ * that constructs them with their out-port dependencies. Extended by plan
+ * {@code docs/plans/2026-07-28-persons-and-user-management.md} with 5 more
+ * beans: {@code createPersonUseCase}, {@code listPersonsUseCase},
+ * {@code getUserUseCase}, {@code revokeRoleUseCase}, {@code unlockUserUseCase}.
  */
 @Configuration
 public class UseCaseConfig {
@@ -69,5 +82,31 @@ public class UseCaseConfig {
 	@Bean
 	public ListUsersUseCase listUsersUseCase(UserRepository userRepository, UserRoleRepository userRoleRepository) {
 		return new ListUsersUseCaseImpl(userRepository, userRoleRepository);
+	}
+
+	@Bean
+	public CreatePersonUseCase createPersonUseCase(UserRepository userRepository, PersonRepository personRepository) {
+		return new CreatePersonUseCaseImpl(userRepository, personRepository);
+	}
+
+	@Bean
+	public ListPersonsUseCase listPersonsUseCase(UserRepository userRepository, PersonRepository personRepository) {
+		return new ListPersonsUseCaseImpl(userRepository, personRepository);
+	}
+
+	@Bean
+	public GetUserUseCase getUserUseCase(UserRepository userRepository, PersonRepository personRepository,
+			UserRoleRepository userRoleRepository) {
+		return new GetUserUseCaseImpl(userRepository, personRepository, userRoleRepository);
+	}
+
+	@Bean
+	public RevokeRoleUseCase revokeRoleUseCase(UserRepository userRepository, UserRoleRepository userRoleRepository) {
+		return new RevokeRoleUseCaseImpl(userRepository, userRoleRepository);
+	}
+
+	@Bean
+	public UnlockUserUseCase unlockUserUseCase(UserRepository userRepository) {
+		return new UnlockUserUseCaseImpl(userRepository);
 	}
 }

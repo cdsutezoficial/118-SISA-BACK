@@ -1,0 +1,76 @@
+schema: spec-driven
+
+context: |
+  Spring Boot 3.5.16 + Java 21 backend (mx.edu.utez.sisa, artifact "core").
+  Monolito Modular + Hexagonal (Ports & Adapters), one package per bounded
+  context (identity, academic_config, admission, enrollment, grades,
+  school_control, faculty, finance, graduation). See project.md.
+  Bare skeleton today — only CoreApplication + default contextLoads test.
+
+strict_tdd: true
+
+testing:
+  test_runner: "./mvnw test"
+  framework: "JUnit 5 (spring-boot-starter-test: JUnit Jupiter, Mockito, AssertJ, Spring Test)"
+  test_layers:
+    unit: true
+    integration: true # spring-boot-starter-test includes @SpringBootTest / WebApplicationFactory-equivalent slice tests
+    e2e: false
+  coverage: false # no jacoco/coverage plugin in pom.xml yet
+  quality_tools:
+    linter: none # no checkstyle/spotless configured
+    type_checker: "javac (compiler plugin, release 21)"
+    formatter: none
+  build_command: "./mvnw clean package"
+  dev_command: "./mvnw spring-boot:run"
+  known_issue: >
+    Default JAVA_HOME on this machine resolves to Corretto 17, but pom.xml
+    requires Java 21 (release 21). `./mvnw test`/`package` FAIL unless
+    JAVA_HOME points to a JDK 21 install (verified working with
+    C:/Users/JoseNarvaez/.jdks/corretto-21.0.10). Confirm JAVA_HOME before
+    running build/test commands in apply/verify phases.
+
+phases:
+  proposal: required
+  spec: required
+  design: required # hexagonal module boundaries + port contracts should be designed before tasks
+  tasks: required
+  apply: required
+  verify: required
+  archive: required
+
+apply:
+  tdd: true # RED-GREEN-REFACTOR — Strict TDD Mode is active
+  test_command: "./mvnw test"
+
+verify:
+  test_command: "./mvnw test"
+  build_command: "./mvnw clean package"
+  coverage_threshold: 0 # no coverage tooling yet; revisit once jacoco is added
+
+rules:
+  proposal:
+    - Identify which bounded context module(s) the change touches (see project.md Módulos table)
+    - Include rollback plan for risky/schema changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Cross-reference business rules (RNs) from 118-SISA-CLAUDE requirements docs when applicable
+  design:
+    - Follow the hexagonal layering: domain/model, domain/port/in, domain/port/out, domain/service, application, infrastructure/persistence, infrastructure/web, infrastructure/external, shared
+    - One XxxUseCase class implements one XxxPort (in) interface
+    - Controllers are thin adapters — no business logic
+    - Document cross-module communication via query ports or Spring Application Events (never direct repository access across modules)
+  tasks:
+    - Group by phase/module, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Strict TDD: each implementation task pairs with a preceding failing-test task
+  apply:
+    - Follow existing code patterns once established; package root mx.edu.utez.sisa.{module}
+    - Code (entities, methods, variables, comments) in English; documentation in Spanish per 118-SISA-CLAUDE convention
+    - Verify JAVA_HOME resolves to a JDK 21 before running ./mvnw test/package (see testing.known_issue)
+  verify:
+    - Run ./mvnw test and ./mvnw clean package; both must succeed
+    - Flag any use of package root mx.utez.sisa.* (old, incorrect) vs mx.edu.utez.sisa.* (correct, matches pom.xml groupId)
+  archive:
+    - Warn before merging destructive deltas

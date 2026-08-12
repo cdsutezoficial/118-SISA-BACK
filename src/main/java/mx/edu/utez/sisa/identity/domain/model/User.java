@@ -131,6 +131,22 @@ public class User {
 		this.updatedAt = Instant.now();
 	}
 
+	/**
+	 * Reverses an account lock by an ADMIN (plan:
+	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} —
+	 * {@code UnlockUserUseCase}): resets {@code status} to {@code ACTIVE} and
+	 * {@code failedLoginAttempts} back to zero. Idempotent — calling on an
+	 * already-{@code ACTIVE} account still ends in the same state, same
+	 * unconditional-assignment convention as {@code Generation#activate}/
+	 * {@code Group#open} in {@code academic_config} (no guard, the repeated
+	 * assignment is itself the no-op).
+	 */
+	public void unlock() {
+		this.status = UserStatus.ACTIVE;
+		this.failedLoginAttempts = 0;
+		this.updatedAt = Instant.now();
+	}
+
 	public UUID getId() {
 		return id;
 	}

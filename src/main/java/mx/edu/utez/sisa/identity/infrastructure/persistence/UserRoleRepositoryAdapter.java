@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -42,5 +43,15 @@ public class UserRoleRepositoryAdapter implements UserRoleRepository {
 			return List.of();
 		}
 		return jpaRepository.findByUserIdIn(userIds);
+	}
+
+	@Override
+	public Optional<UserRole> findById(UUID id) {
+		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public void delete(UserRole userRole) {
+		jpaRepository.delete(userRole);
 	}
 }

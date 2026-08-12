@@ -4,12 +4,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
+import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -111,6 +114,30 @@ class GlobalExceptionHandlerTest {
 				request);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
+	void userRoleNotFoundMapsTo404() {
+		ResponseEntity<ErrorResponse> response = handler
+				.handleUserNotFound(new UserRoleNotFoundException("role not found"), request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
+	void duplicateCurpMapsTo409() {
+		ResponseEntity<ErrorResponse> response = handler.handleConflict(new DuplicateCurpException("duplicate curp"),
+				request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+	}
+
+	@Test
+	void duplicateInstitutionalEmailMapsTo409() {
+		ResponseEntity<ErrorResponse> response = handler
+				.handleConflict(new DuplicateInstitutionalEmailException("duplicate email"), request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 	}
 
 	@Test

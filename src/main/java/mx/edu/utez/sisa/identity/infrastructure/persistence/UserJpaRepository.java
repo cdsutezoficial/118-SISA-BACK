@@ -28,12 +28,22 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 	 * holding several matching roles is still counted and paginated exactly
 	 * once (a JOIN across the one-to-many UserRole relation would duplicate
 	 * that user's row per matching role and break both the total count and
-	 * the page boundaries). The free-text {@code search} filter matches
-	 * {@code username} directly or, via a second {@code EXISTS} subquery,
-	 * against the linked {@code Person}'s individual name fields or their
-	 * concatenated full name. All three filters are optional: the
-	 * {@code (:param IS NULL OR ...)} pattern short-circuits when the caller
-	 * omits that filter.
+	 * the page boundaries). {@code divisionId} is an additive condition
+	 * inside that SAME {@code roleType} EXISTS — not a separate EXISTS of its
+	 * own — so "role X scoped to division Y" requires ONE matching
+	 * {@code UserRole} row satisfying both, rather than two independent
+	 * roles. Because it lives inside the {@code roleType}-gated EXISTS,
+	 * {@code divisionId} is a permissive additive filter that only takes
+	 * effect combined with {@code roleType}: passing it alone, without
+	 * {@code roleType}, has no effect (the outer {@code :roleType IS NULL OR}
+	 * short-circuits before the EXISTS — and thus before {@code divisionId}
+	 * — is ever evaluated), matching the endpoint's contract that
+	 * {@code divisionId} is not validated as "requires role to also be set".
+	 * The free-text {@code search} filter matches {@code username} directly
+	 * or, via a second {@code EXISTS} subquery, against the linked
+	 * {@code Person}'s individual name fields or their concatenated full
+	 * name. All filters are optional: the {@code (:param IS NULL OR ...)}
+	 * pattern short-circuits when the caller omits that filter.
 	 *
 	 * <p>An explicit {@code countQuery} is supplied because Spring Data's
 	 * automatic count-query derivation (stripping the SELECT/ORDER BY from
@@ -43,7 +53,8 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 	@Query(value = """
 			SELECT u FROM User u
 			WHERE (:roleType IS NULL OR EXISTS (
-			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType))
+			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType
+			          AND (:divisionId IS NULL OR ur.divisionId = :divisionId)))
 			  AND (:status IS NULL OR u.status = :status)
 			  AND (:search IS NULL
 			       OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -58,7 +69,8 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 			countQuery = """
 			SELECT COUNT(u) FROM User u
 			WHERE (:roleType IS NULL OR EXISTS (
-			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType))
+			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType
+			          AND (:divisionId IS NULL OR ur.divisionId = :divisionId)))
 			  AND (:status IS NULL OR u.status = :status)
 			  AND (:search IS NULL
 			       OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -71,5 +83,5 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 			                   LIKE LOWER(CONCAT('%', :search, '%')))))
 			""")
 	Page<User> search(@Param("roleType") RoleType roleType, @Param("status") UserStatus status,
-			@Param("search") String search, Pageable pageable);
+			@Param("search") String search, @Param("divisionId") UUID divisionId, Pageable pageable);
 }

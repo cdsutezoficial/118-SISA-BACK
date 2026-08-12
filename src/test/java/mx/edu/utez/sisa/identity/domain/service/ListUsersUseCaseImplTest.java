@@ -59,7 +59,7 @@ class ListUsersUseCaseImplTest {
 	void listUsers_callerNotFoundThrowsUserNotFound() {
 		when(userRepository.findById(callerId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20)))
+		assertThatThrownBy(() -> useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null)))
 				.isInstanceOf(UserNotFoundException.class);
 	}
 
@@ -71,7 +71,7 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.findById(pendingCallerId)).thenReturn(Optional.of(pendingCaller));
 
 		assertThatThrownBy(
-				() -> useCase.listUsers(new ListUsersQuery(pendingCallerId, null, null, null, 0, 20)))
+				() -> useCase.listUsers(new ListUsersQuery(pendingCallerId, null, null, null, 0, 20, null)))
 						.isInstanceOf(MustChangePasswordException.class);
 	}
 
@@ -94,7 +94,7 @@ class ListUsersUseCaseImplTest {
 				new UserRole(targetUserId, RoleType.DOCENTE, null),
 				new UserRole(targetUserId, RoleType.GESTOR_ACADEMICO, divisionId)));
 
-		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20));
+		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null));
 
 		assertThat(result.users()).hasSize(1);
 		UserSummary summary = result.users().get(0);
@@ -125,7 +125,7 @@ class ListUsersUseCaseImplTest {
 				.thenReturn(new UserSearchPage(List.of(new UserWithPerson(target, person)), 1L, 1));
 		when(userRoleRepository.findByUserIdIn(List.of(targetUserId))).thenReturn(List.of());
 
-		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20));
+		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null));
 
 		assertThat(result.users().get(0).fullName()).isEqualTo("Juan Pérez");
 		assertThat(result.users().get(0).roles()).isEmpty();
@@ -137,7 +137,9 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
 		when(userRoleRepository.findByUserIdIn(List.of())).thenReturn(List.of());
 
-		useCase.listUsers(new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION, UserStatus.LOCKED, "ana", 2, 15));
+		UUID divisionId = UUID.randomUUID();
+		useCase.listUsers(
+				new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION, UserStatus.LOCKED, "ana", 2, 15, divisionId));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());
@@ -147,6 +149,7 @@ class ListUsersUseCaseImplTest {
 		assertThat(criteria.search()).isEqualTo("ana");
 		assertThat(criteria.page()).isEqualTo(2);
 		assertThat(criteria.size()).isEqualTo(15);
+		assertThat(criteria.divisionId()).isEqualTo(divisionId);
 	}
 
 	@Test
@@ -154,7 +157,7 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
 
-		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, -5, 20));
+		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, -5, 20, null));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());
@@ -166,7 +169,7 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
 
-		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 0));
+		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 0, null));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());
@@ -178,7 +181,7 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
 
-		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 5000));
+		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 5000, null));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());

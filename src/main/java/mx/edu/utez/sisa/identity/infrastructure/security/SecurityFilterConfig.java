@@ -71,6 +71,88 @@ import java.time.Instant;
  * GET/POST/PUT/PATCH four-matcher shape, same
  * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair, placed right after the
  * {@code /periods} matchers for the same one-line-future-change rationale.
+ * {@code /groups} (academic_config — seventh aggregate, same plan, "Group —
+ * diseño técnico resuelto (2026-07-23)") gets the identical GET/POST/PUT/PATCH
+ * four-matcher shape, same {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair,
+ * placed right after the {@code /generations} matchers for the same
+ * one-line-future-change rationale.
+ * {@code /persons} (identity, plan:
+ * {@code docs/plans/2026-07-28-persons-and-user-management.md}) gets a GET
+ * matcher ({@code /persons}, {@code /persons/**}) granting
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} (same pair as {@code GET /users})
+ * and a POST matcher granting {@code ADMIN} only (same level as
+ * {@code POST /users}). The existing {@code GET /users} matcher's pattern
+ * list is extended to also cover {@code /users/**} so
+ * {@code GET /users/{id}} (the new detail endpoint from the same plan)
+ * shares the ADMIN/SERVICIOS_ESCOLARES pair instead of falling through to
+ * the ADMIN-only blanket {@code /users/**} rule below it — the three other
+ * new endpoints on that plan ({@code DELETE .../roles/{userRoleId}},
+ * {@code PATCH .../unlock}, plus the existing {@code POST} endpoints) are
+ * NOT GET, so they still fall through to the ADMIN-only blanket rule
+ * unchanged.
+ * {@code /payment-concepts} (academic_config — eighth aggregate, Fase 1 of 4
+ * of "Conceptos de Pago", plan: {@code docs/plans/2026-07-28-payment-concept.md})
+ * gets the identical GET/POST/PUT/PATCH four-matcher shape as every prior
+ * aggregate, but grants {@code ADMIN}/{@code PERSONAL_FINANZAS} instead of
+ * the {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair every other
+ * {@code academic_config} matcher above uses — deliberately, not an
+ * oversight. RF-PAG-001 states the requirement as "Como finanzas quiero
+ * gestionar...", and the domain design types
+ * {@code PaymentBenefit.approvedBy} explicitly as
+ * {@code FK -> User (PERSONAL_FINANZAS)}: this catalog is administered by
+ * Finanzas, not Servicios Escolares, even though the aggregate itself lives
+ * in the {@code academic_config} bounded context. Placed right after the
+ * {@code /persons} matchers.
+ * {@code /payment-concepts/{conceptId}/rates} (academic_config — Fase 2 of 4
+ * of "Conceptos de Pago", plan: {@code docs/plans/2026-07-28-payment-rate.md})
+ * is nested under {@code /payment-concepts}, same {@code ADMIN}/
+ * {@code PERSONAL_FINANZAS} pair. The existing {@code GET /payment-concepts}
+ * matcher already covers it (its pattern list includes the wildcarded
+ * {@code "/payment-concepts/**"}), so no new GET matcher is needed. The
+ * existing {@code POST /payment-concepts} matcher, however, is an EXACT
+ * pattern with no wildcard (unlike GET/PUT/PATCH on this endpoint) — it does
+ * NOT match the nested {@code POST .../rates} path, so a dedicated
+ * {@code POST "/payment-concepts/{conceptId}/rates"} matcher is added right
+ * after it.
+ * There is no PUT/PATCH/DELETE on {@code PaymentRate} (no Update/Delete by
+ * design — plan section 4, append-only history), so no matcher is added for
+ * those verbs.
+ * {@code /program-admission-configs} (academic_config — tenth aggregate,
+ * plan: {@code docs/plans/2026-07-28-program-admission-config.md}) gets the
+ * identical GET/POST/PUT/PATCH four-matcher shape as every prior aggregate,
+ * back to the {@code ADMIN}/{@code SERVICIOS_ESCOLARES} pair (NOT
+ * {@code PERSONAL_FINANZAS} — PO-confirmed 2026-07-28: unlike
+ * {@code PaymentConcept}, there is no role in the 11-role catalog dedicated
+ * to "admisión", so this aggregate follows the module's default pair even
+ * though its future consumer is the Admisión module). Placed right after the
+ * {@code /payment-concepts/.../rates} matcher.
+ * {@code /outreach-channels} (eleventh matcher block, but the FIRST from the
+ * NEW {@code admission} bounded context — plan:
+ * {@code docs/plans/2026-07-28-outreach-channel.md} — rather than another
+ * {@code academic_config} aggregate) gets the identical GET/POST/PUT/PATCH
+ * four-matcher shape as every prior aggregate, {@code ADMIN}/
+ * {@code SERVICIOS_ESCOLARES} pair (same rationale as
+ * {@code /program-admission-configs}: no role in the 11-role catalog is
+ * dedicated to "admisión"). Security remains centralized in this file
+ * regardless of which bounded context owns the resource — {@code identity}
+ * already matches its own {@code /users}, and {@code academic_config}'s ten
+ * aggregates live here too, so a brand-new bounded context is no exception.
+ * Placed right after the {@code /program-admission-configs} matchers.
+ * {@code /high-school-types} ({@code admission}'s second aggregate, Fase A of
+ * plan: {@code docs/plans/2026-07-28-inegi-catalogs-and-highschooltype.md})
+ * gets the identical GET/POST/PUT/PATCH four-matcher shape as
+ * {@code /outreach-channels}, same {@code ADMIN}/{@code SERVICIOS_ESCOLARES}
+ * pair, placed right after the {@code /outreach-channels} matchers.
+ * {@code /states} and {@code /municipalities} (shared-kernel INEGI reference
+ * catalogs, same plan) are deliberately DIFFERENT from every matcher above:
+ * a single GET matcher each, {@code .authenticated()} with NO role
+ * restriction — these are read-only catalogs any authenticated user's form
+ * may need to query (e.g. a future candidate registration screen), and the
+ * domain doc gives no business reason to gate them by role. There is no
+ * POST/PUT/PATCH matcher for either — both are closed, seed-once catalogs
+ * with no write endpoints at all (see {@code StateController}/
+ * {@code MunicipalityController}). Placed right after the
+ * {@code /high-school-types} matchers.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  */
@@ -100,7 +182,8 @@ public class SecurityFilterConfig {
 				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/auth/login", "/auth/refresh", "/h2-console/**").permitAll()
-						.requestMatchers(HttpMethod.GET, "/users").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers("/users/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/divisions", "/divisions/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
@@ -142,6 +225,50 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.PUT, "/generations/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/generations/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/groups", "/groups/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/groups").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/groups/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/groups/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/persons", "/persons/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/persons").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.GET, "/payment-concepts", "/payment-concepts/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/payment-concepts")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PUT, "/payment-concepts/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PATCH, "/payment-concepts/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/payment-concepts/*/rates")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/program-admission-configs")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/program-admission-configs/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/program-admission-configs/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/outreach-channels", "/outreach-channels/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/outreach-channels")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/outreach-channels/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/outreach-channels/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/high-school-types", "/high-school-types/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/high-school-types")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/high-school-types/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PATCH, "/high-school-types/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/states").authenticated()
+						.requestMatchers(HttpMethod.GET, "/municipalities").authenticated()
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();

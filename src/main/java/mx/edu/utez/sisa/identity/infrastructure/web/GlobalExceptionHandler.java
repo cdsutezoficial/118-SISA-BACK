@@ -3,16 +3,20 @@ package mx.edu.utez.sisa.identity.infrastructure.web;
 import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
+import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -27,7 +31,13 @@ import java.util.stream.Collectors;
  * {@code @PathVariable} values (e.g. non-UUID {@code userId}) and a
  * catch-all for unexpected exceptions, so every error response uses the
  * same {@link ErrorResponse} envelope instead of Spring's default whitelabel
- * page.
+ * page. Extended by plan
+ * {@code docs/plans/2026-07-28-persons-and-user-management.md} with 3 more
+ * mappings: {@code DuplicateCurpException}/{@code DuplicateInstitutionalEmailException}
+ * (409, grouped with the existing conflict handler) and
+ * {@code UserRoleNotFoundException} (404, grouped with
+ * {@code UserNotFoundException} — both are "the referenced id does not
+ * resolve to what the caller expected").
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -66,16 +76,26 @@ public class GlobalExceptionHandler {
 	/**
 	 * {@code PersonAlreadyHasUserException} and
 	 * {@code MissingInstitutionalEmailException} share the 409 mapping per
-	 * design.md's table.
+	 * design.md's table; {@code DuplicateCurpException}/
+	 * {@code DuplicateInstitutionalEmailException} (plan:
+	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.1)
+	 * join the same group, same 409 conflict semantics.
 	 */
 	@ExceptionHandler({ mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException.class,
-			mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException.class })
+			mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException.class,
+			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class })
 	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}
 
-	@ExceptionHandler(UserNotFoundException.class)
-	public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException ex, HttpServletRequest request) {
+	/**
+	 * {@code UserRoleNotFoundException} (plan:
+	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.4)
+	 * shares the 404 mapping with {@code UserNotFoundException} — both mean
+	 * "the referenced id does not resolve to what the caller expected".
+	 */
+	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class })
+	public ResponseEntity<ErrorResponse> handleUserNotFound(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
 	}
 
@@ -93,6 +113,21 @@ public class GlobalExceptionHandler {
 			HttpServletRequest request) {
 		String message = "%s: invalid value '%s'".formatted(ex.getName(), ex.getValue());
 		return build(HttpStatus.BAD_REQUEST, message, request);
+	}
+
+	/**
+	 * A required {@code @RequestParam} with no default value was omitted
+	 * (first real case: {@code GET /municipalities}'s required {@code stateId}
+	 * — plan: {@code docs/plans/2026-07-28-inegi-catalogs-and-highschooltype.md}).
+	 * Without this handler the request falls through to
+	 * {@link #handleUnexpected}, returning a misleading 500 for what is really
+	 * a 400-level client mistake — same "malformed request, not an app
+	 * exception" rationale as {@link #handleTypeMismatch}.
+	 */
+	@ExceptionHandler(MissingServletRequestParameterException.class)
+	public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
 	/**

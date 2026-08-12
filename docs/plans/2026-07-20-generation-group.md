@@ -110,3 +110,47 @@ No hay pantalla de "Generaciones" especificada en ningún lado. Antes de cablear
 **Resultados de tests**: baseline 366 unit / 143 IT -> final **416 unit / 174 IT**, 0 failures/errors (`./mvnw verify`).
 
 **Pendiente para la próxima sesión (Group)**: implementar `Group` (aggregate root), `Shift.java` en `shared/model/` (MORNING, AFTERNOON, MIXED — primer consumidor), y resolver cómo validar `planLevelId` sin repo propio (hoy solo accesible vía `AcademicPlan.getLevels()`).
+
+### Group — diseño técnico resuelto (2026-07-23), pendiente de implementar
+
+**Validación de `planLevelId` sin repo propio**: no requiere ningún componente nuevo. `AcademicPlan.hasLevel(UUID levelId)` ya existe (usado hoy de forma intra-aggregate por `UpdateAcademicPlanUseCaseImpl` para `socialServiceMinLevelId`) y es público — reutilizable cross-aggregate sin romper el encapsulamiento de `PlanLevel`. `PlanLevelNotFoundException` (404) también ya existe en `academic_config/shared/exception/` y su Javadoc ya cubre el caso "el id pertenece a un plan distinto" — exactamente el escenario de `Group`.
+
+**Flujo en `CreateGroupUseCaseImpl`/`UpdateGroupUseCaseImpl`**:
+1. `GenerationRepository.findById(generationId)` → si no existe, **nueva** `GenerationReferenceNotFoundException` (400). No se reutiliza `GenerationNotFoundException` (esa es el 404 de `GET /generations/{id}`) — mismo criterio de separación 400-vs-404 ya usado para `PlanNotFoundException`/`AcademicPlanNotFoundException` y `PeriodNotFoundException`/`AcademicPeriodNotFoundException`.
+2. `Group.programId` se copia directo de `generation.getProgramId()` (ya denormalizado en `Generation`) — **simplificación respecto al plan original**: no hace falta resolver `planId → AcademicPlan.programId` para esto, solo para el paso 3.
+3. `AcademicPlanRepository.findById(generation.getPlanId())` → `plan.hasLevel(planLevelId)` → si `false`, reutilizar `PlanLevelNotFoundException` (404, ya existente, sin cambios).
+4. `AcademicPeriodRepository.findById(periodId)` → si no existe, reutilizar `PeriodNotFoundException` (400, ya existente de Generation).
+
+**Resultado**: cero cambios de schema, cero método nuevo en `AcademicPlanRepository`, una sola excepción nueva (`GenerationReferenceNotFoundException`). Todo lo demás (creación de `Shift.java`, endpoints CRUD, toggle OPEN/CLOSED, tests) sigue el mismo patrón ya usado en `Generation`/`AcademicPeriod`.
+
+### Group — implementado (2026-07-27)
+
+**Estado**: `Group` completo end-to-end (dominio, casos de uso, persistencia, web, seguridad, tests), incluyendo `Shift.java`. El diseño técnico ya estaba resuelto en la sección anterior — esta sesión lo implementó tal cual, sin desviaciones de fondo.
+
+**Decisiones técnicas durante la implementación**:
+
+1. **Nombre de tabla `"groups"` (plural), no `"group"`**: `GROUP` es palabra reservada SQL (usada por `GROUP BY`) en H2/ANSI SQL. Mismo tipo de gotcha que `AcademicPeriod`'s columna `period_year` (ahí se renombró la *columna*; acá, al ser el identificador de la *tabla* mismo, se renombró a su plural en inglés en vez de forzar el quoting del identificador reservado en cada query). Documentado en el javadoc de `Group.java`.
+2. **`programId` se copia directo de `generation.getProgramId()`**, sin pasar por `AcademicPlanRepository` — tal como ya resolvía la sección de diseño técnico, más simple que el propio `Generation` porque `Generation` ya denormaliza `programId` desde su `planId`.
+3. **`AcademicPlan.hasLevel(UUID)` se reutilizó sin cambios** para validar `planLevelId` cross-aggregate — cero método nuevo, cero cambio de encapsulamiento. `PlanLevelNotFoundException` (404, ya existente) cubre tanto "el id no existe" como "el id pertenece a otro plan", exactamente como su Javadoc ya documentaba.
+4. **`CreateGenerationUseCaseImpl.requirePlan`/`requirePeriod` se reutilizaron como métodos estáticos** desde `CreateGroupUseCaseImpl`, en vez de duplicar la lógica de validación de `AcademicPlanRepository`/`AcademicPeriodRepository` — mismo patrón de reutilización que ya usaba `UpdateGenerationUseCaseImpl` con los helpers de `CreateGenerationUseCaseImpl`.
+5. **`UpdateGroupUseCaseImpl` re-resuelve `programId` en cada `PUT`**, no lo deja intacto — a diferencia de otros aggregates donde un campo denormalizado se fija en la creación, un `Group` puede moverse a otra `generationId` en una actualización, y su `programId` denormalizado debe reflejar siempre la generación actualmente asociada.
+6. **`Group.code` NO tiene regla de unicidad** — el diseño técnico resuelto (2026-07-23) no la especificaba, y no se inventó ninguna (a diferencia de `Generation.number`, que sí es único por programa).
+7. **`ListGroupsUseCase` agrega el filtro `generationId`** además de `status`/`search`/`programId` (que ya tenía `Generation`) — `Group` es el único aggregate de este módulo con FK propia a otro aggregate del mismo módulo que además tiene sentido filtrar, a diferencia de `Generation` que no filtra por `planId`.
+
+**Archivos creados**:
+- Shared kernel: `shared/model/Shift.java` (MORNING, AFTERNOON, MIXED).
+- Dominio: `domain/model/Group.java`, `domain/model/GroupStatus.java`.
+- Puertos-in: `CreateGroupUseCase`, `UpdateGroupUseCase`, `GetGroupUseCase`, `ListGroupsUseCase`, `ChangeGroupStatusUseCase` (+ 5 impls en `domain/service/`).
+- Puerto-out: `domain/port/out/GroupRepository.java`.
+- Excepciones: `GenerationReferenceNotFoundException` (400, nueva), `GroupNotFoundException` (404, nueva). `PlanLevelNotFoundException`/`PeriodNotFoundException` reutilizadas sin cambios.
+- Persistencia: `infrastructure/persistence/GroupJpaRepository.java`, `GroupRepositoryAdapter.java`.
+- Web: `infrastructure/web/GroupController.java` + 6 DTOs (`GroupResponse`, `GroupListItemResponse`, `GroupListResponse`, `CreateGroupRequest`, `UpdateGroupRequest`, `ChangeGroupStatusRequest`).
+- Tests: `GroupTest` (9), `CreateGroupUseCaseImplTest` (6), `UpdateGroupUseCaseImplTest` (5), `GetGroupUseCaseImplTest` (2), `ListGroupsUseCaseImplTest` (5), `ChangeGroupStatusUseCaseImplTest` (3), `GroupRepositoryAdapterSearchIT` (9), `GroupControllerTest` (14), `GroupControllerIT` (20) — 73 tests nuevos en total (44 unit / 29 IT).
+
+**Archivos modificados**: `GlobalExceptionHandler.java` (2 handlers nuevos: `GenerationReferenceNotFoundException` → 400, `GroupNotFoundException` → 404), `UseCaseConfig.java` (5 beans nuevos), `identity/infrastructure/security/SecurityFilterConfig.java` (4 matchers `/groups` por verbo, mismo par ADMIN/SERVICIOS_ESCOLARES).
+
+**Resultados de tests**: la sesión anterior reportó baseline 416 unit / 174 IT tras `Generation`; al arrancar esta sesión el conteo real ya era **447 unit / 174 IT** (el número de IT coincidía exactamente, el de unit estaba desactualizado en la doc por trabajo intermedio no relacionado con este plan — no se investigó más a fondo por ser irrelevante para Group). Final tras `Group`: **491 unit / 203 IT**, 0 failures/errors (`./mvnw verify`).
+
+**Gotcha de entorno**: `JAVA_HOME` del shell apuntaba a Corretto 17 (release 21 no soportado por el compilador); el JDK 21 correcto vivía en un perfil de usuario distinto (`C:\Users\JoseNarvaez\.jdks\corretto-21.0.10`, con mayúscula/sin espacio, distinto del perfil `Jose Narvaez` usado por defecto). Se resolvió pasando `JAVA_HOME` explícito a cada invocación de `./mvnw`.
+
+**Gotcha de tests IT**: `GroupControllerIT` inicialmente reusaba el año 2026 para sus periodos de prueba, con un contador estático propio arrancando en 1 — igual que `GenerationControllerIT`. Como ambas clases IT comparten la misma instancia H2 vía el mismo contexto `@SpringBootTest`, y `AcademicPeriod` tiene unicidad `(year, periodNumber)` global (no por test), esto colisionaba con los periodos que `GenerationControllerIT` ya había insertado para el año 2026. Solución: `GroupControllerIT` usa el año 2027 para sus propios periodos.

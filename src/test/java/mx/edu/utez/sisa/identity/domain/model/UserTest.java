@@ -71,6 +71,30 @@ class UserTest {
 		assertThat(user.getLastLoginAt()).isNotNull();
 	}
 
+	@Test
+	void unlock_resetsLockedAccountToActiveWithZeroAttempts() {
+		User user = newActiveUser();
+		user.registerFailedLogin();
+		user.registerFailedLogin();
+		user.registerFailedLogin();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.LOCKED);
+
+		user.unlock();
+
+		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		assertThat(user.getFailedLoginAttempts()).isZero();
+	}
+
+	@Test
+	void unlock_isIdempotentOnAlreadyActiveAccount() {
+		User user = newActiveUser();
+
+		user.unlock();
+
+		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		assertThat(user.getFailedLoginAttempts()).isZero();
+	}
+
 	private User newActiveUser() {
 		return new User(UUID.randomUUID(), "jane.doe@utez.edu.mx", "hashed-pw");
 	}

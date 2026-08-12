@@ -8,15 +8,25 @@ import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleResu
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase.CreateUserCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase.UserCreationResult;
+import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase.GetUserQuery;
+import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase.UserDetailResult;
+import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase.UserRoleDetail;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase.ListUsersQuery;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase.ListUsersResult;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase.UserRoleSummary;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase.UserSummary;
+import mx.edu.utez.sisa.identity.domain.port.in.RevokeRoleUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RevokeRoleUseCase.RevokeRoleCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserResult;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
+import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.model.RoleType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +46,9 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +76,15 @@ class UserControllerTest {
 
 	@MockitoBean
 	private ListUsersUseCase listUsersUseCase;
+
+	@MockitoBean
+	private GetUserUseCase getUserUseCase;
+
+	@MockitoBean
+	private RevokeRoleUseCase revokeRoleUseCase;
+
+	@MockitoBean
+	private UnlockUserUseCase unlockUserUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -152,10 +173,10 @@ class UserControllerTest {
 		UserSummary summary = new UserSummary(userId, personId, "Ana García López", "ana.garcia@utez.edu.mx",
 				List.of(new UserRoleSummary(RoleType.DIRECTOR_DIVISION, divisionId)), UserStatus.ACTIVE, null);
 		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION, UserStatus.ACTIVE,
-				"ana", 0, 20))).thenReturn(new ListUsersResult(List.of(summary), 1L, 1, 0, 20));
+				"ana", 0, 20, divisionId))).thenReturn(new ListUsersResult(List.of(summary), 1L, 1, 0, 20));
 
 		mockMvc.perform(get("/users").param("role", "DIRECTOR_DIVISION").param("status", "ACTIVE")
-				.param("search", "ana"))
+				.param("search", "ana").param("divisionId", divisionId.toString()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].userId").value(userId.toString()))
 				.andExpect(jsonPath("$.items[0].fullName").value("Ana García López"))
@@ -164,16 +185,31 @@ class UserControllerTest {
 				.andExpect(jsonPath("$.totalPages").value(1))
 				.andExpect(jsonPath("$.page").value(0))
 				.andExpect(jsonPath("$.size").value(20));
+
+		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION,
+				UserStatus.ACTIVE, "ana", 0, 20, divisionId));
 	}
 
 	@Test
 	void listUsersDefaultsPageAndSizeWhenOmitted() throws Exception {
-		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20)))
+		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null)))
 				.thenReturn(new ListUsersResult(List.of(), 0L, 0, 0, 20));
 
 		mockMvc.perform(get("/users")).andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
 
-		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20));
+		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null));
+	}
+
+	@Test
+	void listUsersPassesDivisionIdQueryParamThroughWithoutRole() throws Exception {
+		UUID divisionId = UUID.randomUUID();
+		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, divisionId)))
+				.thenReturn(new ListUsersResult(List.of(), 0L, 0, 0, 20));
+
+		mockMvc.perform(get("/users").param("divisionId", divisionId.toString()))
+				.andExpect(status().isOk());
+
+		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, divisionId));
 	}
 
 	@Test
@@ -186,6 +222,69 @@ class UserControllerTest {
 	@Test
 	void listUsersWithInvalidRoleQueryParamReturns400() throws Exception {
 		mockMvc.perform(get("/users").param("role", "NOT_A_ROLE")).andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void getUserReturns200WithFullDetailIncludingUserRoleIds() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID personId = UUID.randomUUID();
+		UUID divisionId = UUID.randomUUID();
+		UUID userRoleId = UUID.randomUUID();
+		UserDetailResult result = new UserDetailResult(userId, personId, "Ana García López", "ana.garcia@utez.edu.mx",
+				UserStatus.ACTIVE, false, null, java.time.Instant.now(),
+				List.of(new UserRoleDetail(userRoleId, RoleType.DIRECTOR_DIVISION, divisionId)));
+		when(getUserUseCase.getUser(new GetUserQuery(callerId, userId))).thenReturn(result);
+
+		mockMvc.perform(get("/users/" + userId)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.userId").value(userId.toString()))
+				.andExpect(jsonPath("$.fullName").value("Ana García López"))
+				.andExpect(jsonPath("$.roles[0].userRoleId").value(userRoleId.toString()))
+				.andExpect(jsonPath("$.roles[0].roleType").value("DIRECTOR_DIVISION"));
+	}
+
+	@Test
+	void getUserByMustChangePasswordCallerReturns403() throws Exception {
+		when(getUserUseCase.getUser(any())).thenThrow(new MustChangePasswordException("must change"));
+
+		mockMvc.perform(get("/users/" + UUID.randomUUID())).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void revokeRoleReturns204() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID userRoleId = UUID.randomUUID();
+
+		mockMvc.perform(delete("/users/" + userId + "/roles/" + userRoleId)).andExpect(status().isNoContent());
+
+		verify(revokeRoleUseCase).revokeRole(new RevokeRoleCommand(callerId, userId, userRoleId));
+	}
+
+	@Test
+	void revokeRoleWithMismatchedUserReturns404() throws Exception {
+		org.mockito.Mockito.doThrow(new UserRoleNotFoundException("not found")).when(revokeRoleUseCase)
+				.revokeRole(any());
+
+		mockMvc.perform(delete("/users/" + UUID.randomUUID() + "/roles/" + UUID.randomUUID()))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void unlockUserReturns200WithActiveStatus() throws Exception {
+		UUID userId = UUID.randomUUID();
+		when(unlockUserUseCase.unlockUser(new UnlockUserCommand(callerId, userId)))
+				.thenReturn(new UnlockUserResult(userId, UserStatus.ACTIVE, 0));
+
+		mockMvc.perform(patch("/users/" + userId + "/unlock")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.userId").value(userId.toString()))
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.failedLoginAttempts").value(0));
+	}
+
+	@Test
+	void unlockUserByMustChangePasswordCallerReturns403() throws Exception {
+		when(unlockUserUseCase.unlockUser(any())).thenThrow(new MustChangePasswordException("must change"));
+
+		mockMvc.perform(patch("/users/" + UUID.randomUUID() + "/unlock")).andExpect(status().isForbidden());
 	}
 
 	private record CreateUserBody(UUID personId, String temporaryPassword) {

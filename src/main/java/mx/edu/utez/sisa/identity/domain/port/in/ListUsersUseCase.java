@@ -26,11 +26,16 @@ public interface ListUsersUseCase {
 	 *                 enforced by SecurityFilterConfig)
 	 * @param roleType optional — matches users having at least one {@link UserRole} with this type
 	 * @param status   optional — matches the user's current status
-	 * @param search   optional free-text match against {@code username} or the linked Person's full name
-	 * @param page     zero-based page index; negative values are normalized to 0
-	 * @param size     page size; normalized to a minimum of 1 and capped at {@link #MAX_PAGE_SIZE}
+	 * @param search     optional free-text match against {@code username} or the linked Person's full name
+	 * @param page       zero-based page index; negative values are normalized to 0
+	 * @param size       page size; normalized to a minimum of 1 and capped at {@link #MAX_PAGE_SIZE}
+	 * @param divisionId optional — narrows {@code roleType} to a {@link UserRole} scoped to this
+	 *                   division (e.g. "DIRECTOR_DIVISION users scoped to division Y" for the
+	 *                   Divisiones screen's director picker); only takes effect combined with
+	 *                   {@code roleType} — passed alone it has no effect
 	 */
-	record ListUsersQuery(UUID callerId, RoleType roleType, UserStatus status, String search, int page, int size) {
+	record ListUsersQuery(UUID callerId, RoleType roleType, UserStatus status, String search, int page, int size,
+			UUID divisionId) {
 
 		public static final int DEFAULT_PAGE_SIZE = 20;
 

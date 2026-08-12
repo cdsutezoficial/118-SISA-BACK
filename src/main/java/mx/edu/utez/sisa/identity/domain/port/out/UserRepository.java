@@ -33,13 +33,20 @@ public interface UserRepository {
 	UserSearchPage search(UserSearchCriteria criteria);
 
 	/**
-	 * @param roleType optional — filters to users having at least one UserRole of this type
-	 * @param status   optional — filters to users with this exact status
-	 * @param search   optional free-text match against username or the linked Person's full name
-	 * @param page     zero-based page index
-	 * @param size     page size
+	 * @param roleType   optional — filters to users having at least one UserRole of this type
+	 * @param status     optional — filters to users with this exact status
+	 * @param search     optional free-text match against username or the linked Person's full name
+	 * @param page       zero-based page index
+	 * @param size       page size
+	 * @param divisionId optional — narrows the {@code roleType} EXISTS predicate against
+	 *                   {@code UserRole} to roles scoped to this division, so "role X scoped to
+	 *                   division Y" requires a single matching UserRole row rather than two
+	 *                   independent roles. Only takes effect when combined with {@code roleType}:
+	 *                   passed alone it has no effect (permissive, not validated as requiring
+	 *                   {@code roleType} to also be set).
 	 */
-	record UserSearchCriteria(RoleType roleType, UserStatus status, String search, int page, int size) {
+	record UserSearchCriteria(RoleType roleType, UserStatus status, String search, int page, int size,
+			UUID divisionId) {
 	}
 
 	/**

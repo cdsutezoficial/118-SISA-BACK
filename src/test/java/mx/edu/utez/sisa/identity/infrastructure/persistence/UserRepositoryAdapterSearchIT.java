@@ -59,7 +59,7 @@ class UserRepositoryAdapterSearchIT {
 		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, divisionB));
 
 		UserSearchPage page = adapter
-				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20));
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, null));
 
 		assertThat(page.totalElements()).isEqualTo(1L);
 		assertThat(page.totalPages()).isEqualTo(1);
@@ -68,12 +68,80 @@ class UserRepositoryAdapterSearchIT {
 	}
 
 	@Test
+	void divisionIdCombinedWithRoleTypeExcludesRightRoleWrongDivision() {
+		Person person = personJpaRepository.save(newPerson("Laura", "Ruiz", null, "laura.ruiz@utez.edu.mx"));
+		User user = userJpaRepository.save(new User(person.getId(), "laura.ruiz@utez.edu.mx", "hash"));
+		UUID targetDivision = UUID.randomUUID();
+		UUID otherDivision = UUID.randomUUID();
+		// right roleType, but scoped to a DIFFERENT division than requested
+		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, otherDivision));
+
+		UserSearchPage page = adapter
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+
+		assertThat(page.totalElements()).isZero();
+		assertThat(page.content()).isEmpty();
+	}
+
+	@Test
+	void divisionIdCombinedWithRoleTypeMatchesRightRoleAndRightDivision() {
+		Person person = personJpaRepository.save(newPerson("Mario", "Sosa", null, "mario.sosa@utez.edu.mx"));
+		User user = userJpaRepository.save(new User(person.getId(), "mario.sosa@utez.edu.mx", "hash"));
+		UUID targetDivision = UUID.randomUUID();
+		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, targetDivision));
+
+		UserSearchPage page = adapter
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+
+		assertThat(page.totalElements()).isEqualTo(1L);
+		assertThat(page.content()).hasSize(1);
+		assertThat(page.content().get(0).user().getId()).isEqualTo(user.getId());
+	}
+
+	@Test
+	void divisionIdCombinedWithRoleTypeCountsUserOnceWhenOnlyOneOfSeveralRolesMatchesBoth() {
+		Person person = personJpaRepository.save(newPerson("Nora", "Vega", null, "nora.vega@utez.edu.mx"));
+		User user = userJpaRepository.save(new User(person.getId(), "nora.vega@utez.edu.mx", "hash"));
+		UUID targetDivision = UUID.randomUUID();
+		UUID otherDivision = UUID.randomUUID();
+		// three UserRole rows: only the second one matches BOTH roleType and
+		// divisionId — the naive-JOIN failure mode would still duplicate the
+		// user's row per role, even though just one row satisfies the combined filter
+		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, otherDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, targetDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DOCENTE, targetDivision));
+
+		UserSearchPage page = adapter
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+
+		assertThat(page.totalElements()).isEqualTo(1L);
+		assertThat(page.totalPages()).isEqualTo(1);
+		assertThat(page.content()).hasSize(1);
+		assertThat(page.content().get(0).user().getId()).isEqualTo(user.getId());
+	}
+
+	@Test
+	void divisionIdAloneWithoutRoleTypeHasNoEffect() {
+		Person person = personJpaRepository.save(newPerson("Oscar", "Diaz", null, "oscar.diaz@utez.edu.mx"));
+		userJpaRepository.save(new User(person.getId(), "oscar.diaz@utez.edu.mx", "hash"));
+
+		UserSearchPage page = adapter
+				.search(new UserSearchCriteria(null, null, null, 0, 20, UUID.randomUUID()));
+
+		// divisionId lives inside the roleType-gated EXISTS, so without roleType
+		// it is never evaluated: the user (who has no roles at all) still
+		// matches — divisionId alone is a permissive no-op, not validated as
+		// "requires roleType to also be set"
+		assertThat(page.totalElements()).isEqualTo(1L);
+	}
+
+	@Test
 	void roleTypeFilterExcludesUsersWithoutAMatchingRole() {
 		Person person = personJpaRepository.save(newPerson("Juan", "Pérez", null, "juan.perez@utez.edu.mx"));
 		User user = userJpaRepository.save(new User(person.getId(), "juan.perez@utez.edu.mx", "hash"));
 		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DOCENTE, null));
 
-		UserSearchPage page = adapter.search(new UserSearchCriteria(RoleType.ADMIN, null, null, 0, 20));
+		UserSearchPage page = adapter.search(new UserSearchCriteria(RoleType.ADMIN, null, null, 0, 20, null));
 
 		assertThat(page.totalElements()).isZero();
 		assertThat(page.content()).isEmpty();
@@ -90,7 +158,7 @@ class UserRepositoryAdapterSearchIT {
 		lockedUser.registerFailedLogin();
 		userJpaRepository.save(lockedUser);
 
-		UserSearchPage page = adapter.search(new UserSearchCriteria(null, UserStatus.LOCKED, null, 0, 20));
+		UserSearchPage page = adapter.search(new UserSearchCriteria(null, UserStatus.LOCKED, null, 0, 20, null));
 
 		assertThat(page.totalElements()).isEqualTo(1L);
 		assertThat(page.content().get(0).user().getUsername()).isEqualTo("locked@utez.edu.mx");
@@ -103,11 +171,11 @@ class UserRepositoryAdapterSearchIT {
 		Person other = personJpaRepository.save(newPerson("Carlos", "Mendoza", null, "carlos.mendoza@utez.edu.mx"));
 		userJpaRepository.save(new User(other.getId(), "carlos.mendoza@utez.edu.mx", "hash"));
 
-		UserSearchPage byFirstName = adapter.search(new UserSearchCriteria(null, null, "ana", 0, 20));
-		UserSearchPage byLastName = adapter.search(new UserSearchCriteria(null, null, "garcía", 0, 20));
-		UserSearchPage byUsername = adapter.search(new UserSearchCriteria(null, null, "carlos.mendoza", 0, 20));
+		UserSearchPage byFirstName = adapter.search(new UserSearchCriteria(null, null, "ana", 0, 20, null));
+		UserSearchPage byLastName = adapter.search(new UserSearchCriteria(null, null, "garcía", 0, 20, null));
+		UserSearchPage byUsername = adapter.search(new UserSearchCriteria(null, null, "carlos.mendoza", 0, 20, null));
 		UserSearchPage byFullNameSpanningFields = adapter
-				.search(new UserSearchCriteria(null, null, "ana garcía", 0, 20));
+				.search(new UserSearchCriteria(null, null, "ana garcía", 0, 20, null));
 
 		assertThat(byFirstName.totalElements()).isEqualTo(1L);
 		assertThat(byLastName.totalElements()).isEqualTo(1L);
@@ -122,8 +190,8 @@ class UserRepositoryAdapterSearchIT {
 			userJpaRepository.save(new User(person.getId(), "user" + i + "@utez.edu.mx", "hash"));
 		}
 
-		UserSearchPage firstPage = adapter.search(new UserSearchCriteria(null, null, null, 0, 2));
-		UserSearchPage secondPage = adapter.search(new UserSearchCriteria(null, null, null, 1, 2));
+		UserSearchPage firstPage = adapter.search(new UserSearchCriteria(null, null, null, 0, 2, null));
+		UserSearchPage secondPage = adapter.search(new UserSearchCriteria(null, null, null, 1, 2, null));
 
 		assertThat(firstPage.totalElements()).isEqualTo(5L);
 		assertThat(firstPage.totalPages()).isEqualTo(3);
@@ -136,7 +204,7 @@ class UserRepositoryAdapterSearchIT {
 		Person person = personJpaRepository.save(newPerson("Ana", "García", "López", "ana.garcia2@utez.edu.mx"));
 		userJpaRepository.save(new User(person.getId(), "ana.garcia2@utez.edu.mx", "hash"));
 
-		UserSearchPage page = adapter.search(new UserSearchCriteria(null, null, "ana.garcia2", 0, 20));
+		UserSearchPage page = adapter.search(new UserSearchCriteria(null, null, "ana.garcia2", 0, 20, null));
 
 		assertThat(page.content()).hasSize(1);
 		UserWithPerson row = page.content().get(0);

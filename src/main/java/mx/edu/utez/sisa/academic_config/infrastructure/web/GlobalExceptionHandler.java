@@ -18,18 +18,28 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionExc
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentRateException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GroupNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentRateDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramAdmissionConfigException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidProgramAdmissionConfigDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.SubjectNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
@@ -158,6 +168,65 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler({ PlanNotFoundException.class, PeriodNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleGenerationBadRequest(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(GroupNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleGroupNotFound(GroupNotFoundException ex, HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(GenerationReferenceNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleGenerationReferenceNotFound(GenerationReferenceNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(PaymentConceptNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handlePaymentConceptNotFound(PaymentConceptNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidPaymentConceptDataException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentConceptData(InvalidPaymentConceptDataException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(PaymentConceptReferenceNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handlePaymentConceptReferenceNotFound(
+			PaymentConceptReferenceNotFoundException ex, HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidPaymentRateDataException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentRateData(InvalidPaymentRateDataException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DuplicatePaymentRateException.class)
+	public ResponseEntity<ErrorResponse> handlePaymentRateConflict(DuplicatePaymentRateException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(ProgramAdmissionConfigNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotFound(ProgramAdmissionConfigNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(DuplicateProgramAdmissionConfigException.class)
+	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigConflict(
+			DuplicateProgramAdmissionConfigException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidProgramAdmissionConfigDataException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidProgramAdmissionConfigData(
+			InvalidProgramAdmissionConfigDataException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
