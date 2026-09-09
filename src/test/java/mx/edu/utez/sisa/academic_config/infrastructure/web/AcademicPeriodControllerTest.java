@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import mx.edu.utez.sisa.academic_config.domain.model.PeriodStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PeriodType;
+import mx.edu.utez.sisa.academic_config.domain.port.in.AdvanceAcademicPeriodStatusByDateUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPeriodStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPeriodStatusUseCase.ChangeStatusCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPeriodUseCase;
@@ -78,6 +79,9 @@ class AcademicPeriodControllerTest {
 
 	@MockitoBean
 	private ChangeAcademicPeriodStatusUseCase changeAcademicPeriodStatusUseCase;
+
+	@MockitoBean
+	private AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -260,6 +264,14 @@ class AcademicPeriodControllerTest {
 		mockMvc.perform(patch("/periods/" + periodId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(PeriodStatus.ACTIVE))))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void advanceByDateReturns200WithAdvancedCount() throws Exception {
+		when(advanceAcademicPeriodStatusByDateUseCase.advanceAll(LocalDate.now())).thenReturn(2);
+
+		mockMvc.perform(post("/periods/advance-by-date")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.advanced").value(2));
 	}
 
 	private record CreatePeriodBody(String name, int year, int periodNumber, PeriodType type, LocalDate startDate,
