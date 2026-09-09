@@ -182,6 +182,45 @@ public class AcademicPeriod {
 	}
 
 	/**
+	 * Time-driven counterpart to {@link #changeStatus}, invoked by the daily
+	 * auto-advance job ({@code AdvanceAcademicPeriodStatusJob}). Walks the same
+	 * {@link #NEXT_STATUS} machine forward — and only forward — while the clock
+	 * passes each threshold: {@code ENROLLMENT} once {@code today >=
+	 * enrollmentStart}, {@code ACTIVE} once {@code today >= startDate}, and
+	 * {@code CLOSED} once {@code today > endDate}. Because it advances step by
+	 * step over the exact same transitions as the manual PATCH, it legitimately
+	 * catches up several elapsed stages in one run when the server was off or
+	 * the cycle simply matured — a real elapsed time-span, not the user-action
+	 * "skip" the PO rule forbids. It never moves backward and never touches a
+	 * terminal ({@code CLOSED}) period.
+	 *
+	 * @return whether the status changed
+	 */
+	public boolean advanceByDate(LocalDate today) {
+		boolean changed = false;
+		while (true) {
+			PeriodStatus next = NEXT_STATUS.get(this.status);
+			if (next == null) {
+				break;
+			}
+			LocalDate threshold = switch (next) {
+				case ENROLLMENT -> this.enrollmentStart;
+				case ACTIVE -> this.startDate;
+				case CLOSED -> this.endDate;
+				case CONFIGURATION -> throw new IllegalStateException(
+						"NEXT_STATUS never maps to CONFIGURATION (bug in the state machine)");
+			};
+			boolean reached = next == PeriodStatus.CLOSED ? today.isAfter(threshold) : !today.isBefore(threshold);
+			if (!reached) {
+				break;
+			}
+			this.changeStatus(next);
+			changed = true;
+		}
+		return changed;
+	}
+
+	/**
 	 * Plan §4: {@code startDate < endDate} and {@code enrollmentStart <
 	 * enrollmentEnd} (both confirmed, unambiguous), plus {@code enrollmentEnd
 	 * <= endDate} (proposed-not-confirmed, applied as the working assumption

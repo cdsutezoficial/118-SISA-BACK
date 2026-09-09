@@ -118,6 +118,16 @@ class AcademicPeriodRepositoryAdapterSearchIT {
 		assertThat(adapter.findById(UUID.randomUUID())).isEmpty();
 	}
 
+	@Test
+	void findAllReturnsAllPeriodsSortedByYearThenPeriodNumber() {
+		jpaRepository.save(newPeriod("Periodo 2027-1", 2027, 1));
+		jpaRepository.save(newPeriod("Periodo 2026-2", 2026, 2));
+		jpaRepository.save(newPeriod("Periodo 2026-1", 2026, 1));
+
+		assertThat(adapter.findAll()).extracting(AcademicPeriod::getYear, AcademicPeriod::getPeriodNumber)
+				.containsExactly(tuple(2026, 1), tuple(2026, 2), tuple(2027, 1));
+	}
+
 	private static AcademicPeriod newPeriod(String name, int year, int periodNumber) {
 		return new AcademicPeriod(name, year, periodNumber, PeriodType.CUATRIMESTRAL, START, END, ENROLLMENT_START,
 				ENROLLMENT_END);

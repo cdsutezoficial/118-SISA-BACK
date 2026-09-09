@@ -11,6 +11,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangePaymentConceptStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeProgramAdmissionConfigStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeSubjectClassificationStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.AdvanceAcademicPeriodStatusByDateUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetProgramAdmissionConfigUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentRatesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListProgramAdmissionConfigsUseCase;
@@ -71,6 +72,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.AddPlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.AddSubjectToPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPeriodStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.AdvanceAcademicPeriodStatusByDateUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPlanStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeGenerationStatusUseCaseImpl;
@@ -327,6 +329,12 @@ public class UseCaseConfig {
 	public ChangeAcademicPeriodStatusUseCase changeAcademicPeriodStatusUseCase(
 			AcademicPeriodRepository periodRepository) {
 		return new ChangeAcademicPeriodStatusUseCaseImpl(periodRepository);
+	}
+
+	@Bean
+	public AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase(
+			AcademicPeriodRepository periodRepository) {
+		return new AdvanceAcademicPeriodStatusByDateUseCaseImpl(periodRepository);
 	}
 
 	@Bean
