@@ -10,7 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
@@ -21,8 +20,8 @@ import java.time.Instant;
 
 /**
  * Stateless security filter chain (design.md — Security filter chain): CSRF
- * disabled, {@code permitAll} on {@code /auth/login}, {@code /auth/refresh}
- * and {@code /h2-console/**} (dev), everything else requires authentication.
+ * disabled, {@code permitAll} on {@code /auth/login} and
+ * {@code /auth/refresh}, everything else requires authentication.
  * {@code GET /users} (01-identidad.md — ListUsersUseCase) is matched
  * BEFORE the blanket {@code /users/**} rule and allows ADMIN or
  * SERVICIOS_ESCOLARES; every other {@code /users/**} path (create user,
@@ -178,10 +177,9 @@ public class SecurityFilterConfig {
 		http.csrf(AbstractHttpConfigurer::disable)
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
 				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/auth/login", "/auth/refresh", "/h2-console/**").permitAll()
+						.requestMatchers("/auth/login", "/auth/refresh").permitAll()
 						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers("/users/**").hasRole("ADMIN")

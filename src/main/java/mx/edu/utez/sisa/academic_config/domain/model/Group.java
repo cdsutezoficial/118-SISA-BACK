@@ -21,12 +21,10 @@ import java.util.UUID;
  * resuelto (2026-07-23)"). Owns its own table, repository, and controller.
  *
  * <p>
- * Table name is deliberately {@code "groups"} (plural), not {@code "group"} —
- * {@code GROUP} is a reserved SQL keyword (used by {@code GROUP BY}) in H2
- * and ANSI SQL, same class of gotcha as {@link AcademicPeriod}'s
- * {@code period_year} column (there the fix renamed the column; here, since
- * this is the table identifier itself, the fix renames the table to its
- * English plural instead of quoting the reserved word everywhere).
+ * Table name is deliberately {@code "academic_groups"}, not {@code "group"}
+ * or {@code "groups"} — both collide with SQL syntax across target engines
+ * ({@code GROUP} in H2/ANSI SQL, and {@code groups} in MySQL 8), so the
+ * physical table name is prefixed instead of relying on quoting.
  *
  * <p>
  * {@code programId} is a denormalized copy of {@code generationId}'s owning
@@ -51,7 +49,7 @@ import java.util.UUID;
  * design, so none is invented here.
  */
 @Entity
-@Table(name = "groups")
+@Table(name = "academic_groups")
 public class Group {
 
 	@Id
