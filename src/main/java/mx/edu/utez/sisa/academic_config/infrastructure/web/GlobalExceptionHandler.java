@@ -75,164 +75,173 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(AcademicDivisionNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(AcademicDivisionNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró la división académica solicitada.", request);
 	}
 
 	@ExceptionHandler({ DuplicateDivisionCodeException.class, DuplicateDivisionNameException.class })
 	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe una división académica con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler(DirectorNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleDirectorNotFound(DirectorNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "El director seleccionado no es válido para esta división.", request);
 	}
 
 	@ExceptionHandler(AcademicProgramNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleProgramNotFound(AcademicProgramNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el programa educativo solicitado.", request);
 	}
 
 	@ExceptionHandler({ DuplicateProgramCodeException.class, DuplicateOfferNameModalityException.class })
 	public ResponseEntity<ErrorResponse> handleProgramConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe un programa educativo con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler(DivisionNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleDivisionNotFoundForProgram(DivisionNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "La división académica seleccionada no existe.", request);
 	}
 
 	@ExceptionHandler({ AcademicPlanNotFoundException.class, PlanLevelNotFoundException.class,
 			SubjectNotFoundException.class, GradeScaleNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handlePlanNotFound(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el elemento solicitado del plan de estudios.", request);
 	}
 
 	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class,
 			InvalidPlanDataException.class, InvalidGradeScaleEntriesException.class })
 	public ResponseEntity<ErrorResponse> handlePlanBadRequest(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para el plan de estudios.", request);
 	}
 
 	@ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class,
 			DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class,
 			PlanLevelInUseException.class, DuplicateGradeScaleException.class })
 	public ResponseEntity<ErrorResponse> handlePlanConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "No se puede completar la operación porque la información ya existe o está en uso.", request);
 	}
 
 	@ExceptionHandler(DuplicateClassificationCodeException.class)
 	public ResponseEntity<ErrorResponse> handleClassificationConflict(DuplicateClassificationCodeException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe una clasificación con la clave proporcionada.", request);
 	}
 
 	@ExceptionHandler(ClassificationNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleClassificationNotFound(ClassificationNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró la clasificación solicitada.", request);
 	}
 
 	@ExceptionHandler(AcademicPeriodNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handlePeriodNotFound(AcademicPeriodNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el periodo académico solicitado.", request);
 	}
 
 	@ExceptionHandler(DuplicatePeriodException.class)
 	public ResponseEntity<ErrorResponse> handlePeriodConflict(DuplicatePeriodException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe un periodo académico con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler(InvalidPeriodStatusTransitionException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidPeriodStatusTransition(InvalidPeriodStatusTransitionException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "No es posible realizar esta transición para el periodo académico.", request);
 	}
 
 	@ExceptionHandler(GenerationNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleGenerationNotFound(GenerationNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró la generación solicitada.", request);
 	}
 
 	@ExceptionHandler(DuplicateGenerationNumberException.class)
 	public ResponseEntity<ErrorResponse> handleGenerationConflict(DuplicateGenerationNumberException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe una generación con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler({ PlanNotFoundException.class, PeriodNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleGenerationBadRequest(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "El plan de estudios o periodo académico seleccionado no existe.", request);
 	}
 
 	@ExceptionHandler(GroupNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleGroupNotFound(GroupNotFoundException ex, HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el grupo solicitado.", request);
 	}
 
 	@ExceptionHandler(GenerationReferenceNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleGenerationReferenceNotFound(GenerationReferenceNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "La generación, periodo o nivel seleccionado no existe.", request);
 	}
 
 	@ExceptionHandler(PaymentConceptNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handlePaymentConceptNotFound(PaymentConceptNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el concepto de pago solicitado.", request);
 	}
 
 	@ExceptionHandler(InvalidPaymentConceptDataException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidPaymentConceptData(InvalidPaymentConceptDataException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para el concepto de pago.", request);
 	}
 
 	@ExceptionHandler(PaymentConceptReferenceNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handlePaymentConceptReferenceNotFound(
 			PaymentConceptReferenceNotFoundException ex, HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "La referencia seleccionada para el concepto de pago no existe.", request);
 	}
 
 	@ExceptionHandler(InvalidPaymentRateDataException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidPaymentRateData(InvalidPaymentRateDataException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para la tarifa.", request);
 	}
 
 	@ExceptionHandler(DuplicatePaymentRateException.class)
 	public ResponseEntity<ErrorResponse> handlePaymentRateConflict(DuplicatePaymentRateException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe una tarifa vigente con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler(ProgramAdmissionConfigNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotFound(ProgramAdmissionConfigNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró la configuración de admisión solicitada.", request);
 	}
 
 	@ExceptionHandler(DuplicateProgramAdmissionConfigException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigConflict(
 			DuplicateProgramAdmissionConfigException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe una configuración de admisión para el programa y periodo seleccionados.", request);
 	}
 
 	@ExceptionHandler(InvalidProgramAdmissionConfigDataException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidProgramAdmissionConfigData(
 			InvalidProgramAdmissionConfigDataException ex, HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para la configuración de admisión.", request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
-		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), status.getReasonPhrase(), message,
+		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), statusLabel(status), message,
 				request.getRequestURI());
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private static String statusLabel(HttpStatus status) {
+		return switch (status) {
+			case BAD_REQUEST -> "Solicitud inválida";
+			case NOT_FOUND -> "No encontrado";
+			case CONFLICT -> "Conflicto";
+			default -> "Error";
+		};
 	}
 }

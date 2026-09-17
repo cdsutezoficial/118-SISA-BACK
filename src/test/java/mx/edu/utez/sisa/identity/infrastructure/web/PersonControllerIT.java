@@ -80,7 +80,10 @@ class PersonControllerIT {
 
 		mockMvc.perform(post("/persons").header("Authorization", "Bearer " + token).contentType("application/json")
 				.content(objectMapper.writeValueAsString(newCreateBody("jane.doe2"))))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.status").value(403))
+				.andExpect(jsonPath("$.error").value("Acceso denegado"))
+				.andExpect(jsonPath("$.message").value("No tienes permiso para realizar esta acción."));
 	}
 
 	@Test

@@ -124,7 +124,7 @@ class AcademicPlanTest {
 		plan.addLevel(1, PlanLevelType.REGULAR, null);
 		PlanLevel levelTwo = plan.addLevel(2, PlanLevelType.REGULAR, null);
 		UUID levelTwoId = UUID.randomUUID();
-		ReflectionTestUtils.setField(levelTwo, "id", levelTwoId);
+		ReflectionTestUtils.setField(levelTwo , "id", levelTwoId);
 
 		assertThatThrownBy(() -> plan.updateLevel(levelTwoId, 1, PlanLevelType.REGULAR, null))
 				.isInstanceOf(DuplicateLevelNumberException.class);
