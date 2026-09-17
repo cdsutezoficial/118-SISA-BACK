@@ -8,6 +8,8 @@ import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailExc
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
+import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
+import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
@@ -22,7 +24,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
-import java.util.stream.Collectors;
 
 /**
  * Maps the 8 identity domain exceptions (plus bean validation failures) to
@@ -47,30 +48,30 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidCredentialsException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+		return build(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos.", request);
 	}
 
 	@ExceptionHandler(AccountLockedException.class)
 	public ResponseEntity<ErrorResponse> handleAccountLocked(AccountLockedException ex, HttpServletRequest request) {
-		return build(HttpStatus.LOCKED, ex.getMessage(), request);
+		return build(HttpStatus.LOCKED, "Tu cuenta está bloqueada. Solicita apoyo al administrador.", request);
 	}
 
 	@ExceptionHandler(MustChangePasswordException.class)
 	public ResponseEntity<ErrorResponse> handleMustChangePassword(MustChangePasswordException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+		return build(HttpStatus.FORBIDDEN, "Debes cambiar tu contraseña antes de continuar.", request);
 	}
 
 	@ExceptionHandler(InvalidRefreshTokenException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+		return build(HttpStatus.UNAUTHORIZED, "Tu sesión no es válida o ha expirado. Inicia sesión nuevamente.", request);
 	}
 
 	@ExceptionHandler(DivisionRuleViolationException.class)
 	public ResponseEntity<ErrorResponse> handleDivisionRuleViolation(DivisionRuleViolationException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la división académica seleccionada para este rol.", request);
 	}
 
 	/**
@@ -81,11 +82,10 @@ public class GlobalExceptionHandler {
 	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.1)
 	 * join the same group, same 409 conflict semantics.
 	 */
-	@ExceptionHandler({ mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException.class,
-			mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException.class,
+	@ExceptionHandler({ PersonAlreadyHasUserException.class, MissingInstitutionalEmailException.class,
 			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class })
 	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe un registro con la información proporcionada.", request);
 	}
 
 	/**
@@ -96,23 +96,19 @@ public class GlobalExceptionHandler {
 	 */
 	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleUserNotFound(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el registro solicitado.", request);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex,
 			HttpServletRequest request) {
-		String message = ex.getBindingResult().getFieldErrors().stream()
-				.map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
-				.collect(Collectors.joining("; "));
-		return build(HttpStatus.BAD_REQUEST, message.isBlank() ? "Validation failed" : message, request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa los datos proporcionados.", request);
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
 			HttpServletRequest request) {
-		String message = "%s: invalid value '%s'".formatted(ex.getName(), ex.getValue());
-		return build(HttpStatus.BAD_REQUEST, message, request);
+		return build(HttpStatus.BAD_REQUEST, "La solicitud contiene un dato con formato inválido.", request);
 	}
 
 	/**
@@ -127,7 +123,7 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(MissingServletRequestParameterException.class)
 	public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Falta información requerida para procesar la solicitud.", request);
 	}
 
 	/**
@@ -138,12 +134,25 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
 		log.error("Unhandled exception on {}", request.getRequestURI(), ex);
-		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", request);
+		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error al procesar la solicitud. Intenta nuevamente más tarde.", request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
-		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), status.getReasonPhrase(), message,
+		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), statusLabel(status), message,
 				request.getRequestURI());
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private static String statusLabel(HttpStatus status) {
+		return switch (status) {
+			case BAD_REQUEST -> "Solicitud inválida";
+			case UNAUTHORIZED -> "No autorizado";
+			case FORBIDDEN -> "Acceso denegado";
+			case NOT_FOUND -> "No encontrado";
+			case CONFLICT -> "Conflicto";
+			case LOCKED -> "Cuenta bloqueada";
+			case INTERNAL_SERVER_ERROR -> "Error interno";
+			default -> "Error";
+		};
 	}
 }
