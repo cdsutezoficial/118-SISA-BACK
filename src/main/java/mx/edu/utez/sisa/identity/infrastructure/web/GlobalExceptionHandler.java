@@ -5,11 +5,15 @@ import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicatePermissionKeyException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateRoleKeyException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
+import mx.edu.utez.sisa.identity.shared.exception.PermissionNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
+import mx.edu.utez.sisa.identity.shared.exception.RoleNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
@@ -83,7 +87,8 @@ public class GlobalExceptionHandler {
 	 * join the same group, same 409 conflict semantics.
 	 */
 	@ExceptionHandler({ PersonAlreadyHasUserException.class, MissingInstitutionalEmailException.class,
-			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class })
+			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class,
+			DuplicateRoleKeyException.class, DuplicatePermissionKeyException.class })
 	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, "Ya existe un registro con la información proporcionada.", request);
 	}
@@ -94,7 +99,8 @@ public class GlobalExceptionHandler {
 	 * shares the 404 mapping with {@code UserNotFoundException} — both mean
 	 * "the referenced id does not resolve to what the caller expected".
 	 */
-	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class })
+	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class, RoleNotFoundException.class,
+			PermissionNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleUserNotFound(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, "No se encontró el registro solicitado.", request);
 	}
@@ -102,7 +108,10 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, "Revisa los datos proporcionados.", request);
+		String message = ex.getBindingResult().getFieldErrors().stream().map(error -> error.getDefaultMessage())
+				.filter(text -> text != null && !text.isBlank()).findFirst()
+				.orElse("Revisa los datos proporcionados.");
+		return build(HttpStatus.BAD_REQUEST, message, request);
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
