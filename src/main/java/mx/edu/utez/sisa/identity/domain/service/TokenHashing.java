@@ -21,8 +21,9 @@ public final class TokenHashing {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			byte[] hash = digest.digest(rawValue.getBytes(StandardCharsets.UTF_8));
 			return HexFormat.of().formatHex(hash);
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException("SHA-256 algorithm not available", e);
+		}
+		catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("No fue posible procesar la solicitud en este momento.", e);
 		}
 	}
 }

@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.identity.infrastructure.bootstrap;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.RoleType;
@@ -50,11 +52,14 @@ class AdminSeedIT {
 	private UserRoleRepository userRoleRepository;
 
 	@Autowired
+	private RoleRepository roleRepository;
+
+	@Autowired
 	private AdminSeedRunner adminSeedRunner;
 
 	@Test
 	void freshApplicationContextCreatesExactlyOneAdmin() {
-		assertThat(userRoleRepository.existsByRoleType(RoleType.ADMIN)).isTrue();
+		assertThat(userRoleRepository.existsByRoleId(resolveRoleId(RoleType.ADMIN))).isTrue();
 
 		Optional<User> admin = userRepository.findByUsername(ADMIN_USERNAME);
 		assertThat(admin).isPresent();
@@ -76,5 +81,9 @@ class AdminSeedIT {
 		assertThat(adminAfterRerun).isPresent();
 		assertThat(adminAfterRerun.get().getId()).isEqualTo(adminIdAfterBoot);
 		assertThat(userRoleRepository.findByUserId(adminIdAfterBoot)).hasSize(1);
+	}
+
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(Role::getId).orElseThrow();
 	}
 }

@@ -31,7 +31,7 @@ public class ChangePasswordUseCaseImpl implements ChangePasswordUseCase {
 				.orElseThrow(() -> new UserNotFoundException("User not found: " + command.userId()));
 
 		if (!passwordHasher.matches(command.currentPassword(), user.getPasswordHash())) {
-			throw new InvalidCredentialsException("Current password is incorrect");
+			throw new InvalidCredentialsException("La contraseña actual no es correcta.");
 		}
 
 		String newPasswordHash = passwordHasher.hash(command.newPassword());

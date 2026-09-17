@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -35,7 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code PersonControllerIT}: every caller token here must be backed by a
  * real, already-past-first-access {@code User} row.
  */
-@SpringBootTest
+@SpringBootTest(properties = { "sisa.security.bootstrap.admin.password=", 
+		"sisa.security.bootstrap.servicios-escolares.password=",
+		"sisa.security.bootstrap.test-accounts.password=" })
 @AutoConfigureMockMvc
 class UserManagementControllerIT {
 
@@ -60,18 +63,21 @@ class UserManagementControllerIT {
 	@Autowired
 	private PasswordHasher passwordHasher;
 
+	@Autowired
+	private RoleRepository roleRepository;
+
 	// --- GET /users/{id} ---
 
 	@Test
 	void adminCanGetUserDetailWithUserRoleIdsExposed() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		UUID targetId = newPlainUser("target1");
-		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		mockMvc.perform(get("/users/{id}", targetId).header("Authorization", "Bearer " + token))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(targetId.toString()))
 				.andExpect(jsonPath("$.roles[0].userRoleId").value(userRoleId.toString()))
-				.andExpect(jsonPath("$.roles[0].roleType").value("DOCENTE"));
+				.andExpect(jsonPath("$.roles[0].roleKey").value("DOCENTE"));
 	}
 
 	@Test
@@ -114,7 +120,7 @@ class UserManagementControllerIT {
 	void adminCanRevokeRole() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		UUID targetId = newPlainUser("target5");
-		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		mockMvc.perform(delete("/users/{userId}/roles/{userRoleId}", targetId, userRoleId)
 				.header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
@@ -128,7 +134,7 @@ class UserManagementControllerIT {
 		String adminToken = tokenFor(RoleType.ADMIN);
 		String token = tokenFor(RoleType.DOCENTE);
 		UUID targetId = newPlainUser("target6");
-		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		mockMvc.perform(delete("/users/{userId}/roles/{userRoleId}", targetId, userRoleId)
 				.header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
@@ -138,7 +144,7 @@ class UserManagementControllerIT {
 	void serviciosEscolaresIsForbiddenOnRevokeRole() throws Exception {
 		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
 		UUID targetId = newPlainUser("target7");
-		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		mockMvc.perform(delete("/users/{userId}/roles/{userRoleId}", targetId, userRoleId)
 				.header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
@@ -158,7 +164,7 @@ class UserManagementControllerIT {
 		String token = tokenFor(RoleType.ADMIN);
 		UUID ownerId = newPlainUser("owner1");
 		UUID otherUserId = newPlainUser("other1");
-		UUID userRoleId = userRoleRepository.save(new UserRole(ownerId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(ownerId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		// attempt to revoke the owner's role grant while impersonating it as
 		// belonging to a different user in the URL (plan 4.4's guarded case)
@@ -173,7 +179,7 @@ class UserManagementControllerIT {
 	@Test
 	void unauthenticatedRevokeRoleReturns401() throws Exception {
 		UUID targetId = newPlainUser("target9");
-		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, RoleType.DOCENTE, null)).getId();
+		UUID userRoleId = userRoleRepository.save(new UserRole(targetId, resolveRoleId(RoleType.DOCENTE), null)).getId();
 
 		mockMvc.perform(delete("/users/{userId}/roles/{userRoleId}", targetId, userRoleId))
 				.andExpect(status().isUnauthorized());
@@ -263,7 +269,12 @@ class UserManagementControllerIT {
 		User user = new User(person.getId(), email, passwordHasher.hash("Sup3rSecret!1"));
 		user.changePassword(passwordHasher.hash("Sup3rSecret!1"));
 		User saved = userRepository.save(user);
-		userRoleRepository.save(new UserRole(saved.getId(), role, null));
+		userRoleRepository.save(new UserRole(saved.getId(), resolveRoleId(role), null));
 		return jwtService.sign(saved.getId().toString(), Set.of(role.name()));
+	}
+
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(mx.edu.utez.sisa.identity.domain.model.Role::getId)
+				.orElseThrow();
 	}
 }
