@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.web.dto;
 
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +18,6 @@ import java.util.UUID;
 public record UserDetailResponse(UUID userId, UUID personId, String fullName, String username, UserStatus status,
 		boolean mustChangePassword, Instant lastLoginAt, Instant createdAt, List<UserRoleDetailItem> roles) {
 
-	public record UserRoleDetailItem(UUID userRoleId, RoleType roleType, UUID divisionId) {
+	public record UserRoleDetailItem(UUID userRoleId, UUID roleId, String roleKey, String roleName, UUID divisionId) {
 	}
 }

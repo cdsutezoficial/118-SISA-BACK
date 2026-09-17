@@ -4,11 +4,17 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
 import mx.edu.utez.sisa.shared.model.Person;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -24,12 +30,14 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 	private final UserRepository userRepository;
 	private final PersonRepository personRepository;
 	private final UserRoleRepository userRoleRepository;
+	private final RoleRepository roleRepository;
 
 	public GetUserUseCaseImpl(UserRepository userRepository, PersonRepository personRepository,
-			UserRoleRepository userRoleRepository) {
+			UserRoleRepository userRoleRepository, RoleRepository roleRepository) {
 		this.userRepository = userRepository;
 		this.personRepository = personRepository;
 		this.userRoleRepository = userRoleRepository;
+		this.roleRepository = roleRepository;
 	}
 
 	@Override
@@ -42,8 +50,13 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 				.orElseThrow(() -> new UserNotFoundException("User not found: " + query.userId()));
 		Person person = personRepository.findById(target.getPersonId()).orElse(null);
 
-		var roles = userRoleRepository.findByUserId(target.getId()).stream()
-				.map(role -> new UserRoleDetail(role.getId(), role.getRoleType(), role.getDivisionId())).toList();
+		var userRoles = userRoleRepository.findByUserId(target.getId());
+		Map<UUID, Role> rolesById = roleRepository.findByIds(userRoles.stream().map(UserRole::getRoleId).distinct().toList())
+				.stream().collect(Collectors.toMap(Role::getId, Function.identity()));
+		var roles = userRoles.stream().map(role -> rolesById.get(role.getRoleId())).filter(role -> role != null)
+				.map(role -> new UserRoleDetail(findUserRoleId(userRoles, role.getId()), role.getId(), role.getKey(),
+						role.getName(), findDivisionId(userRoles, role.getId())))
+				.toList();
 
 		return new UserDetailResult(target.getId(), target.getPersonId(), fullName(person), target.getUsername(),
 				target.getStatus(), target.isMustChangePassword(), target.getLastLoginAt(), target.getCreatedAt(),
@@ -63,5 +76,15 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 		}
 		return Stream.of(person.getFirstName(), person.getLastName1(), person.getLastName2())
 				.filter(part -> part != null && !part.isBlank()).collect(Collectors.joining(" "));
+	}
+
+	private static UUID findUserRoleId(java.util.List<UserRole> userRoles, UUID roleId) {
+		return userRoles.stream().filter(userRole -> roleId.equals(userRole.getRoleId())).findFirst().map(UserRole::getId)
+				.orElse(null);
+	}
+
+	private static UUID findDivisionId(java.util.List<UserRole> userRoles, UUID roleId) {
+		return userRoles.stream().filter(userRole -> roleId.equals(userRole.getRoleId())).findFirst().map(UserRole::getDivisionId)
+				.orElse(null);
 	}
 }

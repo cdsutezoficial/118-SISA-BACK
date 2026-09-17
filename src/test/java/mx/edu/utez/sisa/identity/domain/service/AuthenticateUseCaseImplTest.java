@@ -2,12 +2,14 @@ package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticateCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticationResult;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
@@ -47,13 +49,15 @@ class AuthenticateUseCaseImplTest {
 	private RefreshTokenGenerator refreshTokenGenerator;
 	@Mock
 	private RefreshTokenRepository refreshTokenRepository;
+	@Mock
+	private RoleRepository roleRepository;
 
 	private AuthenticateUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new AuthenticateUseCaseImpl(userRepository, userRoleRepository, passwordHasher, accessTokenIssuer,
-				refreshTokenGenerator, refreshTokenRepository, Duration.ofDays(1));
+				refreshTokenGenerator, refreshTokenRepository, roleRepository, Duration.ofDays(1));
 	}
 
 	@Test
@@ -61,7 +65,8 @@ class AuthenticateUseCaseImplTest {
 		User user = new User(UUID.randomUUID(), "jane.doe@utez.edu.mx", "hashed-pw");
 		when(userRepository.findByUsername("jane.doe@utez.edu.mx")).thenReturn(Optional.of(user));
 		when(passwordHasher.matches("correct-password", "hashed-pw")).thenReturn(true);
-		when(userRoleRepository.findByUserId(any())).thenReturn(List.of(new UserRole(user.getId(), RoleType.ADMIN, null)));
+		when(userRoleRepository.findByUserId(any())).thenReturn(List.of(new UserRole(user.getId(), roleId(RoleType.ADMIN), null)));
+		when(roleRepository.findByIds(List.of(roleId(RoleType.ADMIN)))).thenReturn(List.of(role(RoleType.ADMIN)));
 		when(accessTokenIssuer.issue(any(), anySet())).thenReturn("access-token-value");
 		when(refreshTokenGenerator.generate()).thenReturn("refresh-token-value");
 
@@ -122,6 +127,7 @@ class AuthenticateUseCaseImplTest {
 		when(userRepository.findByUsername("jane.doe@utez.edu.mx")).thenReturn(Optional.of(user));
 		when(passwordHasher.matches("correct-password", "hashed-pw")).thenReturn(true);
 		when(userRoleRepository.findByUserId(any())).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 		when(accessTokenIssuer.issue(any(), anySet())).thenReturn("access-token-value");
 		when(refreshTokenGenerator.generate()).thenReturn("refresh-token-value");
 
@@ -130,5 +136,15 @@ class AuthenticateUseCaseImplTest {
 
 		assertThat(result.mustChangePassword()).isTrue();
 		assertThat(result.accessToken()).isEqualTo("access-token-value");
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		org.springframework.test.util.ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

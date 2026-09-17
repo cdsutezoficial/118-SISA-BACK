@@ -1,8 +1,10 @@
 package mx.edu.utez.sisa.identity.infrastructure.bootstrap;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -35,10 +37,13 @@ class AdminSeedRunnerTest {
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final PersonRepository personRepository = mock(PersonRepository.class);
 	private final PasswordHasher passwordHasher = mock(PasswordHasher.class);
+	private final RoleRepository roleRepository = mock(RoleRepository.class);
 
 	@Test
 	void seedsAdminWhenNoneExists() {
-		when(userRoleRepository.existsByRoleType(RoleType.ADMIN)).thenReturn(false);
+		UUID adminRoleId = roleId(RoleType.ADMIN);
+		when(roleRepository.findByKey(RoleType.ADMIN.name())).thenReturn(java.util.Optional.of(role(RoleType.ADMIN)));
+		when(userRoleRepository.existsByRoleId(adminRoleId)).thenReturn(false);
 
 		Person seededPerson = new Person(ADMIN_CURP, "Administrador", "Sistema", null, ADMIN_USERNAME);
 		ReflectionTestUtils.setField(seededPerson, "id", UUID.randomUUID());
@@ -51,7 +56,7 @@ class AdminSeedRunnerTest {
 		when(userRepository.save(any(User.class))).thenReturn(seededUser);
 
 		AdminSeedRunner runner = new AdminSeedRunner(userRepository, userRoleRepository, personRepository,
-				passwordHasher, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_CURP);
+				passwordHasher, roleRepository, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_CURP);
 
 		runner.run(mock(ApplicationArguments.class));
 
@@ -62,15 +67,26 @@ class AdminSeedRunnerTest {
 
 	@Test
 	void skipsWhenAdminAlreadyExists() {
-		when(userRoleRepository.existsByRoleType(RoleType.ADMIN)).thenReturn(true);
+		when(roleRepository.findByKey(RoleType.ADMIN.name())).thenReturn(java.util.Optional.of(role(RoleType.ADMIN)));
+		when(userRoleRepository.existsByRoleId(roleId(RoleType.ADMIN))).thenReturn(true);
 
 		AdminSeedRunner runner = new AdminSeedRunner(userRepository, userRoleRepository, personRepository,
-				passwordHasher, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_CURP);
+				passwordHasher, roleRepository, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_CURP);
 
 		runner.run(mock(ApplicationArguments.class));
 
 		verify(personRepository, never()).save(any());
 		verify(userRepository, never()).save(any());
 		verify(userRoleRepository, never()).save(any());
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

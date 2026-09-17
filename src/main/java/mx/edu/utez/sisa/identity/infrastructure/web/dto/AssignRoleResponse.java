@@ -1,12 +1,10 @@
 package mx.edu.utez.sisa.identity.infrastructure.web.dto;
 
-import mx.edu.utez.sisa.shared.model.RoleType;
-
 import java.util.UUID;
 
 /**
- * Response body for {@code POST /users/{userId}/roles} (design.md — REST
- * endpoints): {@code {userRoleId, roleType, divisionId}}.
+ * Response body for {@code POST /users/{userId}/roles}: returns the created
+ * grant plus the resolved role catalog data.
  */
-public record AssignRoleResponse(UUID userRoleId, RoleType roleType, UUID divisionId) {
+public record AssignRoleResponse(UUID userRoleId, UUID roleId, String roleKey, String roleName, UUID divisionId) {
 }

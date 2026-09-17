@@ -1,7 +1,5 @@
 package mx.edu.utez.sisa.identity.domain.port.in;
 
-import mx.edu.utez.sisa.shared.model.RoleType;
-
 import java.util.UUID;
 
 /**
@@ -17,12 +15,12 @@ public interface AssignRoleUseCase {
 	/**
 	 * @param callerId   the acting ADMIN user, used for the mustChangePassword guard and authorization
 	 * @param userId     the target {@code User} receiving the role
-	 * @param roleType   the role being granted
+	 * @param roleId     the role being granted
 	 * @param divisionId required for division-scoped roles, forbidden otherwise (spec rule)
 	 */
-	record AssignRoleCommand(UUID callerId, UUID userId, RoleType roleType, UUID divisionId) {
+	record AssignRoleCommand(UUID callerId, UUID userId, UUID roleId, UUID divisionId) {
 	}
 
-	record AssignRoleResult(UUID userRoleId, RoleType roleType, UUID divisionId) {
+	record AssignRoleResult(UUID userRoleId, UUID roleId, String roleKey, String roleName, UUID divisionId) {
 	}
 }

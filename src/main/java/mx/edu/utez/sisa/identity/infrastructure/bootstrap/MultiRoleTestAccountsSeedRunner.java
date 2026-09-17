@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -13,9 +14,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.UUID;
 
 /**
  * Dev/testing convenience seed for MULTI-ROLE accounts — NOT a system
@@ -37,6 +40,7 @@ import java.util.Arrays;
  * sufficient for exercising role-based UI behavior without a division catalog.
  */
 @Component
+@Order(12)
 public class MultiRoleTestAccountsSeedRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(MultiRoleTestAccountsSeedRunner.class);
@@ -45,15 +49,17 @@ public class MultiRoleTestAccountsSeedRunner implements ApplicationRunner {
 	private final UserRoleRepository userRoleRepository;
 	private final PersonRepository personRepository;
 	private final PasswordHasher passwordHasher;
+	private final RoleRepository roleRepository;
 	private final String testAccountsPassword;
 
 	public MultiRoleTestAccountsSeedRunner(UserRepository userRepository, UserRoleRepository userRoleRepository,
-			PersonRepository personRepository, PasswordHasher passwordHasher,
+			PersonRepository personRepository, PasswordHasher passwordHasher, RoleRepository roleRepository,
 			@Value("${sisa.security.bootstrap.test-accounts.password}") String testAccountsPassword) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
 		this.personRepository = personRepository;
 		this.passwordHasher = passwordHasher;
+		this.roleRepository = roleRepository;
 		this.testAccountsPassword = testAccountsPassword;
 	}
 
@@ -81,9 +87,14 @@ public class MultiRoleTestAccountsSeedRunner implements ApplicationRunner {
 		Person person = personRepository.save(new Person(curp, firstName, lastName, null, username));
 		User user = userRepository.save(new User(person.getId(), username, passwordHasher.hash(testAccountsPassword)));
 		for (RoleType role : roles) {
-			userRoleRepository.save(new UserRole(user.getId(), role, null));
+			userRoleRepository.save(new UserRole(user.getId(), resolveRoleId(role), null));
 		}
 
 		log.info("Seeded multi-role test account {} with roles {}", username, Arrays.toString(roles));
+	}
+
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(mx.edu.utez.sisa.identity.domain.model.Role::getId)
+				.orElseThrow(() -> new IllegalStateException("Missing seeded role: " + roleType.name()));
 	}
 }

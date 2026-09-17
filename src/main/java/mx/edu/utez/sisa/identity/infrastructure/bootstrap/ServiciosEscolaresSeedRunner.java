@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -13,7 +14,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+
+import java.util.UUID;
 
 /**
  * Dev/testing convenience seed for a SERVICIOS_ESCOLARES user — NOT a system
@@ -28,6 +32,7 @@ import org.springframework.stereotype.Component;
  * with a blank password.
  */
 @Component
+@Order(11)
 public class ServiciosEscolaresSeedRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(ServiciosEscolaresSeedRunner.class);
@@ -36,12 +41,13 @@ public class ServiciosEscolaresSeedRunner implements ApplicationRunner {
 	private final UserRoleRepository userRoleRepository;
 	private final PersonRepository personRepository;
 	private final PasswordHasher passwordHasher;
+	private final RoleRepository roleRepository;
 	private final String username;
 	private final String password;
 	private final String curp;
 
 	public ServiciosEscolaresSeedRunner(UserRepository userRepository, UserRoleRepository userRoleRepository,
-			PersonRepository personRepository, PasswordHasher passwordHasher,
+			PersonRepository personRepository, PasswordHasher passwordHasher, RoleRepository roleRepository,
 			@Value("${sisa.security.bootstrap.servicios-escolares.username}") String username,
 			@Value("${sisa.security.bootstrap.servicios-escolares.password}") String password,
 			@Value("${sisa.security.bootstrap.servicios-escolares.curp}") String curp) {
@@ -49,6 +55,7 @@ public class ServiciosEscolaresSeedRunner implements ApplicationRunner {
 		this.userRoleRepository = userRoleRepository;
 		this.personRepository = personRepository;
 		this.passwordHasher = passwordHasher;
+		this.roleRepository = roleRepository;
 		this.username = username;
 		this.password = password;
 		this.curp = curp;
@@ -56,7 +63,8 @@ public class ServiciosEscolaresSeedRunner implements ApplicationRunner {
 
 	@Override
 	public void run(ApplicationArguments args) {
-		if (userRoleRepository.existsByRoleType(RoleType.SERVICIOS_ESCOLARES)) {
+		UUID roleId = resolveRoleId(RoleType.SERVICIOS_ESCOLARES);
+		if (userRoleRepository.existsByRoleId(roleId)) {
 			log.info("A SERVICIOS_ESCOLARES user already exists; skipping bootstrap seed");
 			return;
 		}
@@ -72,8 +80,13 @@ public class ServiciosEscolaresSeedRunner implements ApplicationRunner {
 		User user = new User(savedPerson.getId(), username, passwordHash);
 		User savedUser = userRepository.save(user);
 
-		userRoleRepository.save(new UserRole(savedUser.getId(), RoleType.SERVICIOS_ESCOLARES, null));
+		userRoleRepository.save(new UserRole(savedUser.getId(), roleId, null));
 
 		log.info("Seeded bootstrap SERVICIOS_ESCOLARES user: {}", username);
+	}
+
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(mx.edu.utez.sisa.identity.domain.model.Role::getId)
+				.orElseThrow(() -> new IllegalStateException("Missing seeded role: " + roleType.name()));
 	}
 }
