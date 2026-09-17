@@ -14,6 +14,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
@@ -29,6 +31,8 @@ import java.util.stream.Collectors;
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+	private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
 	private static final String BEARER_PREFIX = "Bearer ";
 
@@ -50,6 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			}
 			catch (JwtException | IllegalArgumentException ex) {
 				SecurityContextHolder.clearContext();
+					log.warn("JWT rechazado para {} {}", request.getMethod(), request.getRequestURI());
 			}
 		}
 		filterChain.doFilter(request, response);

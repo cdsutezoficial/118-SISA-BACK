@@ -13,6 +13,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
@@ -177,7 +178,8 @@ public class SecurityFilterConfig {
 		http.csrf(AbstractHttpConfigurer::disable)
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
+				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint())
+						.accessDeniedHandler(accessDeniedHandler()))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/auth/login", "/auth/refresh").permitAll()
 						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
@@ -290,7 +292,18 @@ public class SecurityFilterConfig {
 			response.setStatus(HttpStatus.UNAUTHORIZED.value());
 			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 			ErrorResponse body = new ErrorResponse(Instant.now(), HttpStatus.UNAUTHORIZED.value(),
-					HttpStatus.UNAUTHORIZED.getReasonPhrase(), "Invalid or missing authentication token",
+					"No autorizado", "Tu sesión no es válida o ha expirado. Inicia sesión nuevamente.",
+					request.getRequestURI());
+			objectMapper.writeValue(response.getWriter(), body);
+		};
+	}
+
+	private AccessDeniedHandler accessDeniedHandler() {
+		return (request, response, accessDeniedException) -> {
+			response.setStatus(HttpStatus.FORBIDDEN.value());
+			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+			ErrorResponse body = new ErrorResponse(Instant.now(), HttpStatus.FORBIDDEN.value(),
+					"Acceso denegado", "No tienes permiso para realizar esta acción.",
 					request.getRequestURI());
 			objectMapper.writeValue(response.getWriter(), body);
 		};
