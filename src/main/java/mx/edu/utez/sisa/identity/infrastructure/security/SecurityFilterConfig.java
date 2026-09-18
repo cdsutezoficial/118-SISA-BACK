@@ -276,6 +276,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/outreach-channels/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/high-school-types/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/high-school-types", "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/high-school-types")

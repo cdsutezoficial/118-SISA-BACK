@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase.List
 import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase.HighSchoolTypeSummary;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase.UpdateHighSchoolTypeCommand;
+import mx.edu.utez.sisa.admission.infrastructure.persistence.HighSchoolTypeJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.ChangeHighSchoolTypeStatusRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CreateHighSchoolTypeRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.HighSchoolTypeListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.HighSchoolTypeListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.HighSchoolTypeResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.UpdateHighSchoolTypeRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -61,16 +64,20 @@ public class HighSchoolTypeController {
 
 	private final ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase;
 
+	private final HighSchoolTypeJpaRepository highSchoolTypeJpaRepository;
+
 	public HighSchoolTypeController(ListHighSchoolTypesUseCase listHighSchoolTypesUseCase,
 			CreateHighSchoolTypeUseCase createHighSchoolTypeUseCase,
 			GetHighSchoolTypeUseCase getHighSchoolTypeUseCase,
 			UpdateHighSchoolTypeUseCase updateHighSchoolTypeUseCase,
-			ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase) {
+			ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase,
+			HighSchoolTypeJpaRepository highSchoolTypeJpaRepository) {
 		this.listHighSchoolTypesUseCase = listHighSchoolTypesUseCase;
 		this.createHighSchoolTypeUseCase = createHighSchoolTypeUseCase;
 		this.getHighSchoolTypeUseCase = getHighSchoolTypeUseCase;
 		this.updateHighSchoolTypeUseCase = updateHighSchoolTypeUseCase;
 		this.changeHighSchoolTypeStatusUseCase = changeHighSchoolTypeStatusUseCase;
+		this.highSchoolTypeJpaRepository = highSchoolTypeJpaRepository;
 	}
 
 	@PostMapping
@@ -87,6 +94,12 @@ public class HighSchoolTypeController {
 		HighSchoolTypeResult result = updateHighSchoolTypeUseCase
 				.updateHighSchoolType(new UpdateHighSchoolTypeCommand(id, request.name()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listHighSchoolTypeOptions() {
+		return highSchoolTypeJpaRepository.findByStatusOrderByNameAsc(HighSchoolTypeStatus.ACTIVE).stream()
+				.map(h -> new OptionResponse(h.getId(), h.getName(), null)).toList();
 	}
 
 	@GetMapping("/{id}")
