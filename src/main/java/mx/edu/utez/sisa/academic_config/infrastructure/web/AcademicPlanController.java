@@ -37,6 +37,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase.UpdatePlanLevelCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase.UpdateSubjectCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicPlanJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPlanListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPlanListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPlanResponse;
@@ -53,6 +54,7 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicPlanRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdatePlanLevelRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateSubjectRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -116,6 +118,8 @@ public class AcademicPlanController {
 
 	private final RemoveGradeScaleUseCase removeGradeScaleUseCase;
 
+	private final AcademicPlanJpaRepository academicPlanJpaRepository;
+
 	public AcademicPlanController(CreateAcademicPlanUseCase createAcademicPlanUseCase,
 			UpdateAcademicPlanUseCase updateAcademicPlanUseCase, ListAcademicPlansUseCase listAcademicPlansUseCase,
 			GetAcademicPlanUseCase getAcademicPlanUseCase,
@@ -123,7 +127,8 @@ public class AcademicPlanController {
 			UpdatePlanLevelUseCase updatePlanLevelUseCase, RemovePlanLevelUseCase removePlanLevelUseCase,
 			AddSubjectToPlanUseCase addSubjectToPlanUseCase, UpdateSubjectUseCase updateSubjectUseCase,
 			RemoveSubjectUseCase removeSubjectUseCase, SetGradeScaleUseCase setGradeScaleUseCase,
-			UpdateGradeScaleUseCase updateGradeScaleUseCase, RemoveGradeScaleUseCase removeGradeScaleUseCase) {
+			UpdateGradeScaleUseCase updateGradeScaleUseCase, RemoveGradeScaleUseCase removeGradeScaleUseCase,
+			AcademicPlanJpaRepository academicPlanJpaRepository) {
 		this.createAcademicPlanUseCase = createAcademicPlanUseCase;
 		this.updateAcademicPlanUseCase = updateAcademicPlanUseCase;
 		this.listAcademicPlansUseCase = listAcademicPlansUseCase;
@@ -138,6 +143,7 @@ public class AcademicPlanController {
 		this.setGradeScaleUseCase = setGradeScaleUseCase;
 		this.updateGradeScaleUseCase = updateGradeScaleUseCase;
 		this.removeGradeScaleUseCase = removeGradeScaleUseCase;
+		this.academicPlanJpaRepository = academicPlanJpaRepository;
 	}
 
 	@PostMapping
@@ -158,6 +164,14 @@ public class AcademicPlanController {
 				request.totalLevels(), request.minPassingGrade(), request.maxExtraordinaryExamsPerPeriod(),
 				request.requiresSocialService(), request.socialServiceMinLevelId()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listPlanOptions(@RequestParam(required = false) UUID programId) {
+		List<AcademicPlanJpaRepository.PlanOptionProjection> options = programId == null
+				? academicPlanJpaRepository.findByStatusOrderByVersionAsc(PlanStatus.ACTIVE)
+				: academicPlanJpaRepository.findByProgramIdAndStatusOrderByVersionAsc(programId, PlanStatus.ACTIVE);
+		return options.stream().map(p -> new OptionResponse(p.getId(), p.getVersion(), null)).toList();
 	}
 
 	@GetMapping("/{id}")

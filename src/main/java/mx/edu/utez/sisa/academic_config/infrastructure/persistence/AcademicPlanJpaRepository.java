@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,4 +48,30 @@ public interface AcademicPlanJpaRepository extends JpaRepository<AcademicPlan, U
 			""")
 	Page<AcademicPlan> search(@Param("programId") UUID programId, @Param("status") PlanStatus status,
 			@Param("search") String search, Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /plans/options} (transversal
+	 * design: "Roles y Permisos — patrón reference"): only
+	 * {@link PlanStatus#ACTIVE} plans, optional {@code programId} filter, as a
+	 * minimal {@link PlanOptionProjection}. {@code version} doubles as the
+	 * {@code OptionResponse#label} — plans have no name/code field of their own
+	 * (see {@code OptionResponse} javadoc on the optional code).
+	 */
+	List<PlanOptionProjection> findByStatusOrderByVersionAsc(PlanStatus status);
+
+	/**
+	 * Same as {@link #findByStatusOrderByVersionAsc(PlanStatus)} but scoped to
+	 * one program — consumed by pickers that already know the career (e.g.
+	 * {@code ?programId=} on {@code GET /plans/options}).
+	 */
+	List<PlanOptionProjection> findByProgramIdAndStatusOrderByVersionAsc(UUID programId, PlanStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface PlanOptionProjection {
+		UUID getId();
+
+		String getVersion();
+	}
 }
