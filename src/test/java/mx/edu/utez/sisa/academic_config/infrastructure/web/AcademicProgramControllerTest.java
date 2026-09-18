@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCa
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase.ProgramSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase.UpdateAcademicProgramCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicProgramJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -77,6 +79,9 @@ class AcademicProgramControllerTest {
 
 	@MockitoBean
 	private ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase;
+
+	@MockitoBean
+	private AcademicProgramJpaRepository academicProgramJpaRepository;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -278,6 +283,39 @@ class AcademicProgramControllerTest {
 		mockMvc.perform(patch("/programs/" + programId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ProgramStatus.ACTIVE))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listProgramOptionsReturnsOnlyActiveProgramsWithMinimalProjection() throws Exception {
+		UUID programId = UUID.randomUUID();
+		AcademicProgramJpaRepository.ProgramOptionProjection active = mock(
+				AcademicProgramJpaRepository.ProgramOptionProjection.class);
+		when(active.getId()).thenReturn(programId);
+		when(active.getName()).thenReturn("Ingeniería en Software");
+		when(active.getCode()).thenReturn("ISW");
+		when(academicProgramJpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/programs/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(programId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
+				.andExpect(jsonPath("$[0].code").value("ISW"))
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(academicProgramJpaRepository).findByStatusOrderByNameAsc(ProgramStatus.ACTIVE);
+	}
+
+	@Test
+	void listProgramOptionsFiltersByDivision() throws Exception {
+		UUID divisionId = UUID.randomUUID();
+		when(academicProgramJpaRepository.findByStatusAndDivisionIdOrderByNameAsc(ProgramStatus.ACTIVE, divisionId))
+				.thenReturn(List.of());
+
+		mockMvc.perform(get("/programs/options").param("divisionId", divisionId.toString()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+
+		verify(academicProgramJpaRepository)
+				.findByStatusAndDivisionIdOrderByNameAsc(ProgramStatus.ACTIVE, divisionId);
 	}
 
 	private record CreateProgramBody(UUID divisionId, String name, String offerName, String code, AcademicLevel level,

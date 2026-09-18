@@ -193,6 +193,7 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers("/users/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.GET, "/programs/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/divisions", "/divisions/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/divisions").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
