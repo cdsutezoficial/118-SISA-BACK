@@ -217,6 +217,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.DELETE, "/plans/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/subject-classifications/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/subject-classifications", "/subject-classifications/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/subject-classifications")
