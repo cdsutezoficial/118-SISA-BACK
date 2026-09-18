@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -54,4 +55,28 @@ public interface AcademicDivisionJpaRepository extends JpaRepository<AcademicDiv
 			""")
 	Page<AcademicDivision> search(@Param("status") DivisionStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /divisions/options} (transversal
+	 * design: "Roles y Permisos — patrón reference"). Returns only
+	 * {@link DivisionStatus#ACTIVE} divisions as a minimal
+	 * {@link DivisionOptionProjection} — {@code id}, {@code name} (the label)
+	 * and {@code code}, ordered by name. Interface projection avoids loading
+	 * the full {@code AcademicDivision} (no description, directorPersonId,
+	 * programCount). See commit "add GET /programs/options" for the matcher
+	 * ordering rationale: {@code /options} is matched BEFORE the blanket
+	 * {@code GET /divisions/**} rule in {@code SecurityFilterConfig}.
+	 */
+	List<DivisionOptionProjection> findByStatusOrderByNameAsc(DivisionStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface DivisionOptionProjection {
+		UUID getId();
+
+		String getName();
+
+		String getCode();
+	}
 }
