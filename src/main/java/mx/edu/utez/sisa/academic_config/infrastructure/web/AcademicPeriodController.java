@@ -15,6 +15,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPeriodsUseCas
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPeriodsUseCase.PeriodSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPeriodUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPeriodUseCase.UpdatePeriodCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicPeriodJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPeriodListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPeriodListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicPeriodResponse;
@@ -22,6 +23,7 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AdvancePeriodsByD
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangePeriodStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateAcademicPeriodRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicPeriodRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -70,17 +73,21 @@ public class AcademicPeriodController {
 
 	private final AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase;
 
+	private final AcademicPeriodJpaRepository academicPeriodJpaRepository;
+
 	public AcademicPeriodController(ListAcademicPeriodsUseCase listAcademicPeriodsUseCase,
 			CreateAcademicPeriodUseCase createAcademicPeriodUseCase, GetAcademicPeriodUseCase getAcademicPeriodUseCase,
 			UpdateAcademicPeriodUseCase updateAcademicPeriodUseCase,
 			ChangeAcademicPeriodStatusUseCase changeAcademicPeriodStatusUseCase,
-			AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase) {
+			AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase,
+			AcademicPeriodJpaRepository academicPeriodJpaRepository) {
 		this.listAcademicPeriodsUseCase = listAcademicPeriodsUseCase;
 		this.createAcademicPeriodUseCase = createAcademicPeriodUseCase;
 		this.getAcademicPeriodUseCase = getAcademicPeriodUseCase;
 		this.updateAcademicPeriodUseCase = updateAcademicPeriodUseCase;
 		this.changeAcademicPeriodStatusUseCase = changeAcademicPeriodStatusUseCase;
 		this.advanceAcademicPeriodStatusByDateUseCase = advanceAcademicPeriodStatusByDateUseCase;
+		this.academicPeriodJpaRepository = academicPeriodJpaRepository;
 	}
 
 	@PostMapping
@@ -98,6 +105,12 @@ public class AcademicPeriodController {
 				request.year(), request.periodNumber(), request.type(), request.startDate(), request.endDate(),
 				request.enrollmentStart(), request.enrollmentEnd()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listPeriodOptions() {
+		return academicPeriodJpaRepository.findByStatusOrderByYearDescNameAsc(PeriodStatus.ACTIVE).stream()
+				.map(p -> new OptionResponse(p.getId(), p.getName(), String.valueOf(p.getYear()))).toList();
 	}
 
 	@GetMapping("/{id}")

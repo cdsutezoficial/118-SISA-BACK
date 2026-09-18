@@ -16,6 +16,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPeriodsUseCas
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPeriodsUseCase.PeriodSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPeriodUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPeriodUseCase.UpdatePeriodCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicPeriodJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicPeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePeriodException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -82,6 +84,9 @@ class AcademicPeriodControllerTest {
 
 	@MockitoBean
 	private AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase;
+
+	@MockitoBean
+	private AcademicPeriodJpaRepository academicPeriodJpaRepository;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -272,6 +277,26 @@ class AcademicPeriodControllerTest {
 
 		mockMvc.perform(post("/periods/advance-by-date")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.advanced").value(2));
+	}
+
+	@Test
+	void listPeriodOptionsReturnsOnlyActivePeriodsWithMinimalProjection() throws Exception {
+		UUID periodId = UUID.randomUUID();
+		AcademicPeriodJpaRepository.PeriodOptionProjection active = mock(
+				AcademicPeriodJpaRepository.PeriodOptionProjection.class);
+		when(active.getId()).thenReturn(periodId);
+		when(active.getName()).thenReturn("Enero-Abril 2026");
+		when(active.getYear()).thenReturn(2026);
+		when(academicPeriodJpaRepository.findByStatusOrderByYearDescNameAsc(PeriodStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/periods/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(periodId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Enero-Abril 2026"))
+				.andExpect(jsonPath("$[0].code").value("2026"))
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(academicPeriodJpaRepository).findByStatusOrderByYearDescNameAsc(PeriodStatus.ACTIVE);
 	}
 
 	private record CreatePeriodBody(String name, int year, int periodNumber, PeriodType type, LocalDate startDate,
