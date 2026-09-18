@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -38,4 +39,24 @@ public interface OutreachChannelJpaRepository extends JpaRepository<OutreachChan
 			""")
 	Page<OutreachChannel> search(@Param("status") OutreachChannelStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /outreach-channels/options}
+	 * (transversal design: "Roles y Permisos — patrón reference"). Returns only
+	 * {@link OutreachChannelStatus#ACTIVE} channels as a minimal
+	 * {@link OutreachChannelOptionProjection} — {@code id} and {@code name}
+	 * (the label), ordered by name. {@code name} doubles as both label and
+	 * secondary identifier since this aggregate has no {@code code} field
+	 * (see {@code OptionResponse} javadoc on the optional code).
+	 */
+	List<OutreachChannelOptionProjection> findByStatusOrderByNameAsc(OutreachChannelStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface OutreachChannelOptionProjection {
+		UUID getId();
+
+		String getName();
+	}
 }
