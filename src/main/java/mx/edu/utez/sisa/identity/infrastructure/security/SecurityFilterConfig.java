@@ -233,6 +233,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/generations/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/generations", "/generations/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/generations").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")

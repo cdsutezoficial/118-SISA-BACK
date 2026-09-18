@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,4 +48,31 @@ public interface GenerationJpaRepository extends JpaRepository<Generation, UUID>
 			""")
 	Page<Generation> search(@Param("status") GenerationStatus status, @Param("search") String search,
 			@Param("programId") UUID programId, Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /generations/options}
+	 * (transversal design: "Roles y Permisos — patrón reference"). Returns only
+	 * {@link GenerationStatus#ACTIVE} generations, optional {@code programId}
+	 * filter, as a minimal {@link GenerationOptionProjection}. {@code code}
+	 * doubles as the {@code OptionResponse#label} — this aggregate has no
+	 * {@code name} field of its own (see {@code OptionResponse} javadoc on the
+	 * optional code, omitted here since {@code code} is already the label).
+	 */
+	List<GenerationOptionProjection> findByStatusOrderByCodeAsc(GenerationStatus status);
+
+	/**
+	 * Same as {@link #findByStatusOrderByCodeAsc(GenerationStatus)} but scoped
+	 * to one program — consumed by pickers that already know the career (e.g.
+	 * {@code ?programId=} on {@code GET /generations/options}).
+	 */
+	List<GenerationOptionProjection> findByProgramIdAndStatusOrderByCodeAsc(UUID programId, GenerationStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface GenerationOptionProjection {
+		UUID getId();
+
+		String getCode();
+	}
 }
