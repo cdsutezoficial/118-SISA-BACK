@@ -2,7 +2,6 @@ package mx.edu.utez.sisa.identity.infrastructure.persistence;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
-import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,20 +21,20 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 	Optional<User> findByPersonId(UUID personId);
 
 	/**
-	 * Backs {@code ListUsersUseCase} (01-identidad.md). {@code roleType} is
+	 * Backs {@code ListUsersUseCase} (01-identidad.md). {@code roleKey} is
 	 * matched with a correlated {@code EXISTS} subquery against
 	 * {@code UserRole} — deliberately NOT a {@code JOIN UserRole} — so a user
 	 * holding several matching roles is still counted and paginated exactly
 	 * once (a JOIN across the one-to-many UserRole relation would duplicate
 	 * that user's row per matching role and break both the total count and
 	 * the page boundaries). {@code divisionId} is an additive condition
-	 * inside that SAME {@code roleType} EXISTS — not a separate EXISTS of its
+	 * inside that SAME {@code roleKey} EXISTS — not a separate EXISTS of its
 	 * own — so "role X scoped to division Y" requires ONE matching
 	 * {@code UserRole} row satisfying both, rather than two independent
-	 * roles. Because it lives inside the {@code roleType}-gated EXISTS,
+	 * roles. Because it lives inside the {@code roleKey}-gated EXISTS,
 	 * {@code divisionId} is a permissive additive filter that only takes
-	 * effect combined with {@code roleType}: passing it alone, without
-	 * {@code roleType}, has no effect (the outer {@code :roleType IS NULL OR}
+	 * effect combined with {@code roleKey}: passing it alone, without
+	 * {@code roleKey}, has no effect (the outer {@code :roleKey IS NULL OR}
 	 * short-circuits before the EXISTS — and thus before {@code divisionId}
 	 * — is ever evaluated), matching the endpoint's contract that
 	 * {@code divisionId} is not validated as "requires role to also be set".
@@ -52,8 +51,8 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 	 */
 	@Query(value = """
 			SELECT u FROM User u
-			WHERE (:roleType IS NULL OR EXISTS (
-			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType
+			WHERE (:roleKey IS NULL OR EXISTS (
+			        SELECT 1 FROM UserRole ur, Role r WHERE ur.userId = u.id AND ur.roleId = r.id AND r.key = :roleKey
 			          AND (:divisionId IS NULL OR ur.divisionId = :divisionId)))
 			  AND (:status IS NULL OR u.status = :status)
 			  AND (:search IS NULL
@@ -68,8 +67,8 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 			""",
 			countQuery = """
 			SELECT COUNT(u) FROM User u
-			WHERE (:roleType IS NULL OR EXISTS (
-			        SELECT 1 FROM UserRole ur WHERE ur.userId = u.id AND ur.roleType = :roleType
+			WHERE (:roleKey IS NULL OR EXISTS (
+			        SELECT 1 FROM UserRole ur, Role r WHERE ur.userId = u.id AND ur.roleId = r.id AND r.key = :roleKey
 			          AND (:divisionId IS NULL OR ur.divisionId = :divisionId)))
 			  AND (:status IS NULL OR u.status = :status)
 			  AND (:search IS NULL
@@ -82,6 +81,6 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 			                OR LOWER(CONCAT(p.firstName, ' ', p.lastName1, ' ', COALESCE(p.lastName2, '')))
 			                   LIKE LOWER(CONCAT('%', :search, '%')))))
 			""")
-	Page<User> search(@Param("roleType") RoleType roleType, @Param("status") UserStatus status,
+	Page<User> search(@Param("roleKey") String roleKey, @Param("status") UserStatus status,
 			@Param("search") String search, @Param("divisionId") UUID divisionId, Pageable pageable);
 }

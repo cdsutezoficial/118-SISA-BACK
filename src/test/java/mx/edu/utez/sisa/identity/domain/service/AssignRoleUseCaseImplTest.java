@@ -1,8 +1,10 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleResult;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
@@ -19,6 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -29,6 +32,8 @@ class AssignRoleUseCaseImplTest {
 	private UserRepository userRepository;
 	@Mock
 	private UserRoleRepository userRoleRepository;
+	@Mock
+	private RoleRepository roleRepository;
 
 	private AssignRoleUseCaseImpl useCase;
 
@@ -39,7 +44,7 @@ class AssignRoleUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new AssignRoleUseCaseImpl(userRepository, userRoleRepository);
+		useCase = new AssignRoleUseCaseImpl(userRepository, userRoleRepository, roleRepository);
 		adminCaller = new User(UUID.randomUUID(), "admin@utez.edu.mx", "hashed-admin-pw");
 		adminCaller.changePassword("hashed-admin-pw-2"); // clears mustChangePassword so the caller can operate
 		targetUser = new User(UUID.randomUUID(), "target@utez.edu.mx", "hashed-target-pw");
@@ -51,6 +56,10 @@ class AssignRoleUseCaseImplTest {
 		ReflectionTestUtils.setField(targetUser, "id", targetUserId);
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.findById(targetUserId)).thenReturn(Optional.of(targetUser));
+		stubRole(RoleType.DIRECTOR_DIVISION);
+		stubRole(RoleType.GESTOR_ACADEMICO);
+		stubRole(RoleType.ADMIN);
+		stubRole(RoleType.COORDINACION_ESTADIAS_DIVISION);
 	}
 
 	@Test
@@ -59,23 +68,23 @@ class AssignRoleUseCaseImplTest {
 		when(userRoleRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		AssignRoleResult result = useCase.assignRole(
-				new AssignRoleCommand(callerId, targetUserId, RoleType.DIRECTOR_DIVISION, divisionId));
+				new AssignRoleCommand(callerId, targetUserId, roleId(RoleType.DIRECTOR_DIVISION), divisionId));
 
-		assertThat(result.roleType()).isEqualTo(RoleType.DIRECTOR_DIVISION);
+		assertThat(result.roleKey()).isEqualTo(RoleType.DIRECTOR_DIVISION.name());
 		assertThat(result.divisionId()).isEqualTo(divisionId);
 	}
 
 	@Test
 	void assignRole_divisionScopedRoleRejectedWithoutDivisionId() {
 		assertThatThrownBy(() -> useCase
-				.assignRole(new AssignRoleCommand(callerId, targetUserId, RoleType.GESTOR_ACADEMICO, null)))
+				.assignRole(new AssignRoleCommand(callerId, targetUserId, roleId(RoleType.GESTOR_ACADEMICO), null)))
 				.isInstanceOf(DivisionRuleViolationException.class);
 	}
 
 	@Test
 	void assignRole_nonDivisionRoleRejectedWithADivisionId() {
 		assertThatThrownBy(() -> useCase
-				.assignRole(new AssignRoleCommand(callerId, targetUserId, RoleType.ADMIN, UUID.randomUUID())))
+				.assignRole(new AssignRoleCommand(callerId, targetUserId, roleId(RoleType.ADMIN), UUID.randomUUID())))
 				.isInstanceOf(DivisionRuleViolationException.class);
 	}
 
@@ -86,11 +95,22 @@ class AssignRoleUseCaseImplTest {
 		when(userRoleRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		AssignRoleResult first = useCase.assignRole(
-				new AssignRoleCommand(callerId, targetUserId, RoleType.COORDINACION_ESTADIAS_DIVISION, divisionA));
+				new AssignRoleCommand(callerId, targetUserId, roleId(RoleType.COORDINACION_ESTADIAS_DIVISION), divisionA));
 		AssignRoleResult second = useCase
-				.assignRole(new AssignRoleCommand(callerId, targetUserId, RoleType.GESTOR_ACADEMICO, divisionB));
+				.assignRole(new AssignRoleCommand(callerId, targetUserId, roleId(RoleType.GESTOR_ACADEMICO), divisionB));
 
 		assertThat(first.divisionId()).isEqualTo(divisionA);
 		assertThat(second.divisionId()).isEqualTo(divisionB);
+	}
+
+	private void stubRole(RoleType roleType) {
+		UUID roleId = roleId(roleType);
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId);
+		lenient().when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

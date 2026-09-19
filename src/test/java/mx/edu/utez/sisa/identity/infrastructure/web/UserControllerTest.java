@@ -139,20 +139,22 @@ class UserControllerTest {
 	@Test
 	void assignRoleReturns201WithRoleAndDivision() throws Exception {
 		UUID userId = UUID.randomUUID();
+		UUID roleId = UUID.randomUUID();
 		UUID divisionId = UUID.randomUUID();
 		UUID userRoleId = UUID.randomUUID();
-		when(assignRoleUseCase.assignRole(new AssignRoleCommand(callerId, userId, RoleType.DIRECTOR_DIVISION, divisionId)))
-				.thenReturn(new AssignRoleResult(userRoleId, RoleType.DIRECTOR_DIVISION, divisionId));
+		when(assignRoleUseCase.assignRole(new AssignRoleCommand(callerId, userId, roleId, divisionId)))
+				.thenReturn(new AssignRoleResult(userRoleId, roleId, "DIRECTOR_DIVISION", "Director", divisionId));
 
 		mockMvc.perform(post("/users/" + userId + "/roles").contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AssignRoleBody(RoleType.DIRECTOR_DIVISION, divisionId))))
+				.content(objectMapper.writeValueAsString(new AssignRoleBody(roleId, divisionId))))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.userRoleId").value(userRoleId.toString()))
-				.andExpect(jsonPath("$.roleType").value("DIRECTOR_DIVISION"))
+				.andExpect(jsonPath("$.roleId").value(roleId.toString()))
+				.andExpect(jsonPath("$.roleKey").value("DIRECTOR_DIVISION"))
 				.andExpect(jsonPath("$.divisionId").value(divisionId.toString()));
 
 		verify(assignRoleUseCase)
-				.assignRole(new AssignRoleCommand(callerId, userId, RoleType.DIRECTOR_DIVISION, divisionId));
+				.assignRole(new AssignRoleCommand(callerId, userId, roleId, divisionId));
 	}
 
 	@Test
@@ -161,7 +163,7 @@ class UserControllerTest {
 				.thenThrow(new DivisionRuleViolationException("Role GESTOR_ACADEMICO requires a divisionId"));
 
 		mockMvc.perform(post("/users/" + UUID.randomUUID() + "/roles").contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AssignRoleBody(RoleType.GESTOR_ACADEMICO, null))))
+				.content(objectMapper.writeValueAsString(new AssignRoleBody(UUID.randomUUID(), null))))
 				.andExpect(status().isBadRequest());
 	}
 
@@ -169,24 +171,25 @@ class UserControllerTest {
 	void listUsersReturns200WithItemsAndPaginationMetadata() throws Exception {
 		UUID userId = UUID.randomUUID();
 		UUID personId = UUID.randomUUID();
+		UUID roleId = UUID.randomUUID();
 		UUID divisionId = UUID.randomUUID();
 		UserSummary summary = new UserSummary(userId, personId, "Ana García López", "ana.garcia@utez.edu.mx",
-				List.of(new UserRoleSummary(RoleType.DIRECTOR_DIVISION, divisionId)), UserStatus.ACTIVE, null);
-		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION, UserStatus.ACTIVE,
+				List.of(new UserRoleSummary(roleId, "DIRECTOR_DIVISION", "Director", divisionId)), UserStatus.ACTIVE, null);
+		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, "DIRECTOR_DIVISION", UserStatus.ACTIVE,
 				"ana", 0, 20, divisionId))).thenReturn(new ListUsersResult(List.of(summary), 1L, 1, 0, 20));
 
-		mockMvc.perform(get("/users").param("role", "DIRECTOR_DIVISION").param("status", "ACTIVE")
+		mockMvc.perform(get("/users").param("roleKey", "DIRECTOR_DIVISION").param("status", "ACTIVE")
 				.param("search", "ana").param("divisionId", divisionId.toString()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].userId").value(userId.toString()))
 				.andExpect(jsonPath("$.items[0].fullName").value("Ana García López"))
-				.andExpect(jsonPath("$.items[0].roles[0].roleType").value("DIRECTOR_DIVISION"))
+				.andExpect(jsonPath("$.items[0].roles[0].roleKey").value("DIRECTOR_DIVISION"))
 				.andExpect(jsonPath("$.totalElements").value(1))
 				.andExpect(jsonPath("$.totalPages").value(1))
 				.andExpect(jsonPath("$.page").value(0))
 				.andExpect(jsonPath("$.size").value(20));
 
-		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION,
+		verify(listUsersUseCase).listUsers(new ListUsersQuery(callerId, "DIRECTOR_DIVISION",
 				UserStatus.ACTIVE, "ana", 0, 20, divisionId));
 	}
 
@@ -220,26 +223,30 @@ class UserControllerTest {
 	}
 
 	@Test
-	void listUsersWithInvalidRoleQueryParamReturns400() throws Exception {
-		mockMvc.perform(get("/users").param("role", "NOT_A_ROLE")).andExpect(status().isBadRequest());
+	void listUsersWithArbitraryRoleKeyPassesThrough() throws Exception {
+		when(listUsersUseCase.listUsers(new ListUsersQuery(callerId, "NOT_A_ROLE", null, null, 0, 20, null)))
+				.thenReturn(new ListUsersResult(List.of(), 0L, 0, 0, 20));
+
+		mockMvc.perform(get("/users").param("roleKey", "NOT_A_ROLE")).andExpect(status().isOk());
 	}
 
 	@Test
 	void getUserReturns200WithFullDetailIncludingUserRoleIds() throws Exception {
 		UUID userId = UUID.randomUUID();
 		UUID personId = UUID.randomUUID();
+		UUID roleId = UUID.randomUUID();
 		UUID divisionId = UUID.randomUUID();
 		UUID userRoleId = UUID.randomUUID();
 		UserDetailResult result = new UserDetailResult(userId, personId, "Ana García López", "ana.garcia@utez.edu.mx",
 				UserStatus.ACTIVE, false, null, java.time.Instant.now(),
-				List.of(new UserRoleDetail(userRoleId, RoleType.DIRECTOR_DIVISION, divisionId)));
+				List.of(new UserRoleDetail(userRoleId, roleId, "DIRECTOR_DIVISION", "Director", divisionId)));
 		when(getUserUseCase.getUser(new GetUserQuery(callerId, userId))).thenReturn(result);
 
 		mockMvc.perform(get("/users/" + userId)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.userId").value(userId.toString()))
 				.andExpect(jsonPath("$.fullName").value("Ana García López"))
 				.andExpect(jsonPath("$.roles[0].userRoleId").value(userRoleId.toString()))
-				.andExpect(jsonPath("$.roles[0].roleType").value("DIRECTOR_DIVISION"));
+				.andExpect(jsonPath("$.roles[0].roleKey").value("DIRECTOR_DIVISION"));
 	}
 
 	@Test
@@ -290,6 +297,6 @@ class UserControllerTest {
 	private record CreateUserBody(UUID personId, String temporaryPassword) {
 	}
 
-	private record AssignRoleBody(RoleType roleType, UUID divisionId) {
+	private record AssignRoleBody(UUID roleId, UUID divisionId) {
 	}
 }

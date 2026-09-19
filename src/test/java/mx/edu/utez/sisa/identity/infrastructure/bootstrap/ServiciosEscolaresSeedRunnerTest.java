@@ -1,8 +1,10 @@
 package mx.edu.utez.sisa.identity.infrastructure.bootstrap;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -38,10 +40,13 @@ class ServiciosEscolaresSeedRunnerTest {
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final PersonRepository personRepository = mock(PersonRepository.class);
 	private final PasswordHasher passwordHasher = mock(PasswordHasher.class);
+	private final RoleRepository roleRepository = mock(RoleRepository.class);
 
 	@Test
 	void seedsServiciosEscolaresWhenNoneExists() {
-		when(userRoleRepository.existsByRoleType(RoleType.SERVICIOS_ESCOLARES)).thenReturn(false);
+		when(roleRepository.findByKey(RoleType.SERVICIOS_ESCOLARES.name()))
+				.thenReturn(java.util.Optional.of(role(RoleType.SERVICIOS_ESCOLARES)));
+		when(userRoleRepository.existsByRoleId(roleId(RoleType.SERVICIOS_ESCOLARES))).thenReturn(false);
 
 		Person seededPerson = new Person(CURP, "Servicios", "Escolares", null, USERNAME);
 		ReflectionTestUtils.setField(seededPerson, "id", UUID.randomUUID());
@@ -54,7 +59,7 @@ class ServiciosEscolaresSeedRunnerTest {
 		when(userRepository.save(any(User.class))).thenReturn(seededUser);
 
 		ServiciosEscolaresSeedRunner runner = new ServiciosEscolaresSeedRunner(userRepository, userRoleRepository,
-				personRepository, passwordHasher, USERNAME, PASSWORD, CURP);
+				personRepository, passwordHasher, roleRepository, USERNAME, PASSWORD, CURP);
 
 		runner.run(mock(ApplicationArguments.class));
 
@@ -65,10 +70,12 @@ class ServiciosEscolaresSeedRunnerTest {
 
 	@Test
 	void skipsWhenServiciosEscolaresAlreadyExists() {
-		when(userRoleRepository.existsByRoleType(RoleType.SERVICIOS_ESCOLARES)).thenReturn(true);
+		when(roleRepository.findByKey(RoleType.SERVICIOS_ESCOLARES.name()))
+				.thenReturn(java.util.Optional.of(role(RoleType.SERVICIOS_ESCOLARES)));
+		when(userRoleRepository.existsByRoleId(roleId(RoleType.SERVICIOS_ESCOLARES))).thenReturn(true);
 
 		ServiciosEscolaresSeedRunner runner = new ServiciosEscolaresSeedRunner(userRepository, userRoleRepository,
-				personRepository, passwordHasher, USERNAME, PASSWORD, CURP);
+				personRepository, passwordHasher, roleRepository, USERNAME, PASSWORD, CURP);
 
 		runner.run(mock(ApplicationArguments.class));
 
@@ -79,15 +86,27 @@ class ServiciosEscolaresSeedRunnerTest {
 
 	@Test
 	void skipsWhenPasswordIsBlank() {
-		when(userRoleRepository.existsByRoleType(RoleType.SERVICIOS_ESCOLARES)).thenReturn(false);
+		when(roleRepository.findByKey(RoleType.SERVICIOS_ESCOLARES.name()))
+				.thenReturn(java.util.Optional.of(role(RoleType.SERVICIOS_ESCOLARES)));
+		when(userRoleRepository.existsByRoleId(roleId(RoleType.SERVICIOS_ESCOLARES))).thenReturn(false);
 
 		ServiciosEscolaresSeedRunner runner = new ServiciosEscolaresSeedRunner(userRepository, userRoleRepository,
-				personRepository, passwordHasher, USERNAME, "", CURP);
+				personRepository, passwordHasher, roleRepository, USERNAME, "", CURP);
 
 		runner.run(mock(ApplicationArguments.class));
 
 		verify(personRepository, never()).save(any());
 		verify(userRepository, never()).save(any());
 		verify(userRoleRepository, never()).save(any());
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

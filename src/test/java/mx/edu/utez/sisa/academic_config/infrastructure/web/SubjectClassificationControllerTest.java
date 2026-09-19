@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassification
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase.UpdateClassificationCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.SubjectClassificationJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -71,6 +73,9 @@ class SubjectClassificationControllerTest {
 
 	@MockitoBean
 	private ChangeSubjectClassificationStatusUseCase changeSubjectClassificationStatusUseCase;
+
+	@MockitoBean
+	private SubjectClassificationJpaRepository subjectClassificationJpaRepository;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -266,6 +271,26 @@ class SubjectClassificationControllerTest {
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ClassificationStatus.ACTIVE))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listClassificationOptionsReturnsOnlyActiveClassificationsWithMinimalProjection() throws Exception {
+		UUID classificationId = UUID.randomUUID();
+		SubjectClassificationJpaRepository.ClassificationOptionProjection active = mock(
+				SubjectClassificationJpaRepository.ClassificationOptionProjection.class);
+		when(active.getId()).thenReturn(classificationId);
+		when(active.getName()).thenReturn("Integradora");
+		when(active.getCode()).thenReturn("INT");
+		when(subjectClassificationJpaRepository.findByStatusOrderByNameAsc(ClassificationStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/subject-classifications/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(classificationId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Integradora"))
+				.andExpect(jsonPath("$[0].code").value("INT"))
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(subjectClassificationJpaRepository).findByStatusOrderByNameAsc(ClassificationStatus.ACTIVE);
 	}
 
 	private record CreateClassificationBody(String name, String code) {

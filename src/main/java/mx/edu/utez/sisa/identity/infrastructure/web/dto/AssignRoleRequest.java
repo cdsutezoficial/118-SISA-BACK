@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.web.dto;
 
 import jakarta.validation.constraints.NotNull;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.util.UUID;
 
@@ -10,5 +9,6 @@ import java.util.UUID;
  * endpoints). {@code divisionId} is required only for division-scoped roles
  * — enforced by {@code AssignRoleUseCaseImpl}, not by bean validation here.
  */
-public record AssignRoleRequest(@NotNull RoleType roleType, UUID divisionId) {
+public record AssignRoleRequest(@NotNull(message = "Selecciona el rol que deseas asignar.") UUID roleId,
+		UUID divisionId) {
 }

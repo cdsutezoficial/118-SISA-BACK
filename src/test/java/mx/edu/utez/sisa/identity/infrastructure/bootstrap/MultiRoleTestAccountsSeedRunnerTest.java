@@ -1,9 +1,11 @@
 package mx.edu.utez.sisa.identity.infrastructure.bootstrap;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -39,14 +41,16 @@ class MultiRoleTestAccountsSeedRunnerTest {
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final PersonRepository personRepository = mock(PersonRepository.class);
 	private final PasswordHasher passwordHasher = mock(PasswordHasher.class);
+	private final RoleRepository roleRepository = mock(RoleRepository.class);
 
 	private MultiRoleTestAccountsSeedRunner newRunner() {
 		return new MultiRoleTestAccountsSeedRunner(userRepository, userRoleRepository, personRepository,
-				passwordHasher, PASSWORD);
+				passwordHasher, roleRepository, PASSWORD);
 	}
 
 	private void stubNoneExist() {
 		when(userRepository.findByUsername(any())).thenReturn(Optional.empty());
+		stubRoles();
 		when(personRepository.save(any(Person.class))).thenAnswer(invocation -> {
 			Person person = invocation.getArgument(0);
 			ReflectionTestUtils.setField(person, "id", UUID.randomUUID());
@@ -78,6 +82,7 @@ class MultiRoleTestAccountsSeedRunnerTest {
 		when(userRepository.findByUsername("finanzas.se@utez.edu.mx"))
 				.thenReturn(Optional.of(mock(User.class)));
 		when(userRepository.findByUsername("director.gestor@utez.edu.mx")).thenReturn(Optional.empty());
+		stubRoles();
 		when(personRepository.save(any(Person.class))).thenAnswer(invocation -> {
 			Person person = invocation.getArgument(0);
 			ReflectionTestUtils.setField(person, "id", UUID.randomUUID());
@@ -101,7 +106,7 @@ class MultiRoleTestAccountsSeedRunnerTest {
 	@Test
 	void skipsEntirelyWhenPasswordIsBlank() {
 		MultiRoleTestAccountsSeedRunner runner = new MultiRoleTestAccountsSeedRunner(userRepository, userRoleRepository,
-				personRepository, passwordHasher, "");
+				personRepository, passwordHasher, roleRepository, "");
 
 		runner.run(mock(ApplicationArguments.class));
 
@@ -109,5 +114,21 @@ class MultiRoleTestAccountsSeedRunnerTest {
 		verify(personRepository, never()).save(any());
 		verify(userRepository, never()).save(any());
 		verify(userRoleRepository, never()).save(any());
+	}
+
+	private void stubRoles() {
+		for (RoleType roleType : RoleType.values()) {
+			when(roleRepository.findByKey(roleType.name())).thenReturn(Optional.of(role(roleType)));
+		}
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

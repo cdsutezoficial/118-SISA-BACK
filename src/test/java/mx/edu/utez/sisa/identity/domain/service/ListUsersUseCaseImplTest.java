@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase.ListUsersQuery;
@@ -10,6 +11,7 @@ import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository.UserSearchCriteria;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository.UserSearchPage;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository.UserWithPerson;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
@@ -40,6 +42,8 @@ class ListUsersUseCaseImplTest {
 	private UserRepository userRepository;
 	@Mock
 	private UserRoleRepository userRoleRepository;
+	@Mock
+	private RoleRepository roleRepository;
 
 	private ListUsersUseCaseImpl useCase;
 
@@ -48,7 +52,7 @@ class ListUsersUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new ListUsersUseCaseImpl(userRepository, userRoleRepository);
+		useCase = new ListUsersUseCaseImpl(userRepository, userRoleRepository, roleRepository);
 		adminCaller = new User(UUID.randomUUID(), "admin@utez.edu.mx", "hashed-admin-pw");
 		adminCaller.changePassword("hashed-admin-pw-2"); // clears mustChangePassword so the caller can operate
 		callerId = UUID.randomUUID();
@@ -91,8 +95,10 @@ class ListUsersUseCaseImplTest {
 
 		UUID divisionId = UUID.randomUUID();
 		when(userRoleRepository.findByUserIdIn(List.of(targetUserId))).thenReturn(List.of(
-				new UserRole(targetUserId, RoleType.DOCENTE, null),
-				new UserRole(targetUserId, RoleType.GESTOR_ACADEMICO, divisionId)));
+				new UserRole(targetUserId, roleId(RoleType.DOCENTE), null),
+				new UserRole(targetUserId, roleId(RoleType.GESTOR_ACADEMICO), divisionId)));
+		when(roleRepository.findByIds(List.of(roleId(RoleType.DOCENTE), roleId(RoleType.GESTOR_ACADEMICO))))
+				.thenReturn(List.of(role(RoleType.DOCENTE), role(RoleType.GESTOR_ACADEMICO)));
 
 		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null));
 
@@ -104,8 +110,8 @@ class ListUsersUseCaseImplTest {
 		assertThat(summary.username()).isEqualTo("target@utez.edu.mx");
 		assertThat(summary.status()).isEqualTo(UserStatus.ACTIVE);
 		assertThat(summary.roles()).hasSize(2);
-		assertThat(summary.roles()).extracting("roleType").containsExactlyInAnyOrder(RoleType.DOCENTE,
-				RoleType.GESTOR_ACADEMICO);
+		assertThat(summary.roles()).extracting("roleKey").containsExactlyInAnyOrder(RoleType.DOCENTE.name(),
+				RoleType.GESTOR_ACADEMICO.name());
 		assertThat(result.totalElements()).isEqualTo(1L);
 		assertThat(result.totalPages()).isEqualTo(1);
 	}
@@ -124,6 +130,7 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.search(any()))
 				.thenReturn(new UserSearchPage(List.of(new UserWithPerson(target, person)), 1L, 1));
 		when(userRoleRepository.findByUserIdIn(List.of(targetUserId))).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		ListUsersResult result = useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 20, null));
 
@@ -136,15 +143,16 @@ class ListUsersUseCaseImplTest {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
 		when(userRoleRepository.findByUserIdIn(List.of())).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		UUID divisionId = UUID.randomUUID();
 		useCase.listUsers(
-				new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION, UserStatus.LOCKED, "ana", 2, 15, divisionId));
+				new ListUsersQuery(callerId, RoleType.DIRECTOR_DIVISION.name(), UserStatus.LOCKED, "ana", 2, 15, divisionId));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());
 		UserSearchCriteria criteria = captor.getValue();
-		assertThat(criteria.roleType()).isEqualTo(RoleType.DIRECTOR_DIVISION);
+		assertThat(criteria.roleKey()).isEqualTo(RoleType.DIRECTOR_DIVISION.name());
 		assertThat(criteria.status()).isEqualTo(UserStatus.LOCKED);
 		assertThat(criteria.search()).isEqualTo("ana");
 		assertThat(criteria.page()).isEqualTo(2);
@@ -156,6 +164,8 @@ class ListUsersUseCaseImplTest {
 	void listUsers_normalizesNegativePageToZero() {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
+		when(userRoleRepository.findByUserIdIn(List.of())).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, -5, 20, null));
 
@@ -168,6 +178,8 @@ class ListUsersUseCaseImplTest {
 	void listUsers_normalizesNonPositiveSizeToDefault() {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
+		when(userRoleRepository.findByUserIdIn(List.of())).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 0, null));
 
@@ -180,11 +192,23 @@ class ListUsersUseCaseImplTest {
 	void listUsers_capsOversizedSizeAtMaximum() {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		when(userRepository.search(any())).thenReturn(new UserSearchPage(List.of(), 0L, 0));
+		when(userRoleRepository.findByUserIdIn(List.of())).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		useCase.listUsers(new ListUsersQuery(callerId, null, null, null, 0, 5000, null));
 
 		ArgumentCaptor<UserSearchCriteria> captor = ArgumentCaptor.forClass(UserSearchCriteria.class);
 		verify(userRepository).search(captor.capture());
 		assertThat(captor.getValue().size()).isEqualTo(ListUsersQuery.MAX_PAGE_SIZE);
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

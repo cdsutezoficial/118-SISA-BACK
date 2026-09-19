@@ -30,7 +30,6 @@ import mx.edu.utez.sisa.identity.infrastructure.web.dto.UserDetailResponse.UserR
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.UserListItemResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.UserListItemResponse.UserRoleItem;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.UserListResponse;
-import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -96,19 +95,20 @@ public class UserController {
 			@Valid @RequestBody AssignRoleRequest request) {
 		UUID callerId = AuthenticatedCaller.currentUserId();
 		AssignRoleResult result = assignRoleUseCase
-				.assignRole(new AssignRoleCommand(callerId, userId, request.roleType(), request.divisionId()));
+				.assignRole(new AssignRoleCommand(callerId, userId, request.roleId(), request.divisionId()));
 		return ResponseEntity.status(HttpStatus.CREATED)
-				.body(new AssignRoleResponse(result.userRoleId(), result.roleType(), result.divisionId()));
+				.body(new AssignRoleResponse(result.userRoleId(), result.roleId(), result.roleKey(), result.roleName(),
+						result.divisionId()));
 	}
 
 	@GetMapping
-	public ResponseEntity<UserListResponse> listUsers(@RequestParam(required = false) RoleType role,
+	public ResponseEntity<UserListResponse> listUsers(@RequestParam(required = false) String roleKey,
 			@RequestParam(required = false) UserStatus status, @RequestParam(required = false) String search,
 			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
 			@RequestParam(required = false) UUID divisionId) {
 		UUID callerId = AuthenticatedCaller.currentUserId();
 		ListUsersResult result = listUsersUseCase
-				.listUsers(new ListUsersQuery(callerId, role, status, search, page, size, divisionId));
+				.listUsers(new ListUsersQuery(callerId, roleKey, status, search, page, size, divisionId));
 		return ResponseEntity.ok(new UserListResponse(result.users().stream().map(UserController::toItem).toList(),
 				result.totalElements(), result.totalPages(), result.page(), result.size()));
 	}
@@ -136,14 +136,16 @@ public class UserController {
 
 	private static UserListItemResponse toItem(UserSummary summary) {
 		return new UserListItemResponse(summary.userId(), summary.personId(), summary.fullName(), summary.username(),
-				summary.roles().stream().map(role -> new UserRoleItem(role.roleType(), role.divisionId())).toList(),
+				summary.roles().stream()
+						.map(role -> new UserRoleItem(role.roleId(), role.roleKey(), role.roleName(), role.divisionId()))
+						.toList(),
 				summary.status(), summary.lastLoginAt());
 	}
 
 	private static UserDetailResponse toDetailResponse(UserDetailResult result) {
 		return new UserDetailResponse(result.userId(), result.personId(), result.fullName(), result.username(),
 				result.status(), result.mustChangePassword(), result.lastLoginAt(), result.createdAt(),
-				result.roles().stream().map(role -> new UserRoleDetailItem(role.userRoleId(), role.roleType(),
-						role.divisionId())).toList());
+				result.roles().stream().map(role -> new UserRoleDetailItem(role.userRoleId(), role.roleId(),
+						role.roleKey(), role.roleName(), role.divisionId())).toList());
 	}
 }

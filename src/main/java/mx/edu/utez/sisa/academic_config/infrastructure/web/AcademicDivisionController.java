@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseC
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.ListAcademicDivisionsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase.UpdateAcademicDivisionCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicDivisionJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicDivisionListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicDivisionListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicDivisionResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeDivisionStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateAcademicDivisionRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicDivisionRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -60,16 +63,20 @@ public class AcademicDivisionController {
 
 	private final GetAcademicDivisionUseCase getAcademicDivisionUseCase;
 
+	private final AcademicDivisionJpaRepository academicDivisionJpaRepository;
+
 	public AcademicDivisionController(CreateAcademicDivisionUseCase createAcademicDivisionUseCase,
 			UpdateAcademicDivisionUseCase updateAcademicDivisionUseCase,
 			ListAcademicDivisionsUseCase listAcademicDivisionsUseCase,
 			ChangeAcademicDivisionStatusUseCase changeAcademicDivisionStatusUseCase,
-			GetAcademicDivisionUseCase getAcademicDivisionUseCase) {
+			GetAcademicDivisionUseCase getAcademicDivisionUseCase,
+			AcademicDivisionJpaRepository academicDivisionJpaRepository) {
 		this.createAcademicDivisionUseCase = createAcademicDivisionUseCase;
 		this.updateAcademicDivisionUseCase = updateAcademicDivisionUseCase;
 		this.listAcademicDivisionsUseCase = listAcademicDivisionsUseCase;
 		this.changeAcademicDivisionStatusUseCase = changeAcademicDivisionStatusUseCase;
 		this.getAcademicDivisionUseCase = getAcademicDivisionUseCase;
+		this.academicDivisionJpaRepository = academicDivisionJpaRepository;
 	}
 
 	@PostMapping
@@ -103,6 +110,12 @@ public class AcademicDivisionController {
 		return ResponseEntity.ok(new AcademicDivisionListResponse(
 				result.items().stream().map(AcademicDivisionController::toItem).toList(), result.totalElements(),
 				result.totalPages(), result.page(), result.size()));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listDivisionOptions() {
+		return academicDivisionJpaRepository.findByStatusOrderByNameAsc(DivisionStatus.ACTIVE).stream()
+				.map(d -> new OptionResponse(d.getId(), d.getName(), d.getCode())).toList();
 	}
 
 	@PatchMapping("/{id}/status")

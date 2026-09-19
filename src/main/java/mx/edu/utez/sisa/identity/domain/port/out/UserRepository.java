@@ -3,7 +3,6 @@ package mx.edu.utez.sisa.identity.domain.port.out;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
 import mx.edu.utez.sisa.shared.model.Person;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +24,7 @@ public interface UserRepository {
 
 	/**
 	 * Filterable, paginated query backing {@code ListUsersUseCase}
-	 * (01-identidad.md). {@code roleType} is matched via an EXISTS-style
+	 * (01-identidad.md). {@code roleKey} is matched via an EXISTS-style
 	 * predicate against the one-to-many {@code UserRole} relation — never a
 	 * JOIN on {@code UserRole} — so a user with multiple matching roles is
 	 * counted and paginated exactly once.
@@ -33,19 +32,19 @@ public interface UserRepository {
 	UserSearchPage search(UserSearchCriteria criteria);
 
 	/**
-	 * @param roleType   optional — filters to users having at least one UserRole of this type
+	 * @param roleKey    optional — filters to users having at least one UserRole with this role key
 	 * @param status     optional — filters to users with this exact status
 	 * @param search     optional free-text match against username or the linked Person's full name
 	 * @param page       zero-based page index
 	 * @param size       page size
-	 * @param divisionId optional — narrows the {@code roleType} EXISTS predicate against
+	 * @param divisionId optional — narrows the {@code roleKey} EXISTS predicate against
 	 *                   {@code UserRole} to roles scoped to this division, so "role X scoped to
 	 *                   division Y" requires a single matching UserRole row rather than two
-	 *                   independent roles. Only takes effect when combined with {@code roleType}:
+	 *                   independent roles. Only takes effect when combined with {@code roleKey}:
 	 *                   passed alone it has no effect (permissive, not validated as requiring
-	 *                   {@code roleType} to also be set).
+	 *                   {@code roleKey} to also be set).
 	 */
-	record UserSearchCriteria(RoleType roleType, UserStatus status, String search, int page, int size,
+	record UserSearchCriteria(String roleKey, UserStatus status, String search, int page, int size,
 			UUID divisionId) {
 	}
 

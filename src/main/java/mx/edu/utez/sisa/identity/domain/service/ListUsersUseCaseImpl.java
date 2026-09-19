@@ -1,8 +1,10 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository.UserSearchCriteria;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository.UserSearchPage;
@@ -29,10 +31,13 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 
 	private final UserRepository userRepository;
 	private final UserRoleRepository userRoleRepository;
+	private final RoleRepository roleRepository;
 
-	public ListUsersUseCaseImpl(UserRepository userRepository, UserRoleRepository userRoleRepository) {
+	public ListUsersUseCaseImpl(UserRepository userRepository, UserRoleRepository userRoleRepository,
+			RoleRepository roleRepository) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
+		this.roleRepository = roleRepository;
 	}
 
 	@Override
@@ -41,7 +46,7 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 				.orElseThrow(() -> new UserNotFoundException("Caller not found: " + query.callerId()));
 		caller.assertCanOperate();
 
-		UserSearchCriteria criteria = new UserSearchCriteria(query.roleType(), query.status(), query.search(),
+		UserSearchCriteria criteria = new UserSearchCriteria(query.roleKey(), query.status(), query.search(),
 				normalizePage(query.page()), normalizeSize(query.size()), query.divisionId());
 
 		UserSearchPage page = userRepository.search(criteria);
@@ -49,20 +54,30 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 		List<UUID> userIds = page.content().stream().map(row -> row.user().getId()).toList();
 		Map<UUID, List<UserRole>> rolesByUserId = userRoleRepository.findByUserIdIn(userIds).stream()
 				.collect(Collectors.groupingBy(UserRole::getUserId));
+		Map<UUID, Role> rolesById = roleRepository
+				.findByIds(rolesByUserId.values().stream().flatMap(List::stream).map(UserRole::getRoleId).distinct().toList())
+				.stream().collect(Collectors.toMap(Role::getId, java.util.function.Function.identity()));
 
 		List<UserSummary> summaries = page.content().stream()
-				.map(row -> toSummary(row, rolesByUserId.getOrDefault(row.user().getId(), List.of()))).toList();
+				.map(row -> toSummary(row, rolesByUserId.getOrDefault(row.user().getId(), List.of()), rolesById)).toList();
 
 		return new ListUsersResult(summaries, page.totalElements(), page.totalPages(), criteria.page(),
 				criteria.size());
 	}
 
-	private UserSummary toSummary(UserWithPerson row, List<UserRole> roles) {
+	private UserSummary toSummary(UserWithPerson row, List<UserRole> roles, Map<UUID, Role> rolesById) {
 		User user = row.user();
 		List<UserRoleSummary> roleSummaries = roles.stream()
-				.map(role -> new UserRoleSummary(role.getRoleType(), role.getDivisionId())).toList();
+				.map(role -> toRoleSummary(role, rolesById.get(role.getRoleId()))).filter(role -> role != null).toList();
 		return new UserSummary(user.getId(), user.getPersonId(), fullName(row.person()), user.getUsername(),
 				roleSummaries, user.getStatus(), user.getLastLoginAt());
+	}
+
+	private static UserRoleSummary toRoleSummary(UserRole userRole, Role role) {
+		if (role == null) {
+			return null;
+		}
+		return new UserRoleSummary(role.getId(), role.getKey(), role.getName(), userRole.getDivisionId());
 	}
 
 	/**

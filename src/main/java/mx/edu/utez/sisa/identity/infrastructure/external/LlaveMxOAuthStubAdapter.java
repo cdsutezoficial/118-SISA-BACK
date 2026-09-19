@@ -13,6 +13,6 @@ public class LlaveMxOAuthStubAdapter implements LlaveMxOAuthPort {
 
 	@Override
 	public LlaveMxProfile exchangeAuthorizationCode(String authorizationCode) {
-		throw new UnsupportedOperationException("LlaveMX OAuth integration is not implemented in this slice");
+		throw new UnsupportedOperationException("La integración con LlaveMX aún no está disponible.");
 	}
 }

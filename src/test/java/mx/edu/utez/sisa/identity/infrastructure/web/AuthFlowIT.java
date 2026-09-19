@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -42,7 +43,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * between steps): each scenario group builds on state left behind by the
  * previous one, mirroring the single growing flow described by tasks 6.1-6.5.
  */
-@SpringBootTest
+@SpringBootTest(properties = { "sisa.security.bootstrap.admin.password=",
+		"sisa.security.bootstrap.servicios-escolares.password=",
+		"sisa.security.bootstrap.test-accounts.password=" })
 @AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -71,6 +74,9 @@ class AuthFlowIT {
 	@Autowired
 	private PasswordHasher passwordHasher;
 
+	@Autowired
+	private RoleRepository roleRepository;
+
 	private UUID newUserId;
 	private String newUserAccessToken;
 
@@ -83,7 +89,7 @@ class AuthFlowIT {
 		// protected ADMIN endpoints immediately.
 		user.changePassword(passwordHasher.hash(FLOW_ADMIN_PASSWORD));
 		User savedAdmin = userRepository.save(user);
-		userRoleRepository.save(new UserRole(savedAdmin.getId(), RoleType.ADMIN, null));
+		userRoleRepository.save(new UserRole(savedAdmin.getId(), resolveRoleId(RoleType.ADMIN), null));
 	}
 
 	private static Person newPerson(String institutionalEmail) {
@@ -125,8 +131,8 @@ class AuthFlowIT {
 		// reuse the refreshed access token against a protected endpoint
 		mockMvc.perform(post("/users/" + newUserId + "/roles")
 				.header("Authorization", "Bearer " + refreshedAdminAccessToken).contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AssignRoleBody(RoleType.ADMIN, null))))
-				.andExpect(status().isCreated()).andExpect(jsonPath("$.roleType").value("ADMIN"));
+				.content(objectMapper.writeValueAsString(new AssignRoleBody(resolveRoleId(RoleType.ADMIN), null))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.roleKey").value("ADMIN"));
 	}
 
 	@Test
@@ -145,7 +151,7 @@ class AuthFlowIT {
 		// before any real work happens
 		mockMvc.perform(post("/users/" + newUserId + "/roles").header("Authorization", "Bearer " + newUserAccessToken)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AssignRoleBody(RoleType.DOCENTE, null))))
+				.content(objectMapper.writeValueAsString(new AssignRoleBody(resolveRoleId(RoleType.DOCENTE), null))))
 				.andExpect(status().isForbidden());
 
 		// unblock
@@ -159,8 +165,8 @@ class AuthFlowIT {
 		// check is against current DB state, not a token claim
 		mockMvc.perform(post("/users/" + newUserId + "/roles").header("Authorization", "Bearer " + newUserAccessToken)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AssignRoleBody(RoleType.DOCENTE, null))))
-				.andExpect(status().isCreated()).andExpect(jsonPath("$.roleType").value("DOCENTE"));
+				.content(objectMapper.writeValueAsString(new AssignRoleBody(resolveRoleId(RoleType.DOCENTE), null))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.roleKey").value("DOCENTE"));
 	}
 
 	@Test
@@ -243,6 +249,11 @@ class AuthFlowIT {
 	private record CreateUserBody(UUID personId, String temporaryPassword) {
 	}
 
-	private record AssignRoleBody(RoleType roleType, UUID divisionId) {
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(mx.edu.utez.sisa.identity.domain.model.Role::getId)
+				.orElseThrow();
+	}
+
+	private record AssignRoleBody(UUID roleId, UUID divisionId) {
 	}
 }
