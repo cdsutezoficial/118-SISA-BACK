@@ -100,6 +100,10 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("PAYMENT_CONCEPTS_UPDATE", "Actualizar concepto de pago"),
 			permission("PAYMENT_CONCEPTS_CHANGE_STATUS", "Cambiar estatus de concepto de pago"),
 			permission("PAYMENT_RATES_CREATE", "Crear tarifa de concepto de pago"),
+			permission("PAYMENT_AREAS_READ", "Consultar áreas de facturación"),
+			permission("PAYMENT_AREAS_CREATE", "Crear área de facturación"),
+			permission("PAYMENT_AREAS_UPDATE", "Actualizar área de facturación"),
+			permission("PAYMENT_AREAS_CHANGE_STATUS", "Cambiar estatus de área de facturación"),
 			permission("PROGRAM_ADMISSION_CONFIGS_READ", "Consultar configuraciones de admisión por programa"),
 			permission("PROGRAM_ADMISSION_CONFIGS_CREATE", "Crear configuración de admisión por programa"),
 			permission("PROGRAM_ADMISSION_CONFIGS_UPDATE", "Actualizar configuración de admisión por programa"),
@@ -205,7 +209,8 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 
 		permissionsByRole.put(RoleType.PERSONAL_FINANZAS, orderedSet("PAYMENT_CONCEPTS_READ",
 				"PAYMENT_CONCEPTS_CREATE", "PAYMENT_CONCEPTS_UPDATE", "PAYMENT_CONCEPTS_CHANGE_STATUS",
-				"PAYMENT_RATES_CREATE", "STATES_READ", "MUNICIPALITIES_READ"));
+				"PAYMENT_RATES_CREATE", "PAYMENT_AREAS_READ", "PAYMENT_AREAS_CREATE", "PAYMENT_AREAS_UPDATE",
+				"PAYMENT_AREAS_CHANGE_STATUS", "STATES_READ", "MUNICIPALITIES_READ"));
 
 		permissionsByRole.put(RoleType.GESTOR_ACADEMICO, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.DIRECTOR_DIVISION, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
