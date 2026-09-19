@@ -18,6 +18,8 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionExc
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaNameException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentRateException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
@@ -27,9 +29,11 @@ import mx.edu.utez.sisa.academic_config.shared.exception.GroupNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPlanDataException;
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentAreaDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentRateDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLevelException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PaymentAreaNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
@@ -186,6 +190,23 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handlePaymentConceptNotFound(PaymentConceptNotFoundException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, "No se encontró el concepto de pago solicitado.", request);
+	}
+
+	@ExceptionHandler(PaymentAreaNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handlePaymentAreaNotFound(PaymentAreaNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, "No se encontró el área de facturación solicitada.", request);
+	}
+
+	@ExceptionHandler({ DuplicatePaymentAreaCodeException.class, DuplicatePaymentAreaNameException.class })
+	public ResponseEntity<ErrorResponse> handlePaymentAreaConflict(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un área de facturación con la información proporcionada.", request);
+	}
+
+	@ExceptionHandler(InvalidPaymentAreaDataException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentAreaData(InvalidPaymentAreaDataException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para el área de facturación.", request);
 	}
 
 	@ExceptionHandler(InvalidPaymentConceptDataException.class)
