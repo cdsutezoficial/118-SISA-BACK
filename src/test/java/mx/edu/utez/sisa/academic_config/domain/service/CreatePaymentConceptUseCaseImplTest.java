@@ -1,22 +1,33 @@
 package mx.edu.utez.sisa.academic_config.domain.service;
 
+import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentArea;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.CreatePaymentConceptCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.PaymentConceptResult;
+import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentAreaRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentConceptRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,11 +38,18 @@ class CreatePaymentConceptUseCaseImplTest {
 	@Mock
 	private PaymentConceptRepository paymentConceptRepository;
 
+	@Mock
+	private PaymentAreaRepository paymentAreaRepository;
+
+	@Mock
+	private AcademicProgramRepository academicProgramRepository;
+
 	private CreatePaymentConceptUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
-		useCase = new CreatePaymentConceptUseCaseImpl(paymentConceptRepository);
+		useCase = new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
+				academicProgramRepository);
 	}
 
 	@Test
@@ -127,6 +145,121 @@ class CreatePaymentConceptUseCaseImplTest {
 
 		assertThat(result.availableFrom()).isEqualTo(LocalDate.of(2026, 1, 1));
 		assertThat(result.availableUntil()).isNull();
+	}
+
+	@Test
+	void createPaymentConcept_persistsAndReturnsExtensionFields() {
+		UUID areaId = UUID.randomUUID();
+		UUID programId = UUID.randomUUID();
+		UUID linkedConceptId = UUID.randomUUID();
+		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.of(mock(PaymentArea.class)));
+		when(academicProgramRepository.findById(programId)).thenReturn(Optional.of(mock(AcademicProgram.class)));
+		when(paymentConceptRepository.findById(linkedConceptId)).thenReturn(Optional.of(mock(PaymentConcept.class)));
+		when(paymentConceptRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		PaymentConceptResult result = useCase.createPaymentConcept(new CreatePaymentConceptCommand("Inscripcion", null,
+				null, PaymentConceptType.ENROLLMENT, false, false, null, null, false, null, null, areaId,
+				new BigDecimal("1234.50"), true, new BigDecimal("2000.00"), true, true, 12, List.of(linkedConceptId),
+				List.of(programId)));
+
+		assertThat(result.areaId()).isEqualTo(areaId);
+		assertThat(result.cost()).isEqualByComparingTo("1234.50");
+		assertThat(result.isExternal()).isTrue();
+		assertThat(result.costExternal()).isEqualByComparingTo("2000.00");
+		assertThat(result.isAccumulable()).isTrue();
+		assertThat(result.isMulticoncept()).isTrue();
+		assertThat(result.quotaLimit()).isEqualTo(12);
+		assertThat(result.linkedConceptIds()).containsExactly(linkedConceptId);
+		assertThat(result.programIds()).containsExactly(programId);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsNegativeCost() {
+		CreatePaymentConceptCommand command = extendedCommand(null, new BigDecimal("-0.01"), false, null, null,
+				List.of(), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(InvalidPaymentConceptDataException.class);
+
+		verify(paymentConceptRepository, never()).save(any());
+	}
+
+	@Test
+	void createPaymentConcept_rejectsExternalWithoutCostExternal() {
+		CreatePaymentConceptCommand command = extendedCommand(null, new BigDecimal("100.00"), true, null, null,
+				List.of(), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(InvalidPaymentConceptDataException.class);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsNegativeCostExternal() {
+		CreatePaymentConceptCommand command = extendedCommand(null, new BigDecimal("100.00"), true,
+				new BigDecimal("-1.00"), null, List.of(), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(InvalidPaymentConceptDataException.class);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsNonPositiveQuotaLimit() {
+		CreatePaymentConceptCommand command = extendedCommand(null, new BigDecimal("100.00"), false, null, 0,
+				List.of(), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(InvalidPaymentConceptDataException.class);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsUnknownAreaReference() {
+		UUID areaId = UUID.randomUUID();
+		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.empty());
+		CreatePaymentConceptCommand command = extendedCommand(areaId, null, false, null, null, List.of(), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(PaymentConceptReferenceNotFoundException.class);
+
+		verify(paymentConceptRepository, never()).save(any());
+	}
+
+	@Test
+	void createPaymentConcept_rejectsUnknownProgramReference() {
+		UUID programId = UUID.randomUUID();
+		when(academicProgramRepository.findById(programId)).thenReturn(Optional.empty());
+		CreatePaymentConceptCommand command = extendedCommand(null, null, false, null, null, List.of(),
+				List.of(programId));
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(PaymentConceptReferenceNotFoundException.class);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsUnknownLinkedConceptReference() {
+		UUID linkedConceptId = UUID.randomUUID();
+		when(paymentConceptRepository.findById(linkedConceptId)).thenReturn(Optional.empty());
+		CreatePaymentConceptCommand command = extendedCommand(null, null, false, null, null,
+				List.of(linkedConceptId), List.of());
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(PaymentConceptReferenceNotFoundException.class);
+	}
+
+	@Test
+	void createPaymentConcept_rejectsDuplicateProgramIds() {
+		UUID programId = UUID.randomUUID();
+		CreatePaymentConceptCommand command = extendedCommand(null, null, false, null, null, List.of(),
+				List.of(programId, programId));
+
+		assertThatThrownBy(() -> useCase.createPaymentConcept(command))
+				.isInstanceOf(InvalidPaymentConceptDataException.class);
+	}
+
+	private static CreatePaymentConceptCommand extendedCommand(UUID areaId, BigDecimal cost, boolean isExternal,
+			BigDecimal costExternal, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+		return new CreatePaymentConceptCommand("Inscripcion", "Descripcion", "Politicas",
+				PaymentConceptType.ENROLLMENT, true, false, 1, 2, true, null, null, areaId, cost, isExternal,
+				costExternal, false, false, quotaLimit, linkedConceptIds, programIds);
 	}
 
 	private static CreatePaymentConceptCommand validCommand(String name) {

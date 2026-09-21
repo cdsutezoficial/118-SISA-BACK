@@ -117,6 +117,14 @@ import java.time.Instant;
  * There is no PUT/PATCH/DELETE on {@code PaymentRate} (no Update/Delete by
  * design — plan section 4, append-only history), so no matcher is added for
  * those verbs.
+ * {@code /payment-areas} (academic_config — companion catalog to
+ * {@code PaymentConcept}, plan: {@code docs/plans/2026-09-19-payment-areas.md})
+ * gets the identical GET/POST/PUT/PATCH four-matcher shape and the same
+ * {@code ADMIN}/{@code PERSONAL_FINANZAS} pair as {@code /payment-concepts}
+ * (same bounded-context co-location and same Finanzas ownership rationale).
+ * Its {@code GET /payment-areas/options} reference picker is
+ * {@code authenticated()} (same as {@code /divisions/options}) and is
+ * declared BEFORE the blanket {@code GET /payment-areas/**} rule.
  * {@code /program-admission-configs} (academic_config — tenth aggregate,
  * plan: {@code docs/plans/2026-07-28-program-admission-config.md}) gets the
  * identical GET/POST/PUT/PATCH four-matcher shape as every prior aggregate,
@@ -258,6 +266,15 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.PATCH, "/payment-concepts/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.POST, "/payment-concepts/*/rates")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.GET, "/payment-areas/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/payment-areas", "/payment-areas/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/payment-areas")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PUT, "/payment-areas/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")

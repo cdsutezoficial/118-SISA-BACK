@@ -3,7 +3,9 @@ package mx.edu.utez.sisa.academic_config.domain.port.in;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -29,12 +31,41 @@ public interface CreatePaymentConceptUseCase {
 	 */
 	record CreatePaymentConceptCommand(String name, String description, String policies, PaymentConceptType type,
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
-			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
+			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
+			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+
+		/**
+		 * Convenience constructor for the original 11 fields, kept so the
+		 * pre-extension test suite keeps compiling (extension plan §3).
+		 */
+		public CreatePaymentConceptCommand(String name, String description, String policies, PaymentConceptType type,
+				boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+				boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
+			this(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
+					requiresValidation, availableFrom, availableUntil, null, null, false, null, false, false, null,
+					List.of(), List.of());
+		}
 	}
 
 	record PaymentConceptResult(UUID id, String name, String description, String policies, PaymentConceptType type,
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
-			PaymentConceptStatus status) {
+			PaymentConceptStatus status, UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal,
+			boolean isAccumulable, boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds,
+			List<UUID> programIds) {
+
+		/**
+		 * Convenience constructor for the original 13 fields (extension plan
+		 * §3).
+		 */
+		public PaymentConceptResult(UUID id, String name, String description, String policies,
+				PaymentConceptType type, boolean isTuition, boolean isStandalone, Integer maxPerStudent,
+				Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
+				PaymentConceptStatus status) {
+			this(id, name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
+					requiresValidation, availableFrom, availableUntil, status, null, null, false, null, false, false,
+					null, List.of(), List.of());
+		}
 	}
 }
