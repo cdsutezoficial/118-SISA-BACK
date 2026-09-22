@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.identity.domain.model.RolePermission;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignPermissionsToRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionCacheInvalidator;
 import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
@@ -31,12 +32,16 @@ public class AssignPermissionsToRoleUseCaseImpl implements AssignPermissionsToRo
 
 	private final RolePermissionRepository rolePermissionRepository;
 
+	private final RolePermissionCacheInvalidator rolePermissionCacheInvalidator;
+
 	public AssignPermissionsToRoleUseCaseImpl(UserRepository userRepository, RoleRepository roleRepository,
-			PermissionRepository permissionRepository, RolePermissionRepository rolePermissionRepository) {
+			PermissionRepository permissionRepository, RolePermissionRepository rolePermissionRepository,
+			RolePermissionCacheInvalidator rolePermissionCacheInvalidator) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
 		this.permissionRepository = permissionRepository;
 		this.rolePermissionRepository = rolePermissionRepository;
+		this.rolePermissionCacheInvalidator = rolePermissionCacheInvalidator;
 	}
 
 	@Override
@@ -57,6 +62,7 @@ public class AssignPermissionsToRoleUseCaseImpl implements AssignPermissionsToRo
 
 		rolePermissionRepository.deleteByRoleId(role.getId());
 		rolePermissionRepository.saveAll(requestedIds.stream().map(permissionId -> new RolePermission(role.getId(), permissionId)).toList());
+		rolePermissionCacheInvalidator.rolePermissionsChanged();
 
 		Map<UUID, Permission> permissionsById = permissions.stream()
 				.collect(Collectors.toMap(Permission::getId, Function.identity()));
