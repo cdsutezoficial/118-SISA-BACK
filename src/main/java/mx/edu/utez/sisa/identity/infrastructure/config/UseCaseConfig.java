@@ -28,6 +28,7 @@ import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionCacheInvalidator;
 import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
@@ -167,9 +168,9 @@ public class UseCaseConfig {
 	@Bean
 	public AssignPermissionsToRoleUseCase assignPermissionsToRoleUseCase(UserRepository userRepository,
 			RoleRepository roleRepository, PermissionRepository permissionRepository,
-			RolePermissionRepository rolePermissionRepository) {
+			RolePermissionRepository rolePermissionRepository, RolePermissionCacheInvalidator rolePermissionCacheInvalidator) {
 		return new AssignPermissionsToRoleUseCaseImpl(userRepository, roleRepository, permissionRepository,
-				rolePermissionRepository);
+				rolePermissionRepository, rolePermissionCacheInvalidator);
 	}
 
 	@Bean
@@ -184,8 +185,9 @@ public class UseCaseConfig {
 
 	@Bean
 	public ChangePermissionStatusUseCase changePermissionStatusUseCase(UserRepository userRepository,
-			PermissionRepository permissionRepository) {
-		return new ChangePermissionStatusUseCaseImpl(userRepository, permissionRepository);
+			PermissionRepository permissionRepository, RolePermissionCacheInvalidator rolePermissionCacheInvalidator) {
+		return new ChangePermissionStatusUseCaseImpl(userRepository, permissionRepository,
+				rolePermissionCacheInvalidator);
 	}
 
 	@Bean

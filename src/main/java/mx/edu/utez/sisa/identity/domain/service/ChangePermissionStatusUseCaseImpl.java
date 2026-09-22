@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.identity.domain.model.PermissionStatus;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePermissionStatusUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionCacheInvalidator;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.shared.exception.PermissionNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
@@ -15,9 +16,13 @@ public class ChangePermissionStatusUseCaseImpl implements ChangePermissionStatus
 
 	private final PermissionRepository permissionRepository;
 
-	public ChangePermissionStatusUseCaseImpl(UserRepository userRepository, PermissionRepository permissionRepository) {
+	private final RolePermissionCacheInvalidator rolePermissionCacheInvalidator;
+
+	public ChangePermissionStatusUseCaseImpl(UserRepository userRepository, PermissionRepository permissionRepository,
+			RolePermissionCacheInvalidator rolePermissionCacheInvalidator) {
 		this.userRepository = userRepository;
 		this.permissionRepository = permissionRepository;
+		this.rolePermissionCacheInvalidator = rolePermissionCacheInvalidator;
 	}
 
 	@Override
@@ -36,6 +41,7 @@ public class ChangePermissionStatusUseCaseImpl implements ChangePermissionStatus
 		}
 
 		Permission saved = permissionRepository.save(permission);
+		rolePermissionCacheInvalidator.rolePermissionsChanged();
 		return new PermissionResult(saved.getId(), saved.getName(), saved.getKey(), saved.getStatus());
 	}
 }
