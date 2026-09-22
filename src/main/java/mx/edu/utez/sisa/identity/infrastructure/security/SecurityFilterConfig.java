@@ -14,6 +14,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
@@ -163,6 +164,11 @@ import java.time.Instant;
  * {@code /high-school-types} matchers.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
+ * {@link PermissionFilter} (roles-permisos.md §3.1) runs after the JWT filter
+ * and before the coarse {@code AuthorizationFilter}: for registered routes it
+ * requires the permission key from the in-memory cache
+ * ({@link PermissionCache}, §3.2), relying on the coarse matchers in
+ * {@code authorizeHttpRequests} as the outer role layer.
  */
 @Configuration
 @EnableWebSecurity
@@ -170,13 +176,16 @@ public class SecurityFilterConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+	private final PermissionFilter permissionFilter;
+
 	private final CorsConfigurationSource corsConfigurationSource;
 
 	private final ObjectMapper objectMapper;
 
-	public SecurityFilterConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+	public SecurityFilterConfig(JwtAuthenticationFilter jwtAuthenticationFilter, PermissionFilter permissionFilter,
 			CorsConfigurationSource corsConfigurationSource, ObjectMapper objectMapper) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+		this.permissionFilter = permissionFilter;
 		this.corsConfigurationSource = corsConfigurationSource;
 		this.objectMapper = objectMapper;
 	}
@@ -305,7 +314,8 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.GET, "/states").authenticated()
 						.requestMatchers(HttpMethod.GET, "/municipalities").authenticated()
 						.anyRequest().authenticated())
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(permissionFilter, AuthorizationFilter.class);
 		return http.build();
 	}
 
