@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.identity.domain.model.Permission;
 import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.RolePermission;
 import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionCacheInvalidator;
 import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.shared.model.RoleType;
@@ -124,12 +125,15 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 	private final RoleRepository roleRepository;
 	private final PermissionRepository permissionRepository;
 	private final RolePermissionRepository rolePermissionRepository;
+	private final RolePermissionCacheInvalidator rolePermissionCacheInvalidator;
 
 	public IdentityAuthorizationCatalogSeedRunner(RoleRepository roleRepository,
-			PermissionRepository permissionRepository, RolePermissionRepository rolePermissionRepository) {
+			PermissionRepository permissionRepository, RolePermissionRepository rolePermissionRepository,
+			RolePermissionCacheInvalidator rolePermissionCacheInvalidator) {
 		this.roleRepository = roleRepository;
 		this.permissionRepository = permissionRepository;
 		this.rolePermissionRepository = rolePermissionRepository;
+		this.rolePermissionCacheInvalidator = rolePermissionCacheInvalidator;
 	}
 
 	@Override
@@ -139,6 +143,10 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 		seedRolePermissions(rolesByKey, permissionsByKey);
 		log.info("Identity authorization catalog initialized: {} roles, {} permissions", rolesByKey.size(),
 				permissionsByKey.size());
+		// The PermissionCache @PostConstruct runs before this ApplicationRunner, so
+		// on a fresh database it would have snapshotted the empty tables; reload it
+		// now that the seeded role-permission assignments are committed.
+		rolePermissionCacheInvalidator.rolePermissionsChanged();
 	}
 
 	private Map<String, Role> seedRoles() {
