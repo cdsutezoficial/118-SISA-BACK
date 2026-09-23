@@ -15,6 +15,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.OpenProgramAdmissionUseCa
 import mx.edu.utez.sisa.academic_config.domain.port.in.OpenProgramAdmissionUseCase.ProgramAdmissionConfigResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateProgramAdmissionConfigUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateProgramAdmissionConfigUseCase.UpdateProgramAdmissionConfigCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.ProgramAdmissionConfigJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramAdmissionConfigException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidProgramAdmissionConfigDataException;
@@ -22,6 +23,8 @@ import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
+import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -82,7 +86,13 @@ class ProgramAdmissionConfigControllerTest {
 	private ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase;
 
 	@MockitoBean
+	private ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
@@ -317,6 +327,32 @@ class ProgramAdmissionConfigControllerTest {
 		mockMvc.perform(patch("/program-admission-configs/" + configId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(ProgramAdmissionConfigStatus.CLOSED))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listProgramAdmissionConfigOptionsReturnsOpenOfferedConfigsWithProgramNameAndModality() throws Exception {
+		UUID configId = UUID.randomUUID();
+		ProgramAdmissionConfigJpaRepository.ProgramAdmissionConfigOptionProjection projection = mock(
+				ProgramAdmissionConfigJpaRepository.ProgramAdmissionConfigOptionProjection.class);
+		when(projection.getId()).thenReturn(configId);
+		when(projection.getProgramName()).thenReturn("Ingeniería en Software");
+		when(projection.getModality()).thenReturn(ProgramModality.PRESENCIAL);
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions()).thenReturn(List.of(projection));
+
+		mockMvc.perform(get("/program-admission-configs/options"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(configId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
+				.andExpect(jsonPath("$[0].code").value("PRESENCIAL"));
+	}
+
+	@Test
+	void listProgramAdmissionConfigOptionsReturnsEmptyListWhenNoOpenConfigs() throws Exception {
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions()).thenReturn(List.of());
+
+		mockMvc.perform(get("/program-admission-configs/options"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").isEmpty());
 	}
 
 	private record CreateBody(UUID programId, UUID periodId, UUID targetGenerationId, boolean isOffered,
