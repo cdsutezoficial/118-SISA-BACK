@@ -8,6 +8,10 @@ import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase.RequestPasswordResetCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase.ResetPasswordCommand;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
@@ -57,6 +61,12 @@ class AuthControllerTest {
 
 	@MockitoBean
 	private ChangePasswordUseCase changePasswordUseCase;
+
+	@MockitoBean
+	private RequestPasswordResetUseCase requestPasswordResetUseCase;
+
+	@MockitoBean
+	private ResetPasswordUseCase resetPasswordUseCase;
 
 	/**
 	 * {@code JwtAuthenticationFilter} is auto-detected as a Filter bean by the
@@ -140,6 +150,39 @@ class AuthControllerTest {
 				"old-pass", "new-pass")));
 	}
 
+	@Test
+	void forgotPasswordDelegatesToRequestPasswordResetUseCaseAndReturns204() throws Exception {
+		mockMvc.perform(post("/auth/forgot-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ForgotPasswordBody("jane.doe@utez.edu.mx"))))
+				.andExpect(status().isNoContent());
+
+		verify(requestPasswordResetUseCase)
+				.request(eq(new RequestPasswordResetCommand("jane.doe@utez.edu.mx")));
+	}
+
+	@Test
+	void forgotPasswordWithBlankUsernameReturns400() throws Exception {
+		mockMvc.perform(post("/auth/forgot-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ForgotPasswordBody(""))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void resetPasswordDelegatesToResetPasswordUseCaseAndReturns204() throws Exception {
+		mockMvc.perform(post("/auth/reset-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ResetPasswordBody("token-123", "NewPass!1"))))
+				.andExpect(status().isNoContent());
+
+		verify(resetPasswordUseCase).reset(eq(new ResetPasswordCommand("token-123", "NewPass!1")));
+	}
+
+	@Test
+	void resetPasswordWithBlankFieldsReturns400() throws Exception {
+		mockMvc.perform(post("/auth/reset-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ResetPasswordBody("", ""))))
+				.andExpect(status().isBadRequest());
+	}
+
 	private record LoginBody(String username, String password) {
 	}
 
@@ -147,5 +190,11 @@ class AuthControllerTest {
 	}
 
 	private record ChangePasswordBody(String currentPassword, String newPassword) {
+	}
+
+	private record ForgotPasswordBody(String username) {
+	}
+
+	private record ResetPasswordBody(String token, String newPassword) {
 	}
 }

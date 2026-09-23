@@ -9,11 +9,17 @@ import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase.ChangePass
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase.RequestPasswordResetCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase.ResetPasswordCommand;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.ChangePasswordRequest;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.ForgotPasswordRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LoginRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LoginResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.RefreshRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.RefreshResponse;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.ResetPasswordRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,14 +44,19 @@ public class AuthController {
 	private final AuthenticateUseCase authenticateUseCase;
 	private final RefreshAccessTokenUseCase refreshAccessTokenUseCase;
 	private final ChangePasswordUseCase changePasswordUseCase;
+	private final RequestPasswordResetUseCase requestPasswordResetUseCase;
+	private final ResetPasswordUseCase resetPasswordUseCase;
 	private final long accessTokenTtlSeconds;
 
 	public AuthController(AuthenticateUseCase authenticateUseCase,
 			RefreshAccessTokenUseCase refreshAccessTokenUseCase, ChangePasswordUseCase changePasswordUseCase,
+			RequestPasswordResetUseCase requestPasswordResetUseCase, ResetPasswordUseCase resetPasswordUseCase,
 			@Value("${sisa.security.jwt.access-token-ttl}") Duration accessTokenTtl) {
 		this.authenticateUseCase = authenticateUseCase;
 		this.refreshAccessTokenUseCase = refreshAccessTokenUseCase;
 		this.changePasswordUseCase = changePasswordUseCase;
+		this.requestPasswordResetUseCase = requestPasswordResetUseCase;
+		this.resetPasswordUseCase = resetPasswordUseCase;
 		this.accessTokenTtlSeconds = accessTokenTtl.getSeconds();
 	}
 
@@ -68,6 +79,23 @@ public class AuthController {
 		UUID callerId = AuthenticatedCaller.currentUserId();
 		changePasswordUseCase
 				.changePassword(new ChangePasswordCommand(callerId, request.currentPassword(), request.newPassword()));
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Public "forgot my password" entry (01-identidad.md). Always answers 204 —
+	 * even for an unknown username — so the endpoint never reveals whether an
+	 * account exists; the email is simply not sent in that case.
+	 */
+	@PostMapping("/forgot-password")
+	public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+		requestPasswordResetUseCase.request(new RequestPasswordResetCommand(request.username()));
+		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping("/reset-password")
+	public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+		resetPasswordUseCase.reset(new ResetPasswordCommand(request.token(), request.newPassword()));
 		return ResponseEntity.noContent().build();
 	}
 }

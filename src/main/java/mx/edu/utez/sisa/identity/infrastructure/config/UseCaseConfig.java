@@ -18,12 +18,17 @@ import mx.edu.utez.sisa.identity.domain.port.in.ListPersonsUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ListRolesUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ListUsersUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RevokeRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UpdatePermissionUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UpdateRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
+import mx.edu.utez.sisa.identity.domain.port.out.NotificationPort;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
+import mx.edu.utez.sisa.identity.domain.port.out.PasswordResetTokenGenerator;
+import mx.edu.utez.sisa.identity.domain.port.out.PasswordResetTokenRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
@@ -51,6 +56,8 @@ import mx.edu.utez.sisa.identity.domain.service.ListPersonsUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ListRolesUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ListUsersUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RefreshAccessTokenUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.RequestPasswordResetUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.ResetPasswordUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RevokeRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.UnlockUserUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.UpdatePermissionUseCaseImpl;
@@ -105,6 +112,22 @@ public class UseCaseConfig {
 			AccessTokenIssuer accessTokenIssuer) {
 		return new RefreshAccessTokenUseCaseImpl(refreshTokenRepository, userRepository, userRoleRepository,
 				roleRepository, accessTokenIssuer);
+	}
+
+	@Bean
+	public RequestPasswordResetUseCase requestPasswordResetUseCase(UserRepository userRepository,
+			PasswordResetTokenRepository passwordResetTokenRepository,
+			PasswordResetTokenGenerator passwordResetTokenGenerator, NotificationPort notificationPort,
+			@Value("${sisa.security.password-reset.token-ttl}") Duration passwordResetTokenTtl,
+			@Value("${sisa.security.password-reset.frontend-base-url}") String frontendBaseUrl) {
+		return new RequestPasswordResetUseCaseImpl(userRepository, passwordResetTokenRepository,
+				passwordResetTokenGenerator, notificationPort, passwordResetTokenTtl, frontendBaseUrl);
+	}
+
+	@Bean
+	public ResetPasswordUseCase resetPasswordUseCase(PasswordResetTokenRepository passwordResetTokenRepository,
+			UserRepository userRepository, PasswordHasher passwordHasher) {
+		return new ResetPasswordUseCaseImpl(passwordResetTokenRepository, userRepository, passwordHasher);
 	}
 
 	@Bean
