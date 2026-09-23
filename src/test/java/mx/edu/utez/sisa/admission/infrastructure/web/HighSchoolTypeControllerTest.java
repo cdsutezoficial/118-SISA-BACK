@@ -17,6 +17,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase.Upd
 import mx.edu.utez.sisa.admission.infrastructure.persistence.HighSchoolTypeJpaRepository;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,6 +78,9 @@ class HighSchoolTypeControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
