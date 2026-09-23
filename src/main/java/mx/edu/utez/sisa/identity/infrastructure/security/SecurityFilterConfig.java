@@ -138,6 +138,13 @@ import java.time.Instant;
  * to "admisión", so this aggregate follows the module's default pair even
  * though its future consumer is the Admisión module). Placed right after the
  * {@code /payment-concepts/.../rates} matcher.
+ * {@code GET /program-admission-configs/options} (same plan, new for the
+ * ficha de admisión — plan: {@code docs/plans/sisa-candidate-ficha.md}) is a
+ * public reference picker listing the currently-{@code OPEN} configs with
+ * their program name + modality, so the public registration wizard can map a
+ * program to its {@code admissionConfigId}. {@code permitAll()}, declared
+ * BEFORE the blanket {@code GET /program-admission-configs/**} rule (which
+ * still requires ADMIN/SERVICIOS_ESCOLARES for the management list).
  * {@code /outreach-channels} (eleventh matcher block, but the FIRST from the
  * NEW {@code admission} bounded context — plan:
  * {@code docs/plans/2026-07-28-outreach-channel.md} — rather than another
@@ -157,14 +164,30 @@ import java.time.Instant;
  * pair, placed right after the {@code /outreach-channels} matchers.
  * {@code /states} and {@code /municipalities} (shared-kernel INEGI reference
  * catalogs, same plan) are deliberately DIFFERENT from every matcher above:
- * a single GET matcher each, {@code .authenticated()} with NO role
- * restriction — these are read-only catalogs any authenticated user's form
- * may need to query (e.g. a future candidate registration screen), and the
- * domain doc gives no business reason to gate them by role. There is no
- * POST/PUT/PATCH matcher for either — both are closed, seed-once catalogs
- * with no write endpoints at all (see {@code StateController}/
- * {@code MunicipalityController}). Placed right after the
- * {@code /high-school-types} matchers.
+ * a single GET matcher each, {@code .permitAll()} with NO role/authentication
+ * restriction — these are closed, seed-once read-only catalogs the PUBLIC
+ * registration wizard (Screen 4's anonymous {@code /portal/registro} mount,
+ * same plan as {@code POST /candidates}) needs to resolve state/municipality
+ * names to {@code UUID} ids before posting the ficha, and the domain doc
+ * gives no business reason to hide them. There is no POST/PUT/PATCH matcher
+ * for either — both are closed, seed-once catalogs with no write endpoints
+ * at all (see {@code StateController}/{@code MunicipalityController}). Placed
+ * right after the {@code /high-school-types} matchers.
+ * {@code GET /outreach-channels/options} and
+ * {@code GET /high-school-types/options} (same plan/screen rationale as
+ * {@code /states}: the anonymous wizard resolves channel/school-type names to
+ * {@code UUID}) are likewise {@code .permitAll()}, declared BEFORE their
+ * adjacent ADMIN/SERVICIOS_ESCOLARES management matchers.
+ * {@code POST /candidates} (the LAST matcher block — {@code admission}'s
+ * third aggregate/first real flow, the public "ficha de admisión" endpoint,
+ * plan: {@code docs/plans/sisa-candidate-ficha.md}) is the ONLY pre-authenticated
+ * POST in the app: {@code .permitAll()}, declared FIRST in the chain together
+ * with {@code /auth/login}/{@code /auth/refresh} for the same fundamental
+ * reason they are public — the applicant has no session when they submit their
+ * ficha from the public portal. Registration is the single intentionally
+ * anonymous write; every other {@code /candidates/**} verb (admin list/detail/
+ * transitions) will live under the {@code ADMIN}/{@code SERVICIOS_ESCOLARES}
+ * pair when implemented.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
  * {@link PermissionFilter} (roles-permisos.md §3.1) runs after the JWT filter
@@ -201,7 +224,11 @@ public class SecurityFilterConfig {
 				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint())
 						.accessDeniedHandler(accessDeniedHandler()))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
+						.requestMatchers(HttpMethod.POST, "/candidates", "/candidates/*/payments/confirm",
+								"/candidates/*/send-instructions")
+						.permitAll()
+						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
+						.requestMatchers("/auth/login", "/auth/refresh")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.POST, "/roles").hasRole("ADMIN")
@@ -289,6 +316,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/program-admission-configs")
@@ -297,7 +325,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
-						.requestMatchers(HttpMethod.GET, "/outreach-channels/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/outreach-channels/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/outreach-channels", "/outreach-channels/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/outreach-channels")
@@ -306,7 +334,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/outreach-channels/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
-						.requestMatchers(HttpMethod.GET, "/high-school-types/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/high-school-types/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/high-school-types", "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/high-school-types")
@@ -315,8 +343,8 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
-						.requestMatchers(HttpMethod.GET, "/states").authenticated()
-						.requestMatchers(HttpMethod.GET, "/municipalities").authenticated()
+						.requestMatchers(HttpMethod.GET, "/states").permitAll()
+						.requestMatchers(HttpMethod.GET, "/municipalities").permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterBefore(permissionFilter, AuthorizationFilter.class);

@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.OpenProgramAdmissionUseCa
 import mx.edu.utez.sisa.academic_config.domain.port.in.OpenProgramAdmissionUseCase.ProgramAdmissionConfigResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateProgramAdmissionConfigUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateProgramAdmissionConfigUseCase.UpdateProgramAdmissionConfigCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.ProgramAdmissionConfigJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeProgramAdmissionConfigStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateProgramAdmissionConfigRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionConfigListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionConfigListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionConfigResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateProgramAdmissionConfigRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -50,6 +53,14 @@ import java.util.UUID;
  * OPEN/CLOSED toggle). Role authorization (ADMIN or SERVICIOS_ESCOLARES) is
  * enforced by {@code identity.SecurityFilterConfig}'s
  * {@code /program-admission-configs} matchers, not here.
+ *
+ * <p>{@code GET /program-admission-configs/options} is the ONE public
+ * exception (plan: {@code docs/plans/sisa-candidate-ficha.md}): a reference
+ * picker of {@code OPEN} + offered configs (program name + modality) that the
+ * anonymous registration wizard uses to map a program to its config id. It is
+ * matched {@code permitAll()} and declared BEFORE the blanket
+ * {@code GET /program-admission-configs/**} ADMIN/SERVICIOS_ESCOLARES rule in
+ * {@code SecurityFilterConfig}.
  */
 @RestController
 @RequestMapping("/program-admission-configs")
@@ -65,16 +76,20 @@ public class ProgramAdmissionConfigController {
 
 	private final ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase;
 
+	private final ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository;
+
 	public ProgramAdmissionConfigController(ListProgramAdmissionConfigsUseCase listProgramAdmissionConfigsUseCase,
 			OpenProgramAdmissionUseCase openProgramAdmissionUseCase,
 			GetProgramAdmissionConfigUseCase getProgramAdmissionConfigUseCase,
 			UpdateProgramAdmissionConfigUseCase updateProgramAdmissionConfigUseCase,
-			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase) {
+			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase,
+			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository) {
 		this.listProgramAdmissionConfigsUseCase = listProgramAdmissionConfigsUseCase;
 		this.openProgramAdmissionUseCase = openProgramAdmissionUseCase;
 		this.getProgramAdmissionConfigUseCase = getProgramAdmissionConfigUseCase;
 		this.updateProgramAdmissionConfigUseCase = updateProgramAdmissionConfigUseCase;
 		this.changeProgramAdmissionConfigStatusUseCase = changeProgramAdmissionConfigStatusUseCase;
+		this.programAdmissionConfigJpaRepository = programAdmissionConfigJpaRepository;
 	}
 
 	@PostMapping
@@ -95,6 +110,12 @@ public class ProgramAdmissionConfigController {
 						request.periodId(), request.targetGenerationId(), request.isOffered(), request.maxCandidates(),
 						request.opensAt(), request.closesAt()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listProgramAdmissionConfigOptions() {
+		return programAdmissionConfigJpaRepository.findOpenOfferedOptions().stream()
+				.map(o -> new OptionResponse(o.getId(), o.getProgramName(), o.getModality().name())).toList();
 	}
 
 	@GetMapping("/{id}")

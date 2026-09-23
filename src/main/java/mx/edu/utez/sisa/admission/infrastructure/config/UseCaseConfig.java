@@ -8,25 +8,38 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.RegisterCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateOutreachChannelUseCaseImpl;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.math.BigDecimal;
+
 /**
- * Composition root wiring the {@code admission} bounded context's 5 use case
+ * Composition root wiring the {@code admission} bounded context's use case
  * interactors as Spring beans (same "per-module composition root" decision
  * as {@code academic_config.UseCaseConfig} and {@code identity.UseCaseConfig}).
  * The {@code XxxUseCaseImpl} classes are plain, framework-agnostic classes
@@ -100,5 +113,33 @@ public class UseCaseConfig {
 	public ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase(
 			HighSchoolTypeRepository highSchoolTypeRepository) {
 		return new ChangeHighSchoolTypeStatusUseCaseImpl(highSchoolTypeRepository);
+	}
+
+	@Bean
+	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository,
+			AdmissionPaymentRepository admissionPaymentRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
+			@Value("${sisa.admission.payment.ficha-amount:500.00}") BigDecimal fichaAmount,
+			@Value("${sisa.admission.payment.deadline-days:10}") int paymentDeadlineDays) {
+		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort, outreachChannelRepository,
+				highSchoolTypeRepository, fichaAmount, paymentDeadlineDays);
+	}
+
+	@Bean
+	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
+			AdmissionPaymentRepository admissionPaymentRepository) {
+		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository);
+	}
+
+	@Bean
+	public GetCandidateFichaUseCase getCandidateFichaUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository,
+			AdmissionPaymentRepository admissionPaymentRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort);
 	}
 }
