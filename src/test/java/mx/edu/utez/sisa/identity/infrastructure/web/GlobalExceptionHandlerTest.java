@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
+import mx.edu.utez.sisa.identity.shared.exception.InvalidPasswordResetTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
@@ -82,6 +83,14 @@ class GlobalExceptionHandlerTest {
 				.handleInvalidRefreshToken(new InvalidRefreshTokenException("invalid refresh"), request);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+	}
+
+	@Test
+	void invalidPasswordResetTokenMapsTo400() {
+		ResponseEntity<ErrorResponse> response = handler
+				.handleInvalidPasswordResetToken(new InvalidPasswordResetTokenException("expired link"), request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 	}
 
 	@Test

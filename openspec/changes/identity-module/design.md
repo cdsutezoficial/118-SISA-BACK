@@ -238,7 +238,7 @@ POST /auth/refresh ─→ AuthController ─→ RefreshAccessTokenUseCase ─→
 | `POST /auth/refresh` | public | `{refreshToken}` | 200 `{accessToken, tokenType:"Bearer", expiresIn:1800}` | 401 invalid/expired/revoked; 423 owning user is LOCKED |
 | `POST /auth/change-password` | Bearer | `{currentPassword, newPassword}` | 204 | 400 validation; 401 wrong current |
 | `POST /users` | Bearer, ROLE_ADMIN | `{personId, temporaryPassword}` | 201 `{userId, username, mustChangePassword:true}` | 400; 403 must-change caller; 409 person already has user / no email |
-| `POST /users/{userId}/roles` | Bearer, ROLE_ADMIN | `{roleType, divisionId?}` | 201 `{userRoleId, roleType, divisionId}` | 400 division rule; 403; 404 user |
+| `POST /users/{userId}/roles` | Bearer, ROLE_ADMIN | `{roleId, divisionId?}` | 201 `{userRoleId, roleType, divisionId}` | 400 division rule; 403; 404 user |
 
 `ErrorResponse` body: `{timestamp, status, error, message, path}`.
 
