@@ -79,8 +79,7 @@ public class PermissionController {
 		ListPermissionsResult result = listPermissionsUseCase.listPermissions(
 				new ListPermissionsQuery(status, search, page, size));
 		return ResponseEntity.ok(new PermissionListResponse(
-				result.items().stream().map(PermissionController::toItem).toList(), result.totalElements(),
-				result.totalPages(), result.page(), result.size()));
+				result.items().stream().map(PermissionController::toItem).toList()));
 	}
 
 	@PatchMapping("/{id}/status")
