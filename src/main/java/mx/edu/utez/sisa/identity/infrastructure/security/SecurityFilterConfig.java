@@ -28,9 +28,9 @@ import java.time.Instant;
  * user has no session when starting or completing a reset), everything else
  * requires authentication.
  * {@code GET /users} (01-identidad.md — ListUsersUseCase) is matched
- * BEFORE the blanket {@code /users/**} rule and allows ADMIN or
- * SERVICIOS_ESCOLARES; every other {@code /users/**} path (create user,
- * assign role) stays ADMIN-only via the blanket rule. Matcher order matters:
+ * BEFORE the blanket {@code /users/**} rule and allows only ADMIN; every
+ * other {@code /users/**} path (create user, assign role) stays ADMIN-only
+ * via the blanket rule. Matcher order matters:
  * Spring Security evaluates {@code authorizeHttpRequests} rules in
  * declaration order and applies the first match, so the specific GET rule
  * must be declared first or it would never be reached.
@@ -83,13 +83,13 @@ import java.time.Instant;
  * {@code /persons} (identity, plan:
  * {@code docs/plans/2026-07-28-persons-and-user-management.md}) gets a GET
  * matcher ({@code /persons}, {@code /persons/**}) granting
- * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} (same pair as {@code GET /users})
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES}
  * and a POST matcher granting {@code ADMIN} only (same level as
  * {@code POST /users}). The existing {@code GET /users} matcher's pattern
  * list is extended to also cover {@code /users/**} so
  * {@code GET /users/{id}} (the new detail endpoint from the same plan)
- * shares the ADMIN/SERVICIOS_ESCOLARES pair instead of falling through to
- * the ADMIN-only blanket {@code /users/**} rule below it — the three other
+ * is served ADMIN-only, matching the blanket {@code /users/**} rule below
+ * it — the three other
  * new endpoints on that plan ({@code DELETE .../roles/{userRoleId}},
  * {@code PATCH .../unlock}, plus the existing {@code POST} endpoints) are
  * NOT GET, so they still fall through to the ADMIN-only blanket rule
@@ -136,7 +136,10 @@ import java.time.Instant;
  * {@code PERSONAL_FINANZAS} — PO-confirmed 2026-07-28: unlike
  * {@code PaymentConcept}, there is no role in the 11-role catalog dedicated
  * to "admisión", so this aggregate follows the module's default pair even
- * though its future consumer is the Admisión module). Placed right after the
+ * though its future consumer is the Admisión module). Its GET matcher also
+ * grants {@code DIRECTOR_DIVISION} (read-only visibility of the Admisión
+ * module's configuration from the sidebar) — the mutating verbs stay
+ * ADMIN/SERVICIOS_ESCOLARES. Placed right after the
  * {@code /payment-concepts/.../rates} matcher.
  * {@code GET /program-admission-configs/options} (same plan, new for the
  * ficha de admisión — plan: {@code docs/plans/sisa-candidate-ficha.md}) is a
@@ -144,7 +147,8 @@ import java.time.Instant;
  * their program name + modality, so the public registration wizard can map a
  * program to its {@code admissionConfigId}. {@code permitAll()}, declared
  * BEFORE the blanket {@code GET /program-admission-configs/**} rule (which
- * still requires ADMIN/SERVICIOS_ESCOLARES for the management list).
+ * still requires ADMIN/SERVICIOS_ESCOLARES/DIRECTOR_DIVISION for the
+ * management list).
  * {@code /outreach-channels} (eleventh matcher block, but the FIRST from the
  * NEW {@code admission} bounded context — plan:
  * {@code docs/plans/2026-07-28-outreach-channel.md} — rather than another
@@ -239,7 +243,7 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.PUT, "/permissions/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.PATCH, "/permissions/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.hasRole("ADMIN")
 						.requestMatchers("/users/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/programs/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/divisions/options").authenticated()
@@ -318,7 +322,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers(HttpMethod.POST, "/program-admission-configs")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/program-admission-configs/**")
