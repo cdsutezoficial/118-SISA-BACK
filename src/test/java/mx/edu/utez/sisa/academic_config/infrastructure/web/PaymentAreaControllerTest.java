@@ -19,6 +19,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaCod
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaNameException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentAreaNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,9 @@ class PaymentAreaControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 

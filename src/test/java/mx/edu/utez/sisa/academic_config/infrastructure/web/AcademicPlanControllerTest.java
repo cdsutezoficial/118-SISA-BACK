@@ -25,6 +25,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleExce
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -110,6 +111,9 @@ class AcademicPlanControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	@Test
 	void setGradeScaleReturns201WithBody() throws Exception {

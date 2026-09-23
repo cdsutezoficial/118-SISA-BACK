@@ -20,6 +20,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DivisionNotFoundExcepti
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateOfferNameModalityException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.AfterEach;
@@ -85,6 +86,9 @@ class AcademicProgramControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
