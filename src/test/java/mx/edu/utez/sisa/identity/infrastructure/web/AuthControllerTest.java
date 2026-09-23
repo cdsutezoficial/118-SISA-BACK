@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import org.junit.jupiter.api.AfterEach;
@@ -65,6 +66,9 @@ class AuthControllerTest {
 	 */
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	@AfterEach
 	void tearDown() {

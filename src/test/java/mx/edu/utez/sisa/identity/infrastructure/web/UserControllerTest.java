@@ -23,6 +23,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserResult;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
@@ -88,6 +89,9 @@ class UserControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 

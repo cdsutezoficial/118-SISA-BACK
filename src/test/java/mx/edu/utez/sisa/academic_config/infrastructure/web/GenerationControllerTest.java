@@ -20,6 +20,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundExcep
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +81,9 @@ class GenerationControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
