@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailExc
 import mx.edu.utez.sisa.identity.shared.exception.DuplicatePermissionKeyException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateRoleKeyException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
+import mx.edu.utez.sisa.identity.shared.exception.InvalidPasswordResetTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
@@ -70,6 +71,18 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.UNAUTHORIZED, "Tu sesión no es válida o ha expirado. Inicia sesión nuevamente.", request);
+	}
+
+	/**
+	 * Password-reset flow (01-identidad.md — ResetPasswordUseCase): a token that
+	 * is unknown, already used, or expired maps to 400. The message varies by
+	 * case but this handler keeps the client-facing copy generic; the specific
+	 * failure lives in the exception message already chosen by the use case.
+	 */
+	@ExceptionHandler(InvalidPasswordResetTokenException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, "El enlace de restablecimiento no es válido o ha expirado.", request);
 	}
 
 	@ExceptionHandler(DivisionRuleViolationException.class)
