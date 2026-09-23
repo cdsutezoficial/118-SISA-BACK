@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<jjwt.version>0.13.0</jjwt.version>
+		<openpdf.version>2.0.3</openpdf.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -59,6 +60,12 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>${openpdf.version}</version>
 		</dependency>
 
 		<dependency>
