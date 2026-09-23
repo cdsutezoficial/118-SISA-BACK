@@ -96,12 +96,12 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(AcademicProgramNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleProgramNotFound(AcademicProgramNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, "No se encontró el programa educativo solicitado.", request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró la carrera solicitada.", request);
 	}
 
 	@ExceptionHandler({ DuplicateProgramCodeException.class, DuplicateOfferNameModalityException.class })
 	public ResponseEntity<ErrorResponse> handleProgramConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe un programa educativo con la información proporcionada.", request);
+		return build(HttpStatus.CONFLICT, "Ya existe una carrera con la información proporcionada.", request);
 	}
 
 	@ExceptionHandler(DivisionNotFoundException.class)
@@ -242,7 +242,7 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(DuplicateProgramAdmissionConfigException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigConflict(
 			DuplicateProgramAdmissionConfigException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe una configuración de admisión para el programa y periodo seleccionados.", request);
+		return build(HttpStatus.CONFLICT, "Ya existe una configuración de admisión para la carrera y periodo seleccionados.", request);
 	}
 
 	@ExceptionHandler(InvalidProgramAdmissionConfigDataException.class)

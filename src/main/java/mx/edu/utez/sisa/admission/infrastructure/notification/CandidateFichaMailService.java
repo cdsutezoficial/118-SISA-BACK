@@ -104,7 +104,7 @@ public class CandidateFichaMailService {
 
 				Ficha de admisión
 				Folio: %s
-				Programa: %s
+				Carrera: %s
 				Monto a pagar: $%s MXN
 				Referencia de pago: %s
 				Fecha límite de pago: %s
@@ -130,7 +130,7 @@ public class CandidateFichaMailService {
 
 				Detalle del pago
 				Folio: %s
-				Programa: %s
+				Carrera: %s
 				Monto pagado: $%s MXN
 				Referencia de pago: %s
 				Fecha de pago: %s

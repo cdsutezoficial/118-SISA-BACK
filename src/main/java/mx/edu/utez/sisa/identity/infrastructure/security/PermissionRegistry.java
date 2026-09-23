@@ -61,10 +61,10 @@ public final class PermissionRegistry {
 			e("PUT", "/divisions/**", "DIVISIONS_UPDATE"),
 			e("PATCH", "/divisions/**", "DIVISIONS_CHANGE_STATUS"),
 			// academic_config — programs
-			e("GET", "/programs/**", "PROGRAMS_READ"),
-			e("POST", "/programs", "PROGRAMS_CREATE"),
-			e("PUT", "/programs/**", "PROGRAMS_UPDATE"),
-			e("PATCH", "/programs/**", "PROGRAMS_CHANGE_STATUS"),
+			e("GET", "/programs/**", "CARRERAS_READ"),
+			e("POST", "/programs", "CARRERAS_CREATE"),
+			e("PUT", "/programs/**", "CARRERAS_UPDATE"),
+			e("PATCH", "/programs/**", "CARRERAS_CHANGE_STATUS"),
 			// academic_config — plans
 			e("GET", "/plans/**", "PLANS_READ"),
 			e("POST", "/plans/**", "PLANS_CREATE"),

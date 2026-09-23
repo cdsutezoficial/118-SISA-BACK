@@ -56,7 +56,7 @@ public class CandidateFichaPdfService {
 		row(table, "Folio", ficha.folio());
 		row(table, "Nombre", fullName(ficha));
 		row(table, "CURP", ficha.curp());
-		row(table, "Programa", ficha.programName() == null ? "-" : ficha.programName());
+		row(table, "Carrera", ficha.programName() == null ? "-" : ficha.programName());
 		row(table, "Monto a pagar", "$" + amount(ficha.amount()) + " MXN");
 		row(table, "Referencia de pago", ficha.referenceNumber());
 		row(table, "Fecha límite de pago", date(ficha.deadline()));
