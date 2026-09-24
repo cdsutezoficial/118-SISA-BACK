@@ -168,7 +168,7 @@ class AuthControllerTest {
 
 		mockMvc.perform(get("/auth/me"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.userId").value(callerId.toString()))
+				.andExpect(jsonPath("$.userId").doesNotExist())
 				.andExpect(jsonPath("$.fullName").value("Administrador Sistema"))
 				.andExpect(jsonPath("$.username").value("admin@utez.edu.mx"))
 				.andExpect(jsonPath("$.email").value("admin@utez.edu.mx"));
