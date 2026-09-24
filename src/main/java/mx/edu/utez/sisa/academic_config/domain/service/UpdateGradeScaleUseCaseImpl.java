@@ -42,9 +42,8 @@ public class UpdateGradeScaleUseCaseImpl implements UpdateGradeScaleUseCase {
 		}
 		if (command.numericMin() == null || command.numericMax() == null
 				|| command.numericMin().compareTo(command.numericMax()) >= 0) {
-			throw new InvalidPlanDataException(
-					"numericMin must be less than numericMax: [" + command.numericMin() + ", " + command.numericMax()
-							+ "]");
+			throw new InvalidPlanDataException("La calificación mínima debe ser menor que la máxima: ["
+					+ command.numericMin() + ", " + command.numericMax() + "].");
 		}
 
 		plan.updateGradeScale(command.scaleId(), command.classificationId(), command.numericMin(),

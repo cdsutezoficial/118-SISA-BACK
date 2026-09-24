@@ -128,22 +128,21 @@ public class GradeScale {
 			List<GradeScaleEntryData> entries) {
 		if (entries == null || entries.isEmpty()) {
 			throw new InvalidGradeScaleEntriesException(
-					"At least one entry is required to cover the scale range [" + numericMin + ", " + numericMax
-							+ "]");
+					"Agrega al menos un rango para cubrir la escala [" + numericMin + ", " + numericMax + "].");
 		}
 		List<GradeScaleEntryData> sorted = entries.stream().sorted(Comparator.comparing(GradeScaleEntryData::fromValue))
 				.toList();
 		for (GradeScaleEntryData entry : sorted) {
 			if (entry.fromValue().compareTo(entry.toValue()) > 0) {
-				throw new InvalidGradeScaleEntriesException(
-						"Entry fromValue must be <= toValue: [" + entry.fromValue() + ", " + entry.toValue() + "]");
+				throw new InvalidGradeScaleEntriesException("El valor 'Desde' debe ser menor o igual al valor 'Hasta' en cada rango: ["
+						+ entry.fromValue() + ", " + entry.toValue() + "].");
 			}
 		}
 
 		GradeScaleEntryData first = sorted.get(0);
 		if (first.fromValue().compareTo(numericMin) != 0) {
-			throw new InvalidGradeScaleEntriesException("Gap detected: entries must start at numericMin="
-					+ numericMin + " but the first entry starts at " + first.fromValue());
+			throw new InvalidGradeScaleEntriesException("Hueco inicial: los rangos deben comenzar en el valor mínimo ("
+					+ numericMin + "), pero el primer rango inicia en " + first.fromValue() + ".");
 		}
 
 		for (int i = 0; i < sorted.size() - 1; i++) {
@@ -152,21 +151,19 @@ public class GradeScale {
 			BigDecimal expectedNextFrom = currentTo.add(STEP);
 			int comparison = expectedNextFrom.compareTo(nextFrom);
 			if (comparison < 0) {
-				throw new InvalidGradeScaleEntriesException(
-						"Gap detected between entry ending at " + currentTo + " and next entry starting at "
-								+ nextFrom);
+				throw new InvalidGradeScaleEntriesException("Hay un hueco entre el rango que termina en " + currentTo
+						+ " y el siguiente que inicia en " + nextFrom + ".");
 			}
 			if (comparison > 0) {
-				throw new InvalidGradeScaleEntriesException(
-						"Overlap detected between entry ending at " + currentTo + " and next entry starting at "
-								+ nextFrom);
+				throw new InvalidGradeScaleEntriesException("Hay un traslape entre el rango que termina en " + currentTo
+						+ " y el siguiente que inicia en " + nextFrom + ".");
 			}
 		}
 
 		GradeScaleEntryData last = sorted.get(sorted.size() - 1);
 		if (last.toValue().compareTo(numericMax) != 0) {
-			throw new InvalidGradeScaleEntriesException("Gap detected: entries must end at numericMax=" + numericMax
-					+ " but the last entry ends at " + last.toValue());
+			throw new InvalidGradeScaleEntriesException("Hueco final: los rangos deben terminar en el valor máximo ("
+					+ numericMax + "), pero el último rango termina en " + last.toValue() + ".");
 		}
 	}
 

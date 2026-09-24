@@ -45,7 +45,8 @@ public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase 
 
 		if (command.minPassingGrade() == null || command.minPassingGrade().compareTo(MIN_PASSING_GRADE_FLOOR) < 0
 				|| command.minPassingGrade().compareTo(MIN_PASSING_GRADE_CEILING) > 0) {
-			throw new InvalidPlanDataException("minPassingGrade must be within [0, 10]: " + command.minPassingGrade());
+			throw new InvalidPlanDataException("La calificación mínima aprobatoria debe estar entre 0 y 10: "
+					+ command.minPassingGrade());
 		}
 
 		planRepository.findByProgramIdAndVersion(plan.getProgramId(), command.version())
