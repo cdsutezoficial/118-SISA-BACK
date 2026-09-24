@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Creates a {@code Person} for the manual internal-staff registration flow
  * (plan: {@code docs/plans/2026-07-28-persons-and-user-management.md} —
- * 4.1). Distinct from the {@code AdminSeedRunner}/test-fixture usage of
+ * 4.1). Distinct from the {@code TestAccountsSeedRunner}/test-fixture usage of
  * {@code PersonRepository#save} that originally motivated "Person creation
  * is out of scope" in design.md — this is now a real, ADMIN-facing use
  * case, following the caller-lookup/{@code assertCanOperate} shape already

@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * full Spring Security filter chain — no mocks. Fixtures are seeded directly
  * via the out-ports (Person creation is out of scope for Identity per
  * design.md, and pre-existing ADMIN state must not depend on
- * {@code AdminSeedRunner}, which is covered separately by {@link
+ * {@code TestAccountsSeedRunner}, which is covered separately by {@link
  * mx.edu.utez.sisa.identity.infrastructure.bootstrap.AdminSeedIT}).
  *
  * <p>Test methods are intentionally ordered and share one {@code @SpringBootTest}
@@ -43,9 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * between steps): each scenario group builds on state left behind by the
  * previous one, mirroring the single growing flow described by tasks 6.1-6.5.
  */
-@SpringBootTest(properties = { "sisa.security.bootstrap.admin.password=",
-		"sisa.security.bootstrap.servicios-escolares.password=",
-		"sisa.security.bootstrap.test-accounts.password=" })
+@SpringBootTest(properties = { "sisa.security.bootstrap.test.password=" })
 @AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)

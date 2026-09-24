@@ -26,7 +26,7 @@ import java.util.UUID;
  * Bootstraps the closed INEGI {@link State}/{@link Municipality} catalogs on
  * startup (plan: {@code docs/plans/2026-07-28-inegi-catalogs-and-highschooltype.md},
  * section 4). Same idempotent-{@code ApplicationRunner} shape as
- * {@code identity.AdminSeedRunner}/{@code ServiciosEscolaresSeedRunner}, but
+ * {@code identity.TestAccountsSeedRunner}, but
  * checks table emptiness rather than a role invariant — unlike those two
  * seeds, there is no narrower business invariant to check: this catalog is
  * either fully seeded or not seeded at all, and is never written to again

@@ -17,9 +17,8 @@ public interface UserRoleRepository {
 	List<UserRole> findByUserId(UUID userId);
 
 	/**
-	 * Used by {@code AdminSeedRunner} (design.md — Decision: Bootstrap ADMIN
-	 * seed) to detect whether any {@code ADMIN} role already exists, instead
-	 * of checking table emptiness.
+	 * Used by {@code TestAccountsSeedRunner} to detect whether any given
+	 * role already exists, instead of checking table emptiness.
 	 */
 	boolean existsByRoleId(UUID roleId);
 

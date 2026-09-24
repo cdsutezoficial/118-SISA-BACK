@@ -36,9 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code PersonControllerIT}: every caller token here must be backed by a
  * real, already-past-first-access {@code User} row.
  */
-@SpringBootTest(properties = { "sisa.security.bootstrap.admin.password=", 
-		"sisa.security.bootstrap.servicios-escolares.password=",
-		"sisa.security.bootstrap.test-accounts.password=" })
+@SpringBootTest(properties = { "sisa.security.bootstrap.test.password=" })
 @AutoConfigureMockMvc
 class UserManagementControllerIT {
 
