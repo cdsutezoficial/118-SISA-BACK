@@ -29,7 +29,7 @@ public interface EvoPaymentsGatewayPort {
 			String returnUrl, String cancelUrl) {
 	}
 
-	record EvoSession(String id, String merchant, String successIndicator) {
+	record EvoSession(String id, String merchant, String successIndicator, String version) {
 	}
 
 	record EvoOrderStatus(String orderId, String result, BigDecimal amount) {

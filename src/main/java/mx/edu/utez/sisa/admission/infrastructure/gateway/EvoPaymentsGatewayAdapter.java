@@ -75,7 +75,7 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 			throw new EvoPaymentGatewayException("El proveedor de pagos (EVO) no devolvió una sesión de pago.");
 		}
 		log.info("EVO: sesión de pago iniciada para la orden {}", order.id());
-		return new EvoSession(res.session().id(), res.merchant(), res.successIndicator());
+		return new EvoSession(res.session().id(), res.merchant(), res.successIndicator(), res.session().version());
 	}
 
 	@Override
@@ -194,7 +194,7 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 
 	private record SessionResponse(String result, String merchant, String successIndicator, Session session,
 			ErrorInfo error) {
-		record Session(String id) {
+		record Session(String id, String version) {
 		}
 	}
 

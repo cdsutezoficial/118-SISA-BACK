@@ -13,9 +13,11 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
@@ -27,8 +29,10 @@ import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl
 import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetOutreachChannelUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.InitiateFichaPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.OrderIdBuilder;
 import mx.edu.utez.sisa.admission.domain.service.RegisterCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateOutreachChannelUseCaseImpl;
@@ -132,6 +136,29 @@ public class UseCaseConfig {
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository);
+	}
+
+	@Bean
+	public OrderIdBuilder orderIdBuilder(EvoConfig evoConfig) {
+		return new OrderIdBuilder(evoConfig.orderIdPrefix(), evoConfig.orderIdLength());
+	}
+
+	@Bean
+	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
+			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig) {
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
+				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
+				evoConfig.cancelUrl(), paymentPageBaseUrl(evoConfig.baseUrl()));
+	}
+
+	/** Gateway root for the hosted payment page, derived from the REST {@code EVO_BASE_URL}. */
+	private static String paymentPageBaseUrl(String baseUrl) {
+		if (baseUrl == null) {
+			return "";
+		}
+		int apiIdx = baseUrl.indexOf("/api/");
+		return apiIdx >= 0 ? baseUrl.substring(0, apiIdx) : baseUrl;
 	}
 
 	@Bean

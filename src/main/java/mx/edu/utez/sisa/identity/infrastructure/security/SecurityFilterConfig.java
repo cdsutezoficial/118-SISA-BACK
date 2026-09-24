@@ -229,7 +229,7 @@ public class SecurityFilterConfig {
 						.accessDeniedHandler(accessDeniedHandler()))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.POST, "/candidates", "/candidates/*/payments/confirm",
-								"/candidates/*/send-instructions")
+								"/candidates/*/payments/checkout", "/candidates/*/send-instructions")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
 						.requestMatchers("/auth/login", "/auth/refresh")

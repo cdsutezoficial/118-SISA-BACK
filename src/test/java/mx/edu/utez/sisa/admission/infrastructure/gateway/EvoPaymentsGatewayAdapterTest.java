@@ -70,7 +70,7 @@ class EvoPaymentsGatewayAdapterTest {
 				}
 				""")).andRespond(withSuccess("""
 				{"result":"SUCCESS","merchant":"TESTUTEZ","successIndicator":"AAAA/BRAVO/SUCCESS0001",
-				 "session":{"id":"SESSION0001BR"}}
+				 "session":{"id":"SESSION0001BR","version":"1"}}
 				""", MediaType.APPLICATION_JSON));
 
 		EvoSession session = adapter.initiateCheckoutSession(order());
@@ -78,6 +78,7 @@ class EvoPaymentsGatewayAdapterTest {
 		assertThat(session.id()).isEqualTo("SESSION0001BR");
 		assertThat(session.merchant()).isEqualTo("TESTUTEZ");
 		assertThat(session.successIndicator()).isEqualTo("AAAA/BRAVO/SUCCESS0001");
+		assertThat(session.version()).isEqualTo("1");
 		server.verify();
 	}
 

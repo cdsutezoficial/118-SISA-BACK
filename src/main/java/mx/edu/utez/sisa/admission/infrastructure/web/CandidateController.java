@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.infrastructure.web;
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
@@ -17,6 +18,7 @@ import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMail
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -77,6 +79,8 @@ public class CandidateController {
 
 	private final ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase;
 
+	private final InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
+
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
 	private final CandidateFichaMailService fichaMailService;
@@ -85,10 +89,12 @@ public class CandidateController {
 
 	public CandidateController(RegisterCandidateUseCase registerCandidateUseCase,
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
+			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.confirmAdmissionPaymentUseCase = confirmAdmissionPaymentUseCase;
+		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
@@ -118,6 +124,20 @@ public class CandidateController {
 					result.receiptNumber());
 		}
 		return ResponseEntity.ok(PaymentConfirmationResponse.from(result));
+	}
+
+	/**
+	 * Public "Pagar en línea" trigger (Fase 4): initiates the EVO Hosted
+	 * Checkout session for the ficha — {@code order.id} (prefix + folio),
+	 * amount/currency from the payment concept, return/cancelUrl from config —
+	 * and persists {@code order.id} + {@code session.id} on the payment so the
+	 * return step (Fase 5) can verify the result against the gateway. {@code 404}
+	 * if candidate/payment missing, {@code 409} if already paid, {@code 502} if
+	 * the gateway cannot start the session.
+	 */
+	@PostMapping("/{id}/payments/checkout")
+	public ResponseEntity<CheckoutInitiationResponse> initiateCheckout(@PathVariable UUID id) {
+		return ResponseEntity.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id)));
 	}
 
 	/**
