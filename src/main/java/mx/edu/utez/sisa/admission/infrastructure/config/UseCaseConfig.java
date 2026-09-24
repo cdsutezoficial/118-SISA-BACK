@@ -22,6 +22,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
+import mx.edu.utez.sisa.admission.domain.port.out.PlaceNameLookupPort;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
@@ -175,8 +176,10 @@ public class UseCaseConfig {
 	public GetCandidateFichaUseCase getCandidateFichaUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository) {
 		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
+				outreachChannelRepository, highSchoolTypeRepository);
 	}
 }

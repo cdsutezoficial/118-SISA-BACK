@@ -93,7 +93,7 @@ class RegisterCandidateUseCaseImplTest {
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new AdmissionConfigInfo(ADMISSION_CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						"Ingeniería en Sistemas")));
+						"Ingeniería en Sistemas", null, null)));
 
 		CandidateRegistrationResult result = useCase.register(command());
 
