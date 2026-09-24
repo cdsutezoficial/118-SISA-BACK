@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.CreatePermissionUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreatePersonUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.CreateUserUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.GetPermissionUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.GetRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase;
@@ -48,6 +49,7 @@ import mx.edu.utez.sisa.identity.domain.service.CreatePermissionUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.CreatePersonUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.CreateRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.CreateUserUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.GetCurrentProfileUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.GetPermissionUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.GetRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.GetUserUseCaseImpl;
@@ -150,6 +152,12 @@ public class UseCaseConfig {
 	public GetUserUseCase getUserUseCase(UserRepository userRepository, PersonRepository personRepository,
 			UserRoleRepository userRoleRepository, RoleRepository roleRepository) {
 		return new GetUserUseCaseImpl(userRepository, personRepository, userRoleRepository, roleRepository);
+	}
+
+	@Bean
+	public GetCurrentProfileUseCase getCurrentProfileUseCase(UserRepository userRepository,
+			PersonRepository personRepository) {
+		return new GetCurrentProfileUseCaseImpl(userRepository, personRepository);
 	}
 
 	@Bean

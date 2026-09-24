@@ -5,6 +5,9 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticateCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticationResult;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileQuery;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileResult;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
@@ -34,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,6 +65,9 @@ class AuthControllerTest {
 
 	@MockitoBean
 	private ChangePasswordUseCase changePasswordUseCase;
+
+	@MockitoBean
+	private GetCurrentProfileUseCase getCurrentProfileUseCase;
 
 	@MockitoBean
 	private RequestPasswordResetUseCase requestPasswordResetUseCase;
@@ -148,6 +155,25 @@ class AuthControllerTest {
 
 		verify(changePasswordUseCase).changePassword(eq(new ChangePasswordUseCase.ChangePasswordCommand(callerId,
 				"old-pass", "new-pass")));
+	}
+
+	@Test
+	void meReturnsCallerProfileResolvedFromSecurityContext() throws Exception {
+		UUID callerId = UUID.randomUUID();
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+				callerId.toString(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+		when(getCurrentProfileUseCase.getCurrentProfile(new CurrentProfileQuery(callerId)))
+				.thenReturn(new CurrentProfileResult(callerId, "Administrador Sistema", "admin@utez.edu.mx",
+						"admin@utez.edu.mx"));
+
+		mockMvc.perform(get("/auth/me"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.userId").value(callerId.toString()))
+				.andExpect(jsonPath("$.fullName").value("Administrador Sistema"))
+				.andExpect(jsonPath("$.username").value("admin@utez.edu.mx"))
+				.andExpect(jsonPath("$.email").value("admin@utez.edu.mx"));
+
+		verify(getCurrentProfileUseCase).getCurrentProfile(eq(new CurrentProfileQuery(callerId)));
 	}
 
 	@Test
