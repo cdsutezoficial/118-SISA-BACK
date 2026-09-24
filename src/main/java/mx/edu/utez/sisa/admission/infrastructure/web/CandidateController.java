@@ -20,6 +20,7 @@ import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationRe
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaEmailSendException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
@@ -122,9 +123,12 @@ public class CandidateController {
 
 	/**
 	 * Resends (or sends for the first time) the payment-instructions email from
-	 * the ficha screen's "Enviar instrucciones a mi correo" button. Best-effort
-	 * like the confirmation email. {@code 204} regardless of mail outcome — the
-	 * button's success is "the request was accepted for delivery".
+	 * the ficha screen's "Enviar instrucciones a mi correo" button. Sent
+	 * SYNCHRONOUSLY via {@link CandidateFichaMailService#sendPaymentInstructionsSync}:
+	 * unlike the confirmation email (best-effort), a delivery failure surfaces
+	 * as HTTP 502 with the SMTP cause in the message — the button never fakes
+	 * "instrucciones enviadas" nor silently drops the email. {@code 204} only
+	 * when the message actually left the SMTP queue.
 	 */
 	@PostMapping("/{id}/send-instructions")
 	public ResponseEntity<Void> sendInstructions(@PathVariable UUID id) {
@@ -132,10 +136,11 @@ public class CandidateController {
 		if (ficha == null) {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
-		if (ficha.email() != null && !ficha.email().isBlank()) {
-			fichaMailService.sendPaymentInstructions(ficha.email(), fullName(ficha), ficha.folio(),
-					ficha.programName(), ficha.amount(), ficha.referenceNumber(), ficha.deadline());
+		if (ficha.email() == null || ficha.email().isBlank()) {
+			throw new FichaEmailSendException("El candidato no tiene un correo electrónico registrado.");
 		}
+		fichaMailService.sendPaymentInstructionsSync(ficha.email(), fullName(ficha), ficha.folio(),
+				ficha.programName(), ficha.amount(), ficha.referenceNumber(), ficha.deadline());
 		return ResponseEntity.noContent().build();
 	}
 
