@@ -229,15 +229,16 @@ public class AcademicPeriod {
 	private static void validateDateRanges(LocalDate startDate, LocalDate endDate, LocalDate enrollmentStart,
 			LocalDate enrollmentEnd) {
 		if (startDate == null || endDate == null || !startDate.isBefore(endDate)) {
-			throw new InvalidPlanDataException("startDate must be before endDate: [" + startDate + ", " + endDate + "]");
+			throw new InvalidPlanDataException("La fecha de inicio debe ser anterior a la fecha de fin: [" + startDate
+					+ ", " + endDate + "].");
 		}
 		if (enrollmentStart == null || enrollmentEnd == null || !enrollmentStart.isBefore(enrollmentEnd)) {
-			throw new InvalidPlanDataException(
-					"enrollmentStart must be before enrollmentEnd: [" + enrollmentStart + ", " + enrollmentEnd + "]");
+			throw new InvalidPlanDataException("El inicio de inscripciones debe ser anterior al cierre: ["
+					+ enrollmentStart + ", " + enrollmentEnd + "].");
 		}
 		if (enrollmentEnd.isAfter(endDate)) {
-			throw new InvalidPlanDataException(
-					"enrollmentEnd must not be after endDate: enrollmentEnd=" + enrollmentEnd + ", endDate=" + endDate);
+			throw new InvalidPlanDataException("El cierre de inscripciones no puede ser posterior a la fecha de fin del periodo: cierre="
+					+ enrollmentEnd + ", fin=" + endDate + ".");
 		}
 	}
 

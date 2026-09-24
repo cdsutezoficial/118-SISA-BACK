@@ -57,7 +57,7 @@ class GlobalExceptionHandlerTest {
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 		assertThat(response.getBody()).isNotNull();
-		assertThat(response.getBody().message()).isEqualTo("bad creds");
+		assertThat(response.getBody().message()).isEqualTo("Usuario o contraseña incorrectos.");
 		assertThat(response.getBody().path()).isEqualTo("/auth/login");
 	}
 
@@ -153,7 +153,7 @@ class GlobalExceptionHandlerTest {
 	void methodArgumentNotValidMapsTo400() {
 		MethodArgumentNotValidException ex = org.mockito.Mockito.mock(MethodArgumentNotValidException.class);
 		BindingResult bindingResult = org.mockito.Mockito.mock(BindingResult.class);
-		FieldError fieldError = new FieldError("loginRequest", "username", "must not be blank");
+		FieldError fieldError = new FieldError("loginRequest", "username", "El nombre de usuario es obligatorio.");
 		when(ex.getBindingResult()).thenReturn(bindingResult);
 		when(bindingResult.getFieldErrors()).thenReturn(List.of(fieldError));
 
@@ -161,20 +161,18 @@ class GlobalExceptionHandlerTest {
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(response.getBody()).isNotNull();
-		assertThat(response.getBody().message()).contains("username");
+		assertThat(response.getBody().message()).isEqualTo("El nombre de usuario es obligatorio.");
 	}
 
 	@Test
 	void methodArgumentTypeMismatchMapsTo400() {
 		MethodArgumentTypeMismatchException ex = org.mockito.Mockito.mock(MethodArgumentTypeMismatchException.class);
-		when(ex.getName()).thenReturn("userId");
-		when(ex.getValue()).thenReturn("not-a-uuid");
 
 		ResponseEntity<ErrorResponse> response = handler.handleTypeMismatch(ex, request);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(response.getBody()).isNotNull();
-		assertThat(response.getBody().message()).contains("userId").contains("not-a-uuid");
+		assertThat(response.getBody().message()).isEqualTo("La solicitud contiene un dato con formato inválido.");
 	}
 
 	@Test

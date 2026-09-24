@@ -314,7 +314,7 @@ class AcademicPlanTest {
 
 		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
 				List.of(entry(0, 60, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true))))
-				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Gap");
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("hueco");
 	}
 
 	@Test
@@ -323,7 +323,7 @@ class AcademicPlanTest {
 
 		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), BigDecimal.valueOf(0), BigDecimal.valueOf(100),
 				List.of(entry(0, 75, "NP", "No competente", false), entry(70, 100, "CO", "Competente", true))))
-				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Overlap");
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("traslape");
 	}
 
 	@Test
@@ -449,7 +449,7 @@ class AcademicPlanTest {
 		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
 				List.of(entry(7.0, 7.5, "X", "Excelente", true), entry(7.7, 8.5, "Y", "Muy bien", true),
 						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true))))
-				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Gap");
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("hueco");
 	}
 
 	@Test
@@ -459,7 +459,7 @@ class AcademicPlanTest {
 		assertThatThrownBy(() -> plan.setGradeScale(UUID.randomUUID(), new BigDecimal("7.0"), new BigDecimal("10.0"),
 				List.of(entry(7.0, 7.5, "X", "Excelente", true), entry(7.5, 8.5, "Y", "Muy bien", true),
 						entry(8.6, 9.5, "Z", "Bien", true), entry(9.6, 10.0, "W", "Sobresaliente", true))))
-				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("Overlap");
+				.isInstanceOf(InvalidGradeScaleEntriesException.class).hasMessageContaining("traslape");
 	}
 
 	/**

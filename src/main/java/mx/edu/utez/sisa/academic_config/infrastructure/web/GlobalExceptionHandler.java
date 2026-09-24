@@ -116,10 +116,14 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró el elemento solicitado del plan de estudios.", request);
 	}
 
-	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class,
-			InvalidPlanDataException.class, InvalidGradeScaleEntriesException.class })
+	@ExceptionHandler({ ProgramNotFoundException.class, InvalidSocialServiceLevelException.class })
 	public ResponseEntity<ErrorResponse> handlePlanBadRequest(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, "Revisa la información proporcionada para el plan de estudios.", request);
+	}
+
+	@ExceptionHandler({ InvalidPlanDataException.class, InvalidGradeScaleEntriesException.class })
+	public ResponseEntity<ErrorResponse> handlePlanDataBadRequest(RuntimeException ex, HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class,

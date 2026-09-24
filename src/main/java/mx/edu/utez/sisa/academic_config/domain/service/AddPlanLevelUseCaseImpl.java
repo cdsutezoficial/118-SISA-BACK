@@ -30,8 +30,8 @@ public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
 		if (command.levelNumber() < 1 || command.levelNumber() > plan.getTotalLevels()) {
-			throw new InvalidPlanDataException(
-					"levelNumber must be within [1, totalLevels=" + plan.getTotalLevels() + "]: " + command.levelNumber());
+			throw new InvalidPlanDataException("El número de nivel debe estar entre 1 y el total de niveles del plan ("
+					+ plan.getTotalLevels() + "): " + command.levelNumber());
 		}
 
 		plan.addLevel(command.levelNumber(), command.type(), command.description());
