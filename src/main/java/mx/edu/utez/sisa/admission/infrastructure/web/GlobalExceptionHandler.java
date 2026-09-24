@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
@@ -27,7 +28,8 @@ import java.time.Instant;
  * {@code InvalidCandidateFichaDataException} (400),
  * {@code CandidateNotFoundException} (404 — payment-confirmation / ficha-read
  * family) and {@code CandidateAlreadyPaidException} (409 — repeat
- * confirmation))
+ * confirmation) and {@link EvoPaymentGatewayException} (502 — the payment
+ * processor is the failing upstream dependency, never a client mistake))
  * to HTTP statuses (same "own {@code @RestControllerAdvice}, additive only"
  * decision as {@code academic_config.GlobalExceptionHandler}). Generic
  * handlers (bean validation, type-mismatch, catch-all) already exist
@@ -94,6 +96,12 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleInvalidCandidateFichaData(InvalidCandidateFichaDataException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(EvoPaymentGatewayException.class)
+	public ResponseEntity<ErrorResponse> handleEvoPaymentGateway(EvoPaymentGatewayException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
