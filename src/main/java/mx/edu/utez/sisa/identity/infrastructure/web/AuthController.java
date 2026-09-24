@@ -6,6 +6,9 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.Authenticate
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticationResult;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase.ChangePasswordCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileQuery;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileResult;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
@@ -17,11 +20,13 @@ import mx.edu.utez.sisa.identity.infrastructure.web.dto.ChangePasswordRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.ForgotPasswordRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LoginRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LoginResponse;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.MeProfileResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.RefreshRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.RefreshResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.ResetPasswordRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,17 +51,20 @@ public class AuthController {
 	private final ChangePasswordUseCase changePasswordUseCase;
 	private final RequestPasswordResetUseCase requestPasswordResetUseCase;
 	private final ResetPasswordUseCase resetPasswordUseCase;
+	private final GetCurrentProfileUseCase getCurrentProfileUseCase;
 	private final long accessTokenTtlSeconds;
 
 	public AuthController(AuthenticateUseCase authenticateUseCase,
 			RefreshAccessTokenUseCase refreshAccessTokenUseCase, ChangePasswordUseCase changePasswordUseCase,
 			RequestPasswordResetUseCase requestPasswordResetUseCase, ResetPasswordUseCase resetPasswordUseCase,
+			GetCurrentProfileUseCase getCurrentProfileUseCase,
 			@Value("${sisa.security.jwt.access-token-ttl}") Duration accessTokenTtl) {
 		this.authenticateUseCase = authenticateUseCase;
 		this.refreshAccessTokenUseCase = refreshAccessTokenUseCase;
 		this.changePasswordUseCase = changePasswordUseCase;
 		this.requestPasswordResetUseCase = requestPasswordResetUseCase;
 		this.resetPasswordUseCase = resetPasswordUseCase;
+		this.getCurrentProfileUseCase = getCurrentProfileUseCase;
 		this.accessTokenTtlSeconds = accessTokenTtl.getSeconds();
 	}
 
@@ -72,6 +80,23 @@ public class AuthController {
 	public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshRequest request) {
 		RefreshResult result = refreshAccessTokenUseCase.refresh(new RefreshCommand(request.refreshToken()));
 		return ResponseEntity.ok(new RefreshResponse(result.accessToken(), "Bearer", accessTokenTtlSeconds));
+	}
+
+	/**
+	 * Self-service profile: the CALLER's own fullName/email from its linked
+	 * {@code Person} (the {@code sub} claim picks the user — never a target id
+	 * from the request, so nobody can read someone else's profile). Any
+	 * authenticated role may call it; the route is not registered in the
+	 * fine-grained layer, so it falls back to {@code .anyRequest().
+	 * authenticated()} in the coarse matcher (same as
+	 * {@code /auth/me/capabilities}).
+	 */
+	@GetMapping("/me")
+	public ResponseEntity<MeProfileResponse> me() {
+		CurrentProfileResult result = getCurrentProfileUseCase
+				.getCurrentProfile(new CurrentProfileQuery(AuthenticatedCaller.currentUserId()));
+		return ResponseEntity.ok(new MeProfileResponse(result.userId(), result.fullName(), result.username(),
+				result.email()));
 	}
 
 	@PostMapping("/change-password")
