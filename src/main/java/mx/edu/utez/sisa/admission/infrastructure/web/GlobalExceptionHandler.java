@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
+import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
@@ -94,6 +95,12 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(InvalidCandidateFichaDataException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidCandidateFichaData(InvalidCandidateFichaDataException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidPaymentVerificationException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentVerification(InvalidPaymentVerificationException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}

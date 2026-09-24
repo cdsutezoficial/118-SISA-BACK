@@ -12,6 +12,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
@@ -24,6 +25,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImpl;
@@ -136,6 +138,14 @@ public class UseCaseConfig {
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository);
+	}
+
+	@Bean
+	public ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase(CandidateRepository candidateRepository,
+			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase) {
+		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, admissionPaymentRepository,
+				evoPaymentsGateway, confirmAdmissionPaymentUseCase);
 	}
 
 	@Bean
