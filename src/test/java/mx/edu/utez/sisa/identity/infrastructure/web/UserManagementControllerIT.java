@@ -81,12 +81,12 @@ class UserManagementControllerIT {
 	}
 
 	@Test
-	void serviciosEscolaresCanGetUserDetail() throws Exception {
+	void serviciosEscolaresIsForbiddenOnGetUserDetail() throws Exception {
 		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
 		UUID targetId = newPlainUser("target2");
 
 		mockMvc.perform(get("/users/{id}", targetId).header("Authorization", "Bearer " + token))
-				.andExpect(status().isOk());
+				.andExpect(status().isForbidden());
 	}
 
 	@Test
