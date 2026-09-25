@@ -1,12 +1,15 @@
 package mx.edu.utez.sisa.admission.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.FichaEmailSendException;
+import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
+import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
@@ -27,10 +30,9 @@ import java.time.Instant;
  * {@code ProgramAdmissionConfigNotOpenException} (409),
  * {@code InvalidCandidateFichaDataException} (400),
  * {@code CandidateNotFoundException} (404 — payment-confirmation / ficha-read
- * family), {@code CandidateAlreadyPaidException} (409 — repeat
- * confirmation) and {@link FichaEmailSendException} (502 — the
- * "send instructions" email failed to deliver; BAD_GATEWAY since the SMTP
- * upstream is the failing dependency, never a client mistake))
+ * family) and {@code CandidateAlreadyPaidException} (409 — repeat
+ * confirmation) and {@link EvoPaymentGatewayException} (502 — the payment
+ * processor is the failing upstream dependency, never a client mistake))
  * to HTTP statuses (same "own {@code @RestControllerAdvice}, additive only"
  * decision as {@code academic_config.GlobalExceptionHandler}). Generic
  * handlers (bean validation, type-mismatch, catch-all) already exist
@@ -87,6 +89,18 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}
 
+	@ExceptionHandler(FichaPaymentConceptNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleFichaPaymentConceptNotFound(FichaPaymentConceptNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(AmbiguousFichaPaymentConceptException.class)
+	public ResponseEntity<ErrorResponse> handleAmbiguousFichaPaymentConcept(AmbiguousFichaPaymentConceptException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
 	@ExceptionHandler(CandidateAlreadyPaidException.class)
 	public ResponseEntity<ErrorResponse> handleCandidateAlreadyPaid(CandidateAlreadyPaidException ex,
 			HttpServletRequest request) {
@@ -99,8 +113,14 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
-	@ExceptionHandler(FichaEmailSendException.class)
-	public ResponseEntity<ErrorResponse> handleFichaEmailSend(FichaEmailSendException ex,
+	@ExceptionHandler(InvalidPaymentVerificationException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentVerification(InvalidPaymentVerificationException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(EvoPaymentGatewayException.class)
+	public ResponseEntity<ErrorResponse> handleEvoPaymentGateway(EvoPaymentGatewayException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request);
 	}

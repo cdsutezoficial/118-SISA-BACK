@@ -32,6 +32,13 @@ import java.util.UUID;
  * public portal's "Pagar en línea" button (no EVO webhook yet) — the EVO
  * Hosted-Checkout integration lands later and will replace this trigger; the
  * aggregate shape already matches the design.
+ *
+ * <p>EVO Hosted Checkout: when the applicant clicks "Pagar en línea", the
+ * checkout use case initiates a gateway session and {@link #registerCheckout}
+ * records the gateway {@code order.id} and {@code session.id} on this concept
+ * (the "concept that registers the transaction") — Fase 4 of the payment plan.
+ * These stay {@code null} while the ticket is only pending (no online session
+ * has been created yet).
  */
 @Entity
 @Table(name = "admission_payment")
@@ -69,6 +76,14 @@ public class AdmissionPayment {
 
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
+
+	/** EVO gateway {@code order.id} (orderId-prefix + folio), set when a Hosted Checkout session is initiated. */
+	@Column(name = "order_id", length = 64)
+	private String orderId;
+
+	/** EVO gateway {@code session.id}, set when a Hosted Checkout session is initiated. */
+	@Column(name = "checkout_session_id", length = 64)
+	private String checkoutSessionId;
 
 	protected AdmissionPayment() {
 		// JPA
@@ -142,6 +157,31 @@ public class AdmissionPayment {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public String getOrderId() {
+		return orderId;
+	}
+
+	public String getCheckoutSessionId() {
+		return checkoutSessionId;
+	}
+
+	/**
+	 * Records the EVO Hosted Checkout session created for THIS ficha payment
+	 * (the concept that registers the transaction): the gateway {@code order.id}
+	 * and {@code session.id}. Only meaningful while {@code PENDING} — a paid
+	 * ficha must never be re-registered against a new online session.
+	 *
+	 * @throws IllegalStateException if the payment is already {@code PAID}
+	 *                               (guarded earlier at use-case level → 409).
+	 */
+	public void registerCheckout(String orderId, String checkoutSessionId) {
+		if (this.paymentStatus == AdmissionPaymentStatus.PAID) {
+			throw new IllegalStateException("La ficha ya está pagada; no se puede asociar una sesión de pago.");
+		}
+		this.orderId = orderId;
+		this.checkoutSessionId = checkoutSessionId;
 	}
 
 	@Override

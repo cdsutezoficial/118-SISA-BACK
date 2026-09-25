@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.port.out;
 
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
+import mx.edu.utez.sisa.shared.model.ProgramModality;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -20,15 +21,25 @@ public interface ProgramAdmissionConfigQueryPort {
 
 	/**
 	 * Minimal projection of the config the admission flow needs: its id,
-	 * sales-window status and program name. Expands the original
-	 * {@code (id, status)} shape with {@code programName} so the ficha
-	 * (PDF / confirmation / payment-instructions emails) can display the
-	 * program without {@code admission} importing {@code academic_config}'s
-	 * program repository.
+	 * sales-window status, program id/name/modality and the destination-period
+	 * name. Expands the original {@code (id, status, programName)} shape so
+	 * the ficha (PDF / confirmation / payment-instructions emails) can display
+	 * the program and period without {@code admission} importing
+	 * {@code academic_config}'s program/period repositories. {@code programId}
+	 * powers the payment-concept resolution at registration (the ficha amount
+	 * is the cost of the program's {@code ENROLLMENT} concept, Fase 11).
 	 */
 	Optional<AdmissionConfigInfo> findById(UUID id);
 
-	/** {@code status} is the ticket-sales window (OPEN/CLOSED), never {@code selectionStatus}. */
-	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, String programName) {
+	/**
+	 * @param programId the chosen program's id (also used to resolve the
+	 *                  {@code ENROLLMENT} payment concept that prices the ficha)
+	 * @param modality  the chosen program's delivery modality ({@code PRESENCIAL}/{@code MIXTA}),
+	 *                  resolved from the {@code AcademicProgram} — the admission flow never stores
+	 *                  modality on {@code Candidate} itself (derived from the program).
+	 * @param periodName the destination-period name the accepted candidates enroll into.
+	 */
+	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
+			ProgramModality modality, String periodName) {
 	}
 }

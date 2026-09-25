@@ -48,9 +48,10 @@ import static org.mockito.Mockito.when;
 class RegisterCandidateUseCaseImplTest {
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
+	private static final UUID PROGRAM_ID = UUID.randomUUID();
 	private static final UUID CHANNEL_ID = UUID.randomUUID();
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
-	private static final BigDecimal FICHA_AMOUNT = new BigDecimal("500.00");
+	private static final BigDecimal CONCEPT_COST = new BigDecimal("1578.00");
 	private static final int DEADLINE_DAYS = 10;
 
 	@Mock
@@ -66,6 +67,9 @@ class RegisterCandidateUseCaseImplTest {
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	@Mock
+	private FichaAmountResolver fichaAmountResolver;
+
+	@Mock
 	private OutreachChannelRepository outreachChannelRepository;
 
 	@Mock
@@ -76,8 +80,8 @@ class RegisterCandidateUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, outreachChannelRepository,
-				highSchoolTypeRepository, FICHA_AMOUNT, DEADLINE_DAYS);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), DEADLINE_DAYS);
 	}
 
 	@Test
@@ -93,14 +97,16 @@ class RegisterCandidateUseCaseImplTest {
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new AdmissionConfigInfo(ADMISSION_CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						"Ingeniería en Sistemas")));
+						PROGRAM_ID, "Ingeniería en Sistemas", null, null)));
+		when(fichaAmountResolver.resolve(PROGRAM_ID, LocalDate.now()))
+				.thenReturn(new FichaAmountResolver.FichaAmount(CONCEPT_COST, "Inscripción"));
 
 		CandidateRegistrationResult result = useCase.register(command());
 
 		assertThat(result.status()).isEqualTo(CandidateStatus.REGISTERED);
 		assertThat(result.payment()).isNotNull();
 		assertThat(result.payment().referenceNumber()).startsWith("REF-");
-		assertThat(result.payment().amount()).isEqualByComparingTo(FICHA_AMOUNT);
+		assertThat(result.payment().amount()).isEqualByComparingTo(CONCEPT_COST);
 		assertThat(result.payment().deadline()).isEqualTo(LocalDate.now().plusDays(DEADLINE_DAYS));
 		assertThat(result.payment().paymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
 
