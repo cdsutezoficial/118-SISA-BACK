@@ -91,7 +91,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		assertThat(result.merchant()).isEqualTo("TESTUTEZ");
 		assertThat(result.successIndicator()).isEqualTo("AAAA/BRAVO/SUCCESS0001");
 		assertThat(result.checkoutUrl()).isEqualTo(
-				PAGE_BASE + "/checkout/payment/SESSION0001BR?version=1");
+				PAGE_BASE + "/api/page/version/1/pay");
 
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> "TESTUTEZ-ADM-2026-000001".equals(order.id())
 				&& new BigDecimal("500.00").compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
@@ -104,7 +104,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	@Test
-	void checkoutWithoutQueryWhenSessionHasNoVersion() {
+	void checkoutWithoutVersionBuildsPageUrlWithoutVersionSegment() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
@@ -113,7 +113,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID);
 
 		assertThat(result.checkoutUrl())
-				.isEqualTo(PAGE_BASE + "/checkout/payment/SESSION0001BR");
+				.isEqualTo(PAGE_BASE + "/api/page/version/pay");
 	}
 
 	@Test

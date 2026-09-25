@@ -93,11 +93,11 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		admissionPaymentRepository.save(payment);
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.version(), session.merchant(),
-				session.successIndicator(), checkoutUrl(session.id(), session.version()));
+				session.successIndicator(), checkoutUrl(session.version()));
 	}
 
-	private String checkoutUrl(String sessionId, String version) {
-		String query = (version == null || version.isBlank()) ? "" : "?version=" + version;
-		return paymentPageBaseUrl + "/checkout/payment/" + sessionId + query;
+	private String checkoutUrl(String version) {
+		String versionSegment = (version == null || version.isBlank()) ? "" : version + "/";
+		return paymentPageBaseUrl + "/api/page/version/" + versionSegment + "pay";
 	}
 }
