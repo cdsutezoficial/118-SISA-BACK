@@ -6,13 +6,20 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Domicilio;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.InformacionComplementaria;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
+import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
@@ -30,6 +37,7 @@ import java.time.LocalDate;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Registers a candidate's admission ticket ("ficha de admisión") by
@@ -46,6 +54,14 @@ import java.util.Locale;
  * layer, NOT here — this command already speaks {@code Gender}/
  * {@code MaritalStatus}/{@code EmploymentType} and parses dates/hours.
  *
+ * <p>The ficha amount is NOT static: it is resolved from the
+ * {@code PaymentConcept} catalog (the program's {@code ACTIVE}
+ * {@code ENROLLMENT} concept on the registration date) through
+ * {@link FichaAmountResolver}, which owns the strict rule (exactly one active
+ * concept: zero means the ficha cannot be priced → 404
+ * {@link FichaPaymentConceptNotFoundException}, more than one is ambiguous → 409
+ * {@link AmbiguousFichaPaymentConceptException}).
+ *
  * <p>Validations, in order:
  * <ol>
  * <li>the {@code curp} must not already belong to a {@code Person}
@@ -60,20 +76,6 @@ import java.util.Locale;
  * {@code schoolTypeId} must resolve (404,
  * {@code HighSchoolTypeNotFoundException}).</li>
  * </ol>
- * Cap-resistant (paid-ficha count vs {@code maxCandidates}) validation is
- * deferred until {@code AdmissionPayment} exists (plan §5) — this stage does
- * not reject when the config is already full.
- *
- * <p>Folio format {@code ADM-{year}-{seq}:06d} (inherited from the frontend's
- * mock ficha, e.g. {@code ADM-2026-000001}); {@code seq} derives from the
- * current {@code countByFolioStartingWith("ADM-{year}-")}, so uniqueness is
- * calendar-year scoped (v1 approximation of the domain's "único por periodo").
- *
- * <p>TEMPORARY DEVIATION (manual-first stage): {@code llaveMxVerified} is
- * stored as sent, NOT forced to {@code true} — manual registration precedes
- * the LlaveMX integration; invariant enforcement lands with
- * {@code AuthenticateCandidatePortalUseCase} (see {@code RegisterCandidateUseCase}'s
- * javadoc).
  */
 public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
@@ -85,11 +87,13 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	private final FichaAmountResolver fichaAmountResolver;
+
 	private final OutreachChannelRepository outreachChannelRepository;
 
 	private final HighSchoolTypeRepository highSchoolTypeRepository;
 
-	private final BigDecimal fichaAmount;
+	private final LocalDate registrationDate;
 
 	private final int paymentDeadlineDays;
 
@@ -97,22 +101,23 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			BigDecimal fichaAmount, int paymentDeadlineDays) {
+			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
+			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, int paymentDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.fichaAmountResolver = fichaAmountResolver;
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
-		this.fichaAmount = fichaAmount;
+		this.registrationDate = registrationDate;
 		this.paymentDeadlineDays = paymentDeadlineDays;
 	}
 
 	@Override
 	@Transactional
 	public CandidateRegistrationResult register(RegisterCandidateCommand command) {
-		validate(command);
+		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = validate(command);
 
 		Person savedPerson = candidatePersonRepository.save(buildPerson(command));
 
@@ -121,15 +126,16 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				command.seleccionCarrera().outreachChannelId());
 		Candidate savedCandidate = candidateRepository.save(candidate);
 
+		BigDecimal fichaAmount = fichaAmountResolver.resolve(config.programId(), registrationDate).amount();
 		AdmissionPayment payment = new AdmissionPayment(savedCandidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA,
 				fichaAmount, generateReference(savedCandidate.getFolio()),
-				LocalDate.now().plusDays(paymentDeadlineDays));
+				registrationDate.plusDays(paymentDeadlineDays));
 		admissionPaymentRepository.save(payment);
 
 		return toResult(savedCandidate, payment);
 	}
 
-	private void validate(RegisterCandidateCommand command) {
+	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
 		if (candidatePersonRepository.findByCurp(command.datosGenerales().curp()).isPresent()) {
 			throw new CandidateAlreadyExistsException(
 					"Ya existe una persona registrada con el CURP: " + command.datosGenerales().curp());
@@ -155,6 +161,8 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 			throw new HighSchoolTypeNotFoundException(
 					"No existe el tipo de preparatoria: " + command.antecedentesEscolares().schoolTypeId());
 		}
+
+		return config;
 	}
 
 	private Person buildPerson(RegisterCandidateCommand command) {
@@ -230,7 +238,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	/**
 	 * {@code ADM-{year}-{seq}:06d}. {@code seq = count + 1} for the current
-	 * calendar-year {@code "ADM-{year}-"} prefix — see
+	 * calendar-year {@code "ADM-{year}-"} — see
 	 * {@link CandidateRepository#countByFolioStartingWith}.
 	 */
 	private String generateFolio() {

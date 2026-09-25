@@ -48,7 +48,8 @@ public class ProgramAdmissionConfigQueryAdapter implements ProgramAdmissionConfi
 			}
 			String periodName = config.getPeriodId() == null ? null
 					: periodJpaRepository.findById(config.getPeriodId()).map(p -> p.getName()).orElse(null);
-			return new AdmissionConfigInfo(config.getId(), config.getStatus(), programName, modality, periodName);
+			return new AdmissionConfigInfo(config.getId(), config.getStatus(), config.getProgramId(), programName,
+					modality, periodName);
 		});
 	}
 }

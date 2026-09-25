@@ -1,10 +1,12 @@
 package mx.edu.utez.sisa.admission.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -83,6 +85,18 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(ProgramAdmissionConfigNotOpenException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotOpen(ProgramAdmissionConfigNotOpenException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(FichaPaymentConceptNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleFichaPaymentConceptNotFound(FichaPaymentConceptNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(AmbiguousFichaPaymentConceptException.class)
+	public ResponseEntity<ErrorResponse> handleAmbiguousFichaPaymentConcept(AmbiguousFichaPaymentConceptException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}

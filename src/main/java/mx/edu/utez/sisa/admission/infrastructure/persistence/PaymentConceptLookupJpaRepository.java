@@ -1,0 +1,34 @@
+package mx.edu.utez.sisa.admission.infrastructure.persistence;
+
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Read-only Spring Data lookup over {@code PaymentConcept} (lives in
+ * {@code academic_config}) backing {@link PaymentConceptQueryAdapter} — same
+ * cross-context pattern as {@code ProgramAdmissionConfigLookupJpaRepository}.
+ * {@code :programId MEMBER OF c.programIds} targets the
+ * {@code @ElementCollection} join table {@code payment_concept_program}.
+ */
+public interface PaymentConceptLookupJpaRepository extends JpaRepository<PaymentConcept, UUID> {
+
+	@Query(value = """
+			SELECT c FROM PaymentConcept c
+			WHERE c.status = :status
+			  AND c.type = :type
+			  AND :programId MEMBER OF c.programIds
+			  AND (c.availableFrom IS NULL OR c.availableFrom <= :onDate)
+			  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
+			""")
+	List<PaymentConcept> findActiveEnrollmentForProgram(@Param("status") PaymentConceptStatus status,
+			@Param("type") PaymentConceptType type, @Param("programId") UUID programId,
+			@Param("onDate") LocalDate onDate);
+}

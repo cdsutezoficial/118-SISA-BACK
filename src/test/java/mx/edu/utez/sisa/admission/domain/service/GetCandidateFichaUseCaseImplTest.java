@@ -69,6 +69,7 @@ class GetCandidateFichaUseCaseImplTest {
 	private UUID candidateId;
 	private UUID personId;
 	private UUID configId;
+	private UUID programId;
 
 	@BeforeEach
 	void setUp() {
@@ -78,6 +79,7 @@ class GetCandidateFichaUseCaseImplTest {
 		candidateId = UUID.randomUUID();
 		personId = UUID.randomUUID();
 		configId = UUID.randomUUID();
+		programId = UUID.randomUUID();
 
 		var candidate = new mx.edu.utez.sisa.admission.domain.model.Candidate(personId, configId, "ADM-2026-000001",
 				true, true, null);
@@ -94,7 +96,7 @@ class GetCandidateFichaUseCaseImplTest {
 						"REF-20260922-000001", LocalDate.now().plusDays(10))));
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
-				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, "Mecatrónica",
+				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
 						ProgramModality.PRESENCIAL, "2026-2")));
 	}
 

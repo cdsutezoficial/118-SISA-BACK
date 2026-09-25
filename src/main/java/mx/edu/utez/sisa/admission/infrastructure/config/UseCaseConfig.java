@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -23,11 +24,14 @@ import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.PlaceNameLookupPort;
+import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
@@ -44,6 +48,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
  * Composition root wiring the {@code admission} bounded context's use case
@@ -126,13 +131,29 @@ public class UseCaseConfig {
 	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			@Value("${sisa.admission.payment.ficha-amount:500.00}") BigDecimal fichaAmount,
 			@Value("${sisa.admission.payment.deadline-days:10}") int paymentDeadlineDays) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, outreachChannelRepository,
-				highSchoolTypeRepository, fichaAmount, paymentDeadlineDays);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), paymentDeadlineDays);
+	}
+
+	/**
+	 * One resolver shared by the registration command (which persists the ficha
+	 * amount) and the public quote endpoint (which previews it), so the previewed
+	 * price and the charged price can never diverge.
+	 */
+	@Bean
+	public FichaAmountResolver fichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort) {
+		return new FichaAmountResolver(paymentConceptQueryPort);
+	}
+
+	@Bean
+	public GetFichaAmountUseCase getFichaAmountUseCase(
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			FichaAmountResolver fichaAmountResolver) {
+		return new GetFichaAmountUseCaseImpl(programAdmissionConfigQueryPort, fichaAmountResolver, LocalDate.now());
 	}
 
 	@Bean

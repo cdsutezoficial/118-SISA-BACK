@@ -182,6 +182,10 @@ import java.time.Instant;
  * {@code /states}: the anonymous wizard resolves channel/school-type names to
  * {@code UUID}) are likewise {@code .permitAll()}, declared BEFORE their
  * adjacent ADMIN/SERVICIOS_ESCOLARES management matchers.
+ * {@code GET /program-admission-configs/{id}/ficha-amount} (Fase 11) joins them
+ * for the same reason: the wizard's review step previews the catalog-priced
+ * ficha amount before the ticket exists, so an applicant with no session must
+ * be able to read the quote.
  * {@code POST /candidates} (the LAST matcher block — {@code admission}'s
  * third aggregate/first real flow, the public "ficha de admisión" endpoint,
  * plan: {@code docs/plans/sisa-candidate-ficha.md}) is the ONLY pre-authenticated
@@ -323,6 +327,7 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
+						.requestMatchers(HttpMethod.GET, "/program-admission-configs/*/ficha-amount").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers(HttpMethod.POST, "/program-admission-configs")
