@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Thin-controller tests for {@link CandidateController}, focused on the Fase 4
- * checkout and Fase 5 verified-confirm endpoints: session/checkoutUrl on
+ * checkout and Fase 5 verified-confirm endpoints: session/SDK URL on
  * success, EVO-verified confirm returning the receipt, and the business
  * failures surfaced as {@code 404}, {@code 409}, {@code 502} (gateway down)
  * and {@code 400} (verification failed) with the real message.
@@ -77,19 +77,20 @@ class CandidateControllerTest {
 	// ── checkout (Fase 4) ──
 
 	@Test
-	void checkoutReturnsSessionAndUrl() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID)).thenReturn(new InitiateCheckoutResult(ID,
-				ORDER_ID, "SESSION0001BR", "df66ca1b01", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
-				"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/72/pay"));
+	void checkoutReturnsSessionAndSdkUrl() throws Exception {
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID)).thenReturn(new InitiateCheckoutResult(ID, ORDER_ID,
+				"SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js"));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
 				.andExpect(jsonPath("$.sessionId").value("SESSION0001BR"))
-				.andExpect(jsonPath("$.version").value("df66ca1b01"))
 				.andExpect(jsonPath("$.merchant").value("TESTUTEZ"))
 				.andExpect(jsonPath("$.successIndicator").value("AAAA/BRAVO/SUCCESS0001"))
-				.andExpect(jsonPath("$.checkoutUrl").value(
-						"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/72/pay"));
+				.andExpect(jsonPath("$.checkoutJsUrl").value(
+						"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js"))
+				.andExpect(jsonPath("$.checkoutUrl").doesNotExist())
+				.andExpect(jsonPath("$.version").doesNotExist());
 	}
 
 	@Test
@@ -162,7 +163,8 @@ class CandidateControllerTest {
 		when(confirmFichaPaymentVerifiedUseCase.confirm(ID, null))
 				.thenThrow(new CandidateNotFoundException("No existe el candidato: " + ID));
 
-		mockMvc.perform(post("/candidates/{id}/payments/confirm", ID)).andExpect(status().isNotFound())
+		mockMvc.perform(post("/candidates/{id}/payments/confirm", ID))
+				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.message").value("No existe el candidato: " + ID));
 	}
 }

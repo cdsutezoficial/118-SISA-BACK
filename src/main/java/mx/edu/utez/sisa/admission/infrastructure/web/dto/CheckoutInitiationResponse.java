@@ -5,18 +5,17 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.Ini
 import java.util.UUID;
 
 /**
- * Body for {@code POST /candidates/{id}/payments/checkout} — the gateway
- * checkout session the portal consumes to redirect the applicant to the EVO
- * payment page: {@code order.id} (to verify on return, Fase 5), the hosted
- * session identifier and the derived {@code checkoutUrl}
- * ({paymentPage}/checkout/payment/{sessionId}?version={version}). Projection
- * of {@code InitiateCheckoutResult}.
+ * Body for {@code POST /candidates/{id}/payments/checkout} — the EVO Hosted
+ * Checkout session consumed by the portal's embedded payment panel: the
+ * merchant-side {@code order.id}, the hosted {@code session.id}, the
+ * {@code successIndicator} returned to the configured return URL, and the
+ * official Checkout SDK URL loaded by the browser.
  */
-public record CheckoutInitiationResponse(UUID candidateId, String orderId, String sessionId, String version,
-		String merchant, String successIndicator, String checkoutUrl) {
+public record CheckoutInitiationResponse(UUID candidateId, String orderId, String sessionId, String merchant,
+		String successIndicator, String checkoutJsUrl) {
 
 	public static CheckoutInitiationResponse from(InitiateCheckoutResult result) {
 		return new CheckoutInitiationResponse(result.candidateId(), result.orderId(), result.sessionId(),
-				result.version(), result.merchant(), result.successIndicator(), result.checkoutUrl());
+				result.merchant(), result.successIndicator(), result.checkoutJsUrl());
 	}
 }

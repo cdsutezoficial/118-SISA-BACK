@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
@@ -17,9 +18,9 @@ import java.util.UUID;
  * Checkout interactor (design: {@code 03-admision.md}, Fase 4 of the payment
  * plan): the web port / application service that starts the online payment for
  * a ficha against the EVO gateway. Plain, framework-agnostic — the gateway
- * goes through the {@link EvoPaymentsGatewayPort} out-port and the checkout
- * page URL is built from the config values injected at the composition root
- * ({@code UseCaseConfig}).
+ * goes through the {@link EvoPaymentsGatewayPort} out-port and the hosted
+ * checkout SDK URL comes from the configuration injected at the composition
+ * root ({@code UseCaseConfig}).
  *
  * <p>Validations, in order:
  * <ol>
@@ -53,14 +54,11 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 	private final String cancelUrl;
 
-	private final String paymentPageBaseUrl;
-
-	private final String paymentPageVersion;
+	private final String checkoutJsUrl;
 
 	public InitiateFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
-			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl,
-			String paymentPageBaseUrl, String paymentPageVersion) {
+			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl) {
 		this.candidateRepository = candidateRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -68,8 +66,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.currency = currency;
 		this.returnUrl = returnUrl;
 		this.cancelUrl = cancelUrl;
-		this.paymentPageBaseUrl = paymentPageBaseUrl;
-		this.paymentPageVersion = paymentPageVersion;
+		this.checkoutJsUrl = checkoutJsUrl;
 	}
 
 	@Override
@@ -90,26 +87,22 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
 				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), payment.getAmount(),
-				currency, returnUrl, cancelUrl);
+				currency, withCheckoutParams(returnUrl, candidateId, orderId),
+				withCheckoutParams(cancelUrl, candidateId, orderId));
 		EvoPaymentsGatewayPort.EvoSession session = evoPaymentsGateway.initiateCheckoutSession(order);
 
 		payment.registerCheckout(orderId, session.id());
 		admissionPaymentRepository.save(payment);
 
-		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.version(), session.merchant(),
-				session.successIndicator(), checkoutUrl());
+		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.merchant(),
+				session.successIndicator(), checkoutJsUrl);
 	}
 
-	/**
-	 * Hosted Checkout payment page. The {@code version} path segment is the EVO
-	 * <em>API</em> version (config, same one the REST base URL carries, e.g.
-	 * {@code 72}) — NOT the {@code session.version} token the
-	 * {@code INITIATE_CHECKOUT} response returns: posting the page with that
-	 * token makes the gateway answer {@code "Unsupported value for 'version =
-	 * …'"}. The page is reachable only via a form POST carrying
-	 * {@code merchant} + {@code session}.
-	 */
-	private String checkoutUrl() {
-		return paymentPageBaseUrl + "/api/page/version/" + paymentPageVersion + "/pay";
+	private static String withCheckoutParams(String baseUrl, UUID candidateId, String orderId) {
+		if (baseUrl == null || baseUrl.isBlank()) {
+			return baseUrl;
+		}
+		return UriComponentsBuilder.fromUriString(baseUrl).queryParam("id", candidateId.toString())
+				.queryParam("orderId", orderId).build().toUriString();
 	}
 }

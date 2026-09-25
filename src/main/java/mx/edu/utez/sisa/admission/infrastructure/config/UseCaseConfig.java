@@ -181,16 +181,7 @@ public class UseCaseConfig {
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig) {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
-				evoConfig.cancelUrl(), paymentPageBaseUrl(evoConfig.baseUrl()), evoConfig.pageVersion());
-	}
-
-	/** Gateway root for the hosted payment page, derived from the REST {@code EVO_BASE_URL}. */
-	private static String paymentPageBaseUrl(String baseUrl) {
-		if (baseUrl == null) {
-			return "";
-		}
-		int apiIdx = baseUrl.indexOf("/api/");
-		return apiIdx >= 0 ? baseUrl.substring(0, apiIdx) : baseUrl;
+				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl());
 	}
 
 	@Bean

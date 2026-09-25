@@ -34,7 +34,8 @@ import static org.mockito.Mockito.when;
  * successful checkout builds the EVO order (order.id = prefix+folio, amount
  * from the payment concept, description with the folio), persists
  * {@code order_id} + {@code checkout_session_id} on the payment, returns the
- * derived {@code checkoutUrl}; 404/409 guard cases; gateway failure propagates
+ * Checkout SDK URL and appends the candidate/order to the return URLs;
+ * 404/409 guard cases; gateway failure propagates
  * as {@link EvoPaymentGatewayException} (→ 502 at the web layer, handled in
  * {@code CandidateControllerTest}).
  */
@@ -43,8 +44,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private static final String RETURN = "http://localhost:5173/portal/registro/ficha";
 	private static final String CANCEL = "http://localhost:5173/portal/registro/ficha";
-	private static final String PAGE_BASE = "https://evopaymentsmexico.gateway.mastercard.com";
-	private static final String PAGE_VERSION = "72";
+	private static final String SDK_URL = "https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js";
+	private static final String ORDER_ID = "TESTUTEZ-ADM-2026-000001";
 
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
@@ -64,7 +65,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, PAGE_BASE, PAGE_VERSION);
+				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL);
 	}
 
 	private static Candidate candidate() {
@@ -87,18 +88,18 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID);
 
 		assertThat(result.candidateId()).isEqualTo(CANDIDATE_ID);
-		assertThat(result.orderId()).isEqualTo("TESTUTEZ-ADM-2026-000001");
+		assertThat(result.orderId()).isEqualTo(ORDER_ID);
 		assertThat(result.sessionId()).isEqualTo("SESSION0001BR");
-		assertThat(result.version()).isEqualTo("df66ca1b01");
 		assertThat(result.merchant()).isEqualTo("TESTUTEZ");
 		assertThat(result.successIndicator()).isEqualTo("AAAA/BRAVO/SUCCESS0001");
-		assertThat(result.checkoutUrl()).isEqualTo(PAGE_BASE + "/api/page/version/" + PAGE_VERSION + "/pay");
+		assertThat(result.checkoutJsUrl()).isEqualTo(SDK_URL);
 
-		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> "TESTUTEZ-ADM-2026-000001".equals(order.id())
+		String expectedReturn = RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID;
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> ORDER_ID.equals(order.id())
 				&& "REF-2026-000001".equals(order.reference())
 				&& new BigDecimal("500.00").compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
 				&& "Ficha de Admisión ADM-2026-000001".equals(order.description())
-				&& RETURN.equals(order.returnUrl()) && CANCEL.equals(order.cancelUrl())));
+				&& expectedReturn.equals(order.returnUrl()) && expectedReturn.equals(order.cancelUrl())));
 		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
 		verify(admissionPaymentRepository).save(saved.capture());
 		assertThat(saved.getValue().getOrderId()).isEqualTo("TESTUTEZ-ADM-2026-000001");
@@ -106,15 +107,20 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	@Test
-	void pageUrlUsesTheConfiguredApiVersionNotTheSessionToken() {
+	void appendsCandidateAndOrderToExistingReturnUrlQuery() {
+		String returnWithQuery = RETURN + "?origen=checkout";
+		InitiateFichaPaymentUseCaseImpl customUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
+				admissionPaymentRepository, evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
+				SDK_URL);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
-				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", null));
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
-		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID);
+		customUseCase.initiateCheckout(CANDIDATE_ID);
 
-		assertThat(result.checkoutUrl()).isEqualTo(PAGE_BASE + "/api/page/version/" + PAGE_VERSION + "/pay");
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order
+				.returnUrl().equals(returnWithQuery + "&id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
 	}
 
 	@Test

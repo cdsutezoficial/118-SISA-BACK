@@ -13,10 +13,11 @@ import java.math.BigDecimal;
  * <li>{@link #initiateCheckoutSession} — {@code POST /session} with
  * {@code apiOperation=INITIATE_CHECKOUT}; returns the session the merchant
  * site uses with {@code checkout.min.js} (payment page).</li>
- * <li>{@link #retrieveOrder} — {@code POST /order/{orderId}} with
- * {@code apiOperation=RETRIEVE_ORDER}; lets the backend verify, before marking
- * the ficha PAID, that the payer actually completed a SUCCESSFUL purchase
- * (and that the amount matches the ficha order).</li>
+ * <li>{@link #retrieveOrder} — {@code GET /order/{orderId}} (the gateway routes on
+ * method + path: retrieval is a GET and the response is flat, with
+ * {@code result}/{@code amount} at the top level); lets the backend verify,
+ * before marking the ficha PAID, that the payer actually completed a SUCCESSFUL
+ * purchase (and that the amount matches the ficha order).</li>
  * </ul>
  */
 public interface EvoPaymentsGatewayPort {

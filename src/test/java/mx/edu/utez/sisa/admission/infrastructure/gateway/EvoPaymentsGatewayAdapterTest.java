@@ -51,8 +51,9 @@ class EvoPaymentsGatewayAdapterTest {
 	}
 
 	private static EvoConfig configuredConfig() {
-		return new EvoConfig(BASE, "merchant.TESTUTEZ", "secret", "TESTUTEZ", null, RETURN, RETURN, "TESTUTEZ", 32,
-				"MXN", "72", "Universidad Tecnológica de la zona de UTEZ");
+		return new EvoConfig(BASE, "merchant.TESTUTEZ", "secret", "TESTUTEZ",
+				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js", RETURN, RETURN,
+				"TESTUTEZ", 32, "MXN", "Universidad Tecnológica de la zona de UTEZ");
 	}
 
 	private static EvoOrder order() {
@@ -118,17 +119,47 @@ class EvoPaymentsGatewayAdapterTest {
 
 	@Test
 	void retrievesOrderResultAndAmount() {
-		server.expect(requestTo(BASE + "/order/" + ORDER_ID)).andExpect(method(HttpMethod.POST))
-				.andExpect(content().json("{\"apiOperation\":\"RETRIEVE_ORDER\"}")).andRespond(withSuccess("""
-				{"result":"SUCCESS","order":{"id":"TESTUTEZ-ADM-2026-000001","amount":"500.00","currency":"MXN"}}
-				""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/order/" + ORDER_ID)).andExpect(method(HttpMethod.GET))
+				.andRespond(withSuccess("""
+						{"amount":1578.00,"currency":"MXN","id":"TESTUTEZ-ADM-2026-000003","reference":"REF-2026-000003",
+						 "result":"SUCCESS","status":"CAPTURED","authenticationStatus":"AUTHENTICATION_SUCCESSFUL",
+						 "authenticationVersion":"3DS2","totalAuthorizedAmount":1578.00,"totalCapturedAmount":1578.00,
+						 "transaction":[{"transaction":{"id":"1","type":"PAYMENT","amount":1578.00}}]}
+						""", MediaType.APPLICATION_JSON));
 
 		EvoOrderStatus status = adapter.retrieveOrder(ORDER_ID);
 
 		assertThat(status.orderId()).isEqualTo(ORDER_ID);
 		assertThat(status.result()).isEqualTo("SUCCESS");
+		assertThat(status.amount()).isEqualByComparingTo("1578.00");
+		server.verify();
+	}
+
+	@Test
+	void retrieveOrderPropagatesNonSuccessResult() {
+		server.expect(requestTo(BASE + "/order/" + ORDER_ID)).andExpect(method(HttpMethod.GET))
+				.andRespond(withSuccess("""
+						{"amount":500.00,"currency":"MXN","id":"TESTUTEZ-ADM-2026-000001","result":"PAYMENT_FAILED",
+						 "status":"FAILED"}
+						""", MediaType.APPLICATION_JSON));
+
+		EvoOrderStatus status = adapter.retrieveOrder(ORDER_ID);
+
+		assertThat(status.result()).isEqualTo("PAYMENT_FAILED");
 		assertThat(status.amount()).isEqualByComparingTo("500.00");
 		server.verify();
+	}
+
+	@Test
+	void retrieveOrderSurfacesGatewayRejection() {
+		server.expect(requestTo(BASE + "/order/" + ORDER_ID)).andExpect(method(HttpMethod.GET))
+				.andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body("""
+						{"error":{"cause":"INVALID_REQUEST","explanation":"Request does not match any supported operation"}}
+						"""));
+
+		assertThatThrownBy(() -> adapter.retrieveOrder(ORDER_ID))
+				.isInstanceOf(EvoPaymentGatewayException.class)
+				.hasMessageContaining("INVALID_REQUEST — Request does not match any supported operation");
 	}
 
 	@Test
@@ -136,7 +167,7 @@ class EvoPaymentsGatewayAdapterTest {
 		RestClient.Builder builder = RestClient.builder();
 		MockRestServiceServer unused = MockRestServiceServer.bindTo(builder).build();
 		EvoPaymentsGatewayAdapter bareAdapter = new EvoPaymentsGatewayAdapter(builder,
-				new EvoConfig(null, null, null, null, null, null, null, null, null, null, null, null),
+				new EvoConfig(null, null, null, null, null, null, null, null, null, null, null),
 				new ObjectMapper());
 
 		assertThatThrownBy(() -> bareAdapter.initiateCheckoutSession(order()))

@@ -21,10 +21,19 @@ import java.util.Map;
 
 /**
  * EVO (Mastercard Payment Gateway) REST adapter — Hosted Checkout model. Talks
- * to {@code {EVO_BASE_URL}/session} ({@code INITIATE_CHECKOUT}) and
- * {@code {EVO_BASE_URL}/order/{orderId}} ({@code RETRIEVE_ORDER}) with Basic
- * HTTP auth ({@code merchant.<merchantId>}:{@code apiPassword}), JSON payloads
- * per the integration guide ({@code cosas-pagos/evo.txt}).
+ * to {@code {EVO_BASE_URL}/session} ({@code INITIATE_CHECKOUT}, POST) and
+ * {@code {EVO_BASE_URL}/order/{orderId}} ({@code RETRIEVE_ORDER}, **GET**) with
+ * Basic HTTP auth ({@code merchant.<merchantId>}:{@code apiPassword}), JSON
+ * payloads per the integration guide ({@code cosas-pagos/evo.txt}) and the
+ * REST-JSON reference v72.
+ *
+ * <p>Verb matters: the gateway routes on method + path, so the retrieval must
+ * be a {@code GET} (the official sample code sets {@code GET} for
+ * {@code RETRIEVE_ORDER}). A {@code POST} to the same path is rejected with
+ * {@code INVALID_REQUEST — Request does not match any supported operation}.
+ * The retrieval response is also <em>flat</em> — {@code result}, {@code amount}
+ * and {@code currency} sit at the top level, there is no nested {@code order}
+ * object.
  *
  * <p>Every gateway failure — unconfigured keys, transport/network problems,
  * or a non-2xx/rejected operation from EVO — surfaces as
@@ -81,23 +90,31 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 	@Override
 	public EvoOrderStatus retrieveOrder(String orderId) {
 		evoConfig.validate();
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("apiOperation", "RETRIEVE_ORDER");
-
-		OrderRetrieveResponse res = post("/order/" + orderId, payload, OrderRetrieveResponse.class);
+		OrderRetrieveResponse res = get("/order/" + orderId, OrderRetrieveResponse.class);
 		if (res == null) {
 			throw new EvoPaymentGatewayException(
 					"El proveedor de pagos (EVO) no respondió al consultar el pedido " + orderId + ".");
 		}
-		BigDecimal amount = res.order() != null && res.order().amount() != null
-				? new BigDecimal(res.order().amount()) : null;
-		return new EvoOrderStatus(orderId, res.result(), amount);
+		log.info("EVO: orden {} verificada (result={}, status={}, autenticación={})", orderId, res.result(), res.status(),
+				res.authenticationStatus());
+		return new EvoOrderStatus(orderId, res.result(), res.amount());
 	}
 
 	private <T> T post(String path, Map<String, Object> payload, Class<T> responseType) {
 		try {
 			return restClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(payload)
 					.retrieve().body(responseType);
+		} catch (RestClientResponseException ex) {
+			throw gatewayException(ex.getResponseBodyAsString(), ex);
+		} catch (RestClientException ex) {
+			throw new EvoPaymentGatewayException(
+					"No se pudo contactar al proveedor de pagos (EVO): " + rootCauseMessage(ex), ex);
+		}
+	}
+
+	private <T> T get(String path, Class<T> responseType) {
+		try {
+			return restClient.get().uri(path).accept(MediaType.APPLICATION_JSON).retrieve().body(responseType);
 		} catch (RestClientResponseException ex) {
 			throw gatewayException(ex.getResponseBodyAsString(), ex);
 		} catch (RestClientException ex) {
@@ -202,9 +219,10 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		}
 	}
 
-	private record OrderRetrieveResponse(String result, Order order, ErrorInfo error) {
-		record Order(String id, String amount, String currency) {
-		}
+	/** Flat {@code RETRIEVE_ORDER} response (no nested {@code order} node). */
+	private record OrderRetrieveResponse(String result, String id, BigDecimal amount, String currency, String status,
+			String reference, String authenticationStatus, String authenticationVersion,
+			BigDecimal totalAuthorizedAmount, BigDecimal totalCapturedAmount, ErrorInfo error) {
 	}
 
 	private record ErrorInfo(String cause, String explanation) {

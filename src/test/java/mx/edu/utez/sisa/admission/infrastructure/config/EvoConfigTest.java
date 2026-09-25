@@ -57,8 +57,39 @@ class EvoConfigTest {
 
 	@Test
 	void validatePassesWhenGatewayIsConfigured() {
-		runner.withPropertyValues("sisa.evo.base-url=https://example/api/rest",
+		runner.withPropertyValues(
+				"sisa.evo.base-url=https://evopaymentsmexico.gateway.mastercard.com/api/rest/version/72/merchant/TESTUTEZ",
 				"sisa.evo.api-username=merchant.TESTUTEZ", "sisa.evo.api-password=secret",
-				"sisa.evo.merchant-id=TESTUTEZ").run(context -> context.getBean(EvoConfig.class).validate());
+				"sisa.evo.merchant-id=TESTUTEZ",
+				"sisa.evo.checkout-js-url=https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js",
+				"sisa.evo.return-url=http://localhost:5173/portal/registro/ficha",
+				"sisa.evo.cancel-url=http://localhost:5173/portal/registro/ficha")
+				.run(context -> context.getBean(EvoConfig.class).validate());
+	}
+
+	@Test
+	void validateRejectsMerchantMismatch() {
+		runner.withPropertyValues(
+				"sisa.evo.base-url=https://evopaymentsmexico.gateway.mastercard.com/api/rest/version/72/merchant/OTHER",
+				"sisa.evo.api-username=merchant.TESTUTEZ", "sisa.evo.api-password=secret",
+				"sisa.evo.merchant-id=TESTUTEZ",
+				"sisa.evo.checkout-js-url=https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js",
+				"sisa.evo.return-url=http://localhost:5173/portal/registro/ficha",
+				"sisa.evo.cancel-url=http://localhost:5173/portal/registro/ficha")
+				.run(context -> assertThatThrownBy(context.getBean(EvoConfig.class)::validate)
+						.isInstanceOf(EvoPaymentGatewayException.class).hasMessageContaining("merchant"));
+	}
+
+	@Test
+	void validateRejectsUsernameMerchantMismatch() {
+		runner.withPropertyValues(
+				"sisa.evo.base-url=https://evopaymentsmexico.gateway.mastercard.com/api/rest/version/72/merchant/TESTUTEZ",
+				"sisa.evo.api-username=merchant.OTHER", "sisa.evo.api-password=secret",
+				"sisa.evo.merchant-id=TESTUTEZ",
+				"sisa.evo.checkout-js-url=https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js",
+				"sisa.evo.return-url=http://localhost:5173/portal/registro/ficha",
+				"sisa.evo.cancel-url=http://localhost:5173/portal/registro/ficha")
+				.run(context -> assertThatThrownBy(context.getBean(EvoConfig.class)::validate)
+						.isInstanceOf(EvoPaymentGatewayException.class).hasMessageContaining("usuario"));
 	}
 }

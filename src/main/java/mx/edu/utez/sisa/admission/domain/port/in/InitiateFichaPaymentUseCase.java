@@ -18,7 +18,7 @@ public interface InitiateFichaPaymentUseCase {
 
 	InitiateCheckoutResult initiateCheckout(UUID candidateId);
 
-	record InitiateCheckoutResult(UUID candidateId, String orderId, String sessionId, String version,
-			String merchant, String successIndicator, String checkoutUrl) {
+	record InitiateCheckoutResult(UUID candidateId, String orderId, String sessionId, String merchant,
+			String successIndicator, String checkoutJsUrl) {
 	}
 }
