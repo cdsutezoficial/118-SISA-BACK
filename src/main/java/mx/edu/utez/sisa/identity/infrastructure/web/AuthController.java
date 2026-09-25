@@ -95,8 +95,7 @@ public class AuthController {
 	public ResponseEntity<MeProfileResponse> me() {
 		CurrentProfileResult result = getCurrentProfileUseCase
 				.getCurrentProfile(new CurrentProfileQuery(AuthenticatedCaller.currentUserId()));
-		return ResponseEntity.ok(new MeProfileResponse(result.userId(), result.fullName(), result.username(),
-				result.email()));
+		return ResponseEntity.ok(new MeProfileResponse(result.fullName(), result.username(), result.email()));
 	}
 
 	@PostMapping("/change-password")

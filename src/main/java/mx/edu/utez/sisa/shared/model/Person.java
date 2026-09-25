@@ -36,7 +36,7 @@ import java.util.UUID;
  * creation is out of scope: load-only reference") only in the historical
  * sense that motivated that note; {@code CreatePersonUseCase} is now the
  * real staff-onboarding entry point, and rows are also seeded by
- * {@code AdminSeedRunner}/test fixtures.
+ * {@code TestAccountsSeedRunner}/test fixtures.
  */
 @Entity
 @Table(name = "person")

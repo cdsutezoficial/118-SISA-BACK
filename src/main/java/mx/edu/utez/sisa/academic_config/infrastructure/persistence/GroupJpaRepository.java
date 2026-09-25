@@ -42,4 +42,11 @@ public interface GroupJpaRepository extends JpaRepository<Group, UUID> {
 			""")
 	Page<Group> search(@Param("status") GroupStatus status, @Param("search") String search,
 			@Param("programId") UUID programId, @Param("generationId") UUID generationId, Pageable pageable);
+
+	/**
+	 * Backs {@code GetConfigurationStatisticsUseCase}: counts the groups
+	 * assigned to one {@code periodId} — the dashboard's "grupos activos"
+	 * counter for the current period.
+	 */
+	long countByPeriodId(UUID periodId);
 }

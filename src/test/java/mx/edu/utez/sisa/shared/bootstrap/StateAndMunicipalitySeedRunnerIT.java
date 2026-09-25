@@ -15,8 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Boots the full application context (real {@code ApplicationRunner}
- * startup sequence, same as {@code AdminSeedRunner}/
- * {@code ServiciosEscolaresSeedRunner}'s own coverage style) and asserts the
+ * startup sequence, same as {@code TestAccountsSeedRunner}'s own coverage style) and asserts the
  * real regression guard from
  * {@code docs/plans/2026-07-28-inegi-catalogs-and-highschooltype.md}: exactly
  * 32 states, exactly 2,469 municipalities, and Morelos (INEGI {@code 17})

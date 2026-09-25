@@ -30,6 +30,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCa
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPeriodUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetConfigurationStatisticsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetGenerationUseCase;
@@ -64,6 +65,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificati
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.ConfigurationStatisticsRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
@@ -91,6 +93,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.CreateGenerationUseCaseIm
 import mx.edu.utez.sisa.academic_config.domain.service.CreateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPeriodUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetConfigurationStatisticsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeGroupStatusUseCaseImpl;
@@ -329,6 +332,12 @@ public class UseCaseConfig {
 	@Bean
 	public ListAcademicPeriodsUseCase listAcademicPeriodsUseCase(AcademicPeriodRepository periodRepository) {
 		return new ListAcademicPeriodsUseCaseImpl(periodRepository);
+	}
+
+	@Bean
+	public GetConfigurationStatisticsUseCase getConfigurationStatisticsUseCase(
+			ConfigurationStatisticsRepository statisticsRepository, AcademicPeriodRepository periodRepository) {
+		return new GetConfigurationStatisticsUseCaseImpl(statisticsRepository, periodRepository);
 	}
 
 	@Bean
