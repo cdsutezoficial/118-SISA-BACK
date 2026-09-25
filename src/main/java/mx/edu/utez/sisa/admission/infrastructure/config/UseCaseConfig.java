@@ -181,7 +181,7 @@ public class UseCaseConfig {
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig) {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
-				evoConfig.cancelUrl(), paymentPageBaseUrl(evoConfig.baseUrl()));
+				evoConfig.cancelUrl(), paymentPageBaseUrl(evoConfig.baseUrl()), evoConfig.pageVersion());
 	}
 
 	/** Gateway root for the hosted payment page, derived from the REST {@code EVO_BASE_URL}. */

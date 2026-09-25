@@ -79,17 +79,17 @@ class CandidateControllerTest {
 	@Test
 	void checkoutReturnsSessionAndUrl() throws Exception {
 		when(initiateFichaPaymentUseCase.initiateCheckout(ID)).thenReturn(new InitiateCheckoutResult(ID,
-				ORDER_ID, "SESSION0001BR", "1", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
-				"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/1/pay"));
+				ORDER_ID, "SESSION0001BR", "df66ca1b01", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+				"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/72/pay"));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
 				.andExpect(jsonPath("$.sessionId").value("SESSION0001BR"))
-				.andExpect(jsonPath("$.version").value("1"))
+				.andExpect(jsonPath("$.version").value("df66ca1b01"))
 				.andExpect(jsonPath("$.merchant").value("TESTUTEZ"))
 				.andExpect(jsonPath("$.successIndicator").value("AAAA/BRAVO/SUCCESS0001"))
 				.andExpect(jsonPath("$.checkoutUrl").value(
-						"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/1/pay"));
+						"https://evopaymentsmexico.gateway.mastercard.com/api/page/version/72/pay"));
 	}
 
 	@Test

@@ -55,10 +55,12 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 	private final String paymentPageBaseUrl;
 
+	private final String paymentPageVersion;
+
 	public InitiateFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl,
-			String paymentPageBaseUrl) {
+			String paymentPageBaseUrl, String paymentPageVersion) {
 		this.candidateRepository = candidateRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -67,6 +69,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.returnUrl = returnUrl;
 		this.cancelUrl = cancelUrl;
 		this.paymentPageBaseUrl = paymentPageBaseUrl;
+		this.paymentPageVersion = paymentPageVersion;
 	}
 
 	@Override
@@ -86,18 +89,27 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				"Ficha de Admisión " + candidate.getFolio(), payment.getAmount(), currency, returnUrl, cancelUrl);
+				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), payment.getAmount(),
+				currency, returnUrl, cancelUrl);
 		EvoPaymentsGatewayPort.EvoSession session = evoPaymentsGateway.initiateCheckoutSession(order);
 
 		payment.registerCheckout(orderId, session.id());
 		admissionPaymentRepository.save(payment);
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.version(), session.merchant(),
-				session.successIndicator(), checkoutUrl(session.version()));
+				session.successIndicator(), checkoutUrl());
 	}
 
-	private String checkoutUrl(String version) {
-		String versionSegment = (version == null || version.isBlank()) ? "" : version + "/";
-		return paymentPageBaseUrl + "/api/page/version/" + versionSegment + "pay";
+	/**
+	 * Hosted Checkout payment page. The {@code version} path segment is the EVO
+	 * <em>API</em> version (config, same one the REST base URL carries, e.g.
+	 * {@code 72}) — NOT the {@code session.version} token the
+	 * {@code INITIATE_CHECKOUT} response returns: posting the page with that
+	 * token makes the gateway answer {@code "Unsupported value for 'version =
+	 * …'"}. The page is reachable only via a form POST carrying
+	 * {@code merchant} + {@code session}.
+	 */
+	private String checkoutUrl() {
+		return paymentPageBaseUrl + "/api/page/version/" + paymentPageVersion + "/pay";
 	}
 }

@@ -25,7 +25,13 @@ public interface EvoPaymentsGatewayPort {
 
 	EvoOrderStatus retrieveOrder(String orderId);
 
-	record EvoOrder(String id, String description, BigDecimal amount, String currency,
+	/**
+	 * @param id        the gateway order id (merchant-side, 32/64 alphanumerics)
+	 * @param reference the merchant's own reference for the sale — SISA sends
+	 *                  the ficha payment reference ({@code REF-…}) so the
+	 *                  gateway statement reconciles against the ticket
+	 */
+	record EvoOrder(String id, String reference, String description, BigDecimal amount, String currency,
 			String returnUrl, String cancelUrl) {
 	}
 

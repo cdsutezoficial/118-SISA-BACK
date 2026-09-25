@@ -19,11 +19,24 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "sisa.evo")
 public record EvoConfig(String baseUrl, String apiUsername, String apiPassword, String merchantId,
 		String checkoutJsUrl, String returnUrl, String cancelUrl, String orderIdPrefix, Integer orderIdLength,
-		String currency) {
+		String currency, String pageVersion, String merchantName) {
+
+	/**
+	 * Hosted Checkout page version used to build
+	 * {@code {paymentPageBase}/api/page/version/{pageVersion}/pay}. It is the
+	 * EVO <em>API</em> version (the same one the REST base URL carries, e.g.
+	 * {@code /api/rest/version/72/}), NOT the per-session token the
+	 * {@code INITIATE_CHECKOUT} response returns in {@code session.version} —
+	 * the gateway rejects the latter there with
+	 * {@code "Unsupported value for 'version = …'"}.
+	 */
+	public static final String DEFAULT_PAGE_VERSION = "72";
 
 	public EvoConfig {
 		orderIdLength = orderIdLength == null || orderIdLength <= 0 ? 32 : orderIdLength;
 		currency = currency == null || currency.isBlank() ? "MXN" : currency;
+		pageVersion = pageVersion == null || pageVersion.isBlank() ? DEFAULT_PAGE_VERSION : pageVersion.trim();
+		merchantName = merchantName == null || merchantName.isBlank() ? null : merchantName.trim();
 	}
 
 	/**

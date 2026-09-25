@@ -149,15 +149,19 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		orderMap.put("id", order.id());
 		orderMap.put("amount", order.amount() == null ? null : order.amount().toPlainString());
 		orderMap.put("currency", order.currency());
+		putIfNotNull(orderMap, "reference", order.reference());
 		putIfNotNull(orderMap, "description", order.description());
 		return orderMap;
 	}
 
-	private static Map<String, Object> interactionPayload(EvoOrder order) {
+	private Map<String, Object> interactionPayload(EvoOrder order) {
 		Map<String, Object> interaction = new LinkedHashMap<>();
 		interaction.put("operation", "PURCHASE");
 		putIfNotNull(interaction, "returnUrl", order.returnUrl());
 		putIfNotNull(interaction, "cancelUrl", order.cancelUrl());
+		if (evoConfig.merchantName() != null) {
+			interaction.put("merchant", Map.of("name", evoConfig.merchantName()));
+		}
 		return interaction;
 	}
 

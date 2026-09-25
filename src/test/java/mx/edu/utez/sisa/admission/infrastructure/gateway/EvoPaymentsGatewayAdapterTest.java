@@ -52,11 +52,12 @@ class EvoPaymentsGatewayAdapterTest {
 
 	private static EvoConfig configuredConfig() {
 		return new EvoConfig(BASE, "merchant.TESTUTEZ", "secret", "TESTUTEZ", null, RETURN, RETURN, "TESTUTEZ", 32,
-				"MXN");
+				"MXN", "72", "Universidad Tecnológica de la zona de UTEZ");
 	}
 
 	private static EvoOrder order() {
-		return new EvoOrder(ORDER_ID, "Ficha de Admisión", new BigDecimal("500.00"), "MXN", RETURN, RETURN);
+		return new EvoOrder(ORDER_ID, "REF-2026-000001", "Ficha de Admisión", new BigDecimal("500.00"), "MXN",
+				RETURN, RETURN);
 	}
 
 	@Test
@@ -65,12 +66,12 @@ class EvoPaymentsGatewayAdapterTest {
 				{
 				  "apiOperation": "INITIATE_CHECKOUT",
 				  "checkoutMode": "WEBSITE",
-				  "order": { "id": "TESTUTEZ-ADM-2026-000001", "amount": "500.00", "currency": "MXN", "description": "Ficha de Admisión" },
-				  "interaction": { "operation": "PURCHASE", "returnUrl": "http://localhost:5173/portal/registro/ficha", "cancelUrl": "http://localhost:5173/portal/registro/ficha" }
+				  "order": { "id": "TESTUTEZ-ADM-2026-000001", "amount": "500.00", "currency": "MXN", "reference": "REF-2026-000001", "description": "Ficha de Admisión" },
+				  "interaction": { "operation": "PURCHASE", "returnUrl": "http://localhost:5173/portal/registro/ficha", "cancelUrl": "http://localhost:5173/portal/registro/ficha", "merchant": { "name": "Universidad Tecnológica de la zona de UTEZ" } }
 				}
 				""")).andRespond(withSuccess("""
 				{"result":"SUCCESS","merchant":"TESTUTEZ","successIndicator":"AAAA/BRAVO/SUCCESS0001",
-				 "session":{"id":"SESSION0001BR","version":"1"}}
+				 "session":{"id":"SESSION0001BR","version":"df66ca1b01"}}
 				""", MediaType.APPLICATION_JSON));
 
 		EvoSession session = adapter.initiateCheckoutSession(order());
@@ -78,7 +79,7 @@ class EvoPaymentsGatewayAdapterTest {
 		assertThat(session.id()).isEqualTo("SESSION0001BR");
 		assertThat(session.merchant()).isEqualTo("TESTUTEZ");
 		assertThat(session.successIndicator()).isEqualTo("AAAA/BRAVO/SUCCESS0001");
-		assertThat(session.version()).isEqualTo("1");
+		assertThat(session.version()).isEqualTo("df66ca1b01");
 		server.verify();
 	}
 
@@ -135,7 +136,7 @@ class EvoPaymentsGatewayAdapterTest {
 		RestClient.Builder builder = RestClient.builder();
 		MockRestServiceServer unused = MockRestServiceServer.bindTo(builder).build();
 		EvoPaymentsGatewayAdapter bareAdapter = new EvoPaymentsGatewayAdapter(builder,
-				new EvoConfig(null, null, null, null, null, null, null, null, null, null),
+				new EvoConfig(null, null, null, null, null, null, null, null, null, null, null, null),
 				new ObjectMapper());
 
 		assertThatThrownBy(() -> bareAdapter.initiateCheckoutSession(order()))
