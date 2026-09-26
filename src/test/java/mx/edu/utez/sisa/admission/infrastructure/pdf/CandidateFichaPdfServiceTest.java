@@ -28,6 +28,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CandidateFichaPdfServiceTest {
 
+	/**
+	 * The notice text lives in the service (single source of truth). The PDF
+	 * extractor breaks the string across lines, so the assertions match on its
+	 * two halves rather than the whole sentence.
+	 */
+	private static final String NON_OFFICIAL_NOTICE_PART_1 = "Copia para el candidato";
+
+	private static final String NON_OFFICIAL_NOTICE_PART_2 = "sin validez oficial";
+
 	private final CandidateFichaPdfService service = new CandidateFichaPdfService();
 
 	@Test
@@ -65,6 +74,42 @@ class CandidateFichaPdfServiceTest {
 			assertTrue(text.contains("8.9"));
 			assertTrue(text.contains("Orden de pago (EVO)"));
 			assertTrue(text.contains("TESTUTEZ123456"));
+		}
+	}
+
+	/**
+	 * The applicant downloads this herself, so it must never read like an
+	 * official certificate. Asserted on the notice under the title.
+	 */
+	@Test
+	void rendersTheNonOfficialNotice() throws Exception {
+		byte[] pdf = service.render(fullFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			String text = text(reader);
+			assertTrue(text.contains(NON_OFFICIAL_NOTICE_PART_1), "expected the non-official notice");
+			assertTrue(text.contains(NON_OFFICIAL_NOTICE_PART_2), "expected the non-official notice");
+		}
+	}
+
+	/**
+	 * A notice on page 1 alone is worthless once the ficha is split and a single
+	 * page is forwarded, so the footer must repeat it on EVERY page.
+	 */
+	@Test
+	void repeatsTheNonOfficialNoticeOnEveryPage() throws Exception {
+		byte[] pdf = service.render(fullFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			PdfTextExtractor extractor = new PdfTextExtractor(reader);
+			assertTrue(reader.getNumberOfPages() >= 2, "fixture must span several pages to be meaningful");
+			for (int page = 1; page <= reader.getNumberOfPages(); page++) {
+				String pageText = extractor.getTextFromPage(page);
+				assertTrue(pageText.contains(NON_OFFICIAL_NOTICE_PART_1),
+						"page " + page + " is missing the non-official notice");
+				assertTrue(pageText.contains("Página " + page),
+						"page " + page + " is missing its page number");
+			}
 		}
 	}
 
