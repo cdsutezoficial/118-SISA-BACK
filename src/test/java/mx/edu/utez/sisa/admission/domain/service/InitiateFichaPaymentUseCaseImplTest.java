@@ -20,12 +20,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,7 +87,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
 						"df66ca1b01"));
 
-		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID);
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null);
 
 		assertThat(result.candidateId()).isEqualTo(CANDIDATE_ID);
 		assertThat(result.orderId()).isEqualTo(ORDER_ID);
@@ -117,7 +119,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
-		customUseCase.initiateCheckout(CANDIDATE_ID);
+		customUseCase.initiateCheckout(CANDIDATE_ID, null);
 
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order
 				.returnUrl().equals(returnWithQuery + "&id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
@@ -127,7 +129,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 	void missingCandidateIs404() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID))
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateNotFoundException.class)
 				.hasMessageContaining("No existe el candidato");
 	}
@@ -137,7 +139,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID))
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateNotFoundException.class)
 				.hasMessageContaining("no tiene ficha de pago");
 	}
@@ -149,7 +151,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
 
-		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID))
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateAlreadyPaidException.class)
 				.hasMessageContaining("ya estaba pagada");
 	}
@@ -161,8 +163,126 @@ class InitiateFichaPaymentUseCaseImplTest {
 		when(evoPaymentsGateway.initiateCheckoutSession(any()))
 				.thenThrow(new EvoPaymentGatewayException("El proveedor de pagos (EVO) no pudo iniciar el pago en línea: SERVER_BUSY"));
 
-		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID))
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class)
 				.hasMessageContaining("no pudo iniciar el pago en línea");
+	}
+
+	// -- returnPath: the "return me to my own screen" feature, and its guardrails --
+
+	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlist() {
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
+				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL,
+				Set.of("/portal/registro/ficha", "/portal/ficha/pago"));
+	}
+
+	private void givenPayableCandidate() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+	}
+
+	@Test
+	void allowlistedReturnPathSwapsThePathAndKeepsOurOrigin() {
+		givenPayableCandidate();
+
+		useCaseWithAllowlist().initiateCheckout(CANDIDATE_ID, "/portal/ficha/pago");
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order
+				.returnUrl().equals(RETURN.replace("/portal/registro/ficha", "/portal/ficha/pago")
+						+ "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
+	}
+
+	/**
+	 * The open-redirect guard: a path that is not on the allowlist must be
+	 * ignored silently, falling back to the configured return URL.
+	 */
+	@Test
+	void unknownReturnPathFallsBackToTheConfiguredUrl() {
+		givenPayableCandidate();
+
+		useCaseWithAllowlist().initiateCheckout(CANDIDATE_ID, "https://evil.example/steal");
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order.returnUrl()
+				.equals(RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
+	}
+
+	@Test
+	void traversalAndProtocolRelativePathsAreNotHonoured() {
+		String[] hostile = { "//evil.example/x", "/portal/../admin", "/./etc", "", "  ", "javascript:alert(1)" };
+
+		for (String path : hostile) {
+			givenPayableCandidate();
+			useCaseWithAllowlist().initiateCheckout(CANDIDATE_ID, path);
+		}
+
+		// every attempt still went to the configured URL, never to the caller's
+		verify(evoPaymentsGateway, times(hostile.length))
+				.initiateCheckoutSession(argThat(order -> order.returnUrl()
+						.equals(RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
+	}
+
+	/** A null allowlist (default wiring) must not blow up nor honour anything. */
+	@Test
+	void withoutAnAllowlistEveryReturnPathIsIgnored() {
+		givenPayableCandidate();
+
+		useCase.initiateCheckout(CANDIDATE_ID, "/portal/ficha/pago");
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order.returnUrl()
+				.equals(RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
+	}
+
+	// -- cancelUrl: cancelling must not dump the payer on a screen the backend
+	// would have refused to show them (e.g. the weak folio+CURP lookup landing on
+	// the full ficha). --
+
+	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlistAndCancel(String cancelBase) {
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
+				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
+				Set.of("/portal/registro/ficha", "/portal/ficha/pago"));
+	}
+
+	@Test
+	void allowlistedReturnPathAlsoSwapsTheCancelUrlPath() {
+		givenPayableCandidate();
+		String cancel = "http://localhost:5173/pagos/cancelados";
+
+		useCaseWithAllowlistAndCancel(cancel).initiateCheckout(CANDIDATE_ID, "/portal/ficha/pago");
+
+		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
+				+ "&orderId=" + ORDER_ID;
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> expected.equals(order.returnUrl())
+				&& expected.equals(order.cancelUrl())));
+	}
+
+	@Test
+	void unknownReturnPathLeavesTheCancelUrlUntouched() {
+		givenPayableCandidate();
+		String cancel = "http://localhost:5173/pagos/cancelados";
+
+		useCaseWithAllowlistAndCancel(cancel).initiateCheckout(CANDIDATE_ID, "https://evil.example/steal");
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order.cancelUrl()
+				.equals(cancel + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID)));
+	}
+
+	/**
+	 * A deployment that never configured a cancel URL must not end up with an
+	 * empty one: it falls back to the (already path-swapped) return URL.
+	 */
+	@Test
+	void withoutAConfiguredCancelUrlItFallsBackToTheResolvedReturnUrl() {
+		givenPayableCandidate();
+
+		new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+				orderIdBuilder, "MXN", RETURN, "", SDK_URL,
+				Set.of("/portal/registro/ficha", "/portal/ficha/pago")).initiateCheckout(CANDIDATE_ID,
+						"/portal/ficha/pago");
+
+		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
+				+ "&orderId=" + ORDER_ID;
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> expected.equals(order.cancelUrl())));
 	}
 }
