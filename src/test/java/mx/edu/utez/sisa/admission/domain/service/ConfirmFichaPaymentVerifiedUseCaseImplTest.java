@@ -95,19 +95,21 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID);
 	}
 
-@Test
-	void onlineConfirmVerifiesPersistedOrderWhenClientOmitsOrderId() {
+	@Test
+	void onlineConfirmRejectsWhenClientOmitsOrderId() {
+		// orderId is MANDATORY: without it there is nothing to cross-check the
+		// return against, and the previous fallback marked the ficha PAID on a
+		// bare POST. Now it must be rejected before EVO is ever consulted.
 		AdmissionPayment payment = payment();
 		payment.registerCheckout(ORDER_ID, "SESSION0001BR");
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment));
-		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(
-				new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "SUCCESS", new BigDecimal("500.00")));
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
 
-		// no orderId sent → still verified against the PERSISTED order (the body only cross-checks)
-		useCase.confirm(CANDIDATE_ID, null);
-		verify(evoPaymentsGateway).retrieveOrder(ORDER_ID);
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, null))
+				.isInstanceOf(InvalidPaymentVerificationException.class)
+				.hasMessageContaining("identificador del pedido es obligatorio");
+		verify(evoPaymentsGateway, never()).retrieveOrder(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
 	}
 
 	@Test
@@ -165,15 +167,18 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	}
 
 	@Test
-	void legacyWindowConfirmDelegatesWithNoOrderId() {
+	void legacyWindowConfirmIsRejectedWithNoOrderId() {
+		// The window-payment path was removed: a pending ficha with no online
+		// session and no orderId can no longer be confirmed. Previously this
+		// delegated straight to the local confirm and returned PAID.
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
 
-		ConfirmPaymentResult result = useCase.confirm(CANDIDATE_ID, null);
-
-		assertThat(result).isEqualTo(paid);
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, null))
+				.isInstanceOf(InvalidPaymentVerificationException.class)
+				.hasMessageContaining("identificador del pedido es obligatorio");
 		verify(evoPaymentsGateway, never()).retrieveOrder(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
 	}
 
 	@Test

@@ -32,10 +32,10 @@ import java.util.UUID;
  * <li>candidate + payment must exist (404);</li>
  * <li>already-paid ficha → 409 {@code CandidateAlreadyPaidException} without
  * even calling EVO (repeat after success stays idempotent);</li>
- * <li>the ficha never initiated online (no persisted {@code orderId}) and the
- * caller sends no {@code orderId} → legacy window confirm
- * ({@link ConfirmAdmissionPaymentUseCase}, Finanzas); with an {@code orderId}
- * → 400 (no session exists to verify);</li>
+ * <li>the request MUST carry an {@code orderId} — the window-payment path was
+ * removed, so an absent one is a 400, never a silent local "pagado";</li>
+ * <li>the ficha never initiated online (no persisted {@code orderId}) → 400
+ * (no session exists to verify);</li>
  * <li>an online ficha whose returned {@code orderId} does not match the
  * persisted one → 400;</li>
  * <li>{@code RETRIEVE_ORDER} must give {@code SUCCESS} with the same amount
@@ -44,6 +44,13 @@ import java.util.UUID;
  * {@link ConfirmAdmissionPaymentUseCase} (receipt, candidate {@code PAID},
  * idempotent 409).</li>
  * </ol>
+ *
+ * <p>SECURITY: {@code orderId} is mandatory on purpose. The previous
+ * implementation accepted an absent one and fell through to
+ * {@link ConfirmAdmissionPaymentUseCase#confirm(UUID)}, marking ANY pending
+ * ficha {@code PAID} without asking the gateway — anyone who could guess a
+ * candidate UUID could mark registrations paid. With the window path gone
+ * there is exactly one way in, and it always crosses EVO.
  */
 public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPaymentVerifiedUseCase {
 
@@ -80,14 +87,17 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 		}
 
 		boolean onlineInitiated = payment.getOrderId() != null && !payment.getOrderId().isBlank();
-		if (!onlineInitiated && (orderId == null || orderId.isBlank())) {
-			return confirmAdmissionPaymentUseCase.confirm(candidateId);
+		if (orderId == null || orderId.isBlank()) {
+			// Mandatory since the window-payment path was removed: without it
+			// there is nothing to verify against EVO.
+			throw new InvalidPaymentVerificationException(
+					"El identificador del pedido es obligatorio para confirmar el pago.");
 		}
 		if (!onlineInitiated) {
 			throw new InvalidPaymentVerificationException(
 					"Esta ficha no tiene un pago en línea iniciado, no hay sesión que verificar.");
 		}
-		if (orderId != null && !orderId.isBlank() && !payment.getOrderId().equals(orderId)) {
+		if (!payment.getOrderId().equals(orderId)) {
 			throw new InvalidPaymentVerificationException(
 					"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo.");
 		}
