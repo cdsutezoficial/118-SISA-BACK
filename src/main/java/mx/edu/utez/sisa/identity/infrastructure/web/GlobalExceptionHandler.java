@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -146,6 +147,24 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, "Falta información requerida para procesar la solicitud.", request);
+	}
+
+	/**
+	 * The request body could not be READ: absent on an endpoint whose
+	 * {@code @RequestBody} is required, or malformed/unparseable JSON.
+	 * Spring raises this before the controller method runs, so it is a
+	 * client-shape problem, not an application failure — without this handler
+	 * it fell through to {@link #handleUnexpected} and returned a misleading
+	 * 500. It matters now that
+	 * {@code POST /candidates/{id}/payments/confirm} REQUIRES a body: a
+	 * bodyless POST is a 400 ("falta el identificador del pedido"), not a
+	 * server error.
+	 */
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, "La solicitud no contiene un cuerpo válido o falta información requerida.",
+				request);
 	}
 
 	/**

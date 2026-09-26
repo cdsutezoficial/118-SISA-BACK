@@ -1,12 +1,17 @@
 package mx.edu.utez.sisa.admission.infrastructure.web.dto;
 
+import jakarta.validation.constraints.NotBlank;
+
 /**
- * Optional body for {@code POST /candidates/{id}/payments/confirm} — the EVO
+ * Body for {@code POST /candidates/{id}/payments/confirm} — the EVO
  * {@code order.id} the applicant's browser carries back from the gateway
- * return URL. When present it MUST match the order persisted at checkout
- * (Fase 4) and EVO must report {@code SUCCESS} for it before the ficha is
- * marked paid (Fase 5). Absent = legacy window confirm (Finanzas, no online
- * session was initiated).
+ * return URL. It MUST match the order persisted at checkout and EVO must report
+ * {@code SUCCESS} for it before the ficha is marked paid.
+ *
+ * <p>Mandatory since the window-payment path was removed: previously the field
+ * was optional and an absent value fell through to a local "pagado" with no
+ * gateway check at all. {@code @NotBlank} turns that into a 400 at the edge,
+ * and the use case re-checks it (domain tests bypass the web layer).
  */
-public record VerifyFichaPaymentRequest(String orderId) {
+public record VerifyFichaPaymentRequest(@NotBlank String orderId) {
 }

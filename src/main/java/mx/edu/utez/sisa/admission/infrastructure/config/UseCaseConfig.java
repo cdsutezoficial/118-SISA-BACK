@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.infrastructure.config;
 
+import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeHighSchoolTypeStatusUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeOutreachChannelStatusUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.CreateHighSchoolTypeUseCase;
@@ -25,6 +26,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.PlaceNameLookupPort;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
+import mx.edu.utez.sisa.admission.domain.service.AccessFichaPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
@@ -49,6 +51,9 @@ import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Composition root wiring the {@code admission} bounded context's use case
@@ -175,13 +180,23 @@ public class UseCaseConfig {
 		return new OrderIdBuilder(evoConfig.orderIdPrefix(), evoConfig.orderIdLength());
 	}
 
+	/**
+	 * {@code returnPath} is an open-redirect surface, so only these in-app paths
+	 * are ever honoured; every other value silently falls back to
+	 * {@link EvoConfig#returnUrl()}. The scheme+host always come from the
+	 * configured return URL, so the allowlist is the only thing a caller can
+	 * influence and it cannot leave our origin.
+	 */
 	@Bean
 	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
-			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig) {
+			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
+			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths) {
+		Set<String> allowlist = Arrays.stream(allowedReturnPaths.split(",")).map(String::trim)
+				.filter(path -> !path.isEmpty()).collect(Collectors.toUnmodifiableSet());
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
-				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl());
+				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist);
 	}
 
 	@Bean
@@ -193,5 +208,21 @@ public class UseCaseConfig {
 		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
 				outreachChannelRepository, highSchoolTypeRepository);
+	}
+
+	/**
+	 * "Vuelve a pagar mi ficha" access by folio + CURP suffix. Separate from
+	 * {@link GetCandidateFichaUseCase} on purpose: that one projects the WHOLE
+	 * ficha (address, health, income) and stays behind the UUID, while this one
+	 * answers a weak identity proof and therefore only ever returns payment
+	 * fields.
+	 */
+	@Bean
+	public AccessFichaPaymentUseCase accessFichaPaymentUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository,
+			AdmissionPaymentRepository admissionPaymentRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort);
 	}
 }

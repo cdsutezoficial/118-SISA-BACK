@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.admission.infrastructure.web;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
@@ -19,12 +21,14 @@ import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMail
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.VerifyFichaPaymentRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.FichaEmailSendException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
@@ -80,6 +84,8 @@ public class CandidateController {
 
 	private final RegisterCandidateUseCase registerCandidateUseCase;
 
+	private final AccessFichaPaymentUseCase accessFichaPaymentUseCase;
+
 	private final ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
 	private final InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
@@ -90,17 +96,22 @@ public class CandidateController {
 
 	private final CandidateFichaPdfService fichaPdfService;
 
+	private final PaymentAccessRateLimiter paymentAccessRateLimiter;
+
 	public CandidateController(RegisterCandidateUseCase registerCandidateUseCase,
+			AccessFichaPaymentUseCase accessFichaPaymentUseCase,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase,
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
-			CandidateFichaPdfService fichaPdfService) {
+			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
+		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
+		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
 	}
 
 	@PostMapping
@@ -112,25 +123,47 @@ public class CandidateController {
 	}
 
 	/**
+	 * "Vuelve a pagar mi ficha": the applicant's way back into an unpaid ficha
+	 * when the post-registration screen is gone (reload loses its
+	 * navigate-state UUID). Identifies her by {@code folio} + last 3 CURP
+	 * characters and returns ONLY the payment data.
+	 *
+	 * <p>Throttled per client IP by {@link PaymentAccessRateLimiter}
+	 * ({@code 429} past the budget) because that identity pair is deliberately
+	 * weak, and answered with a single generic {@code 404} for every rejection
+	 * so it cannot be used to discover which folios exist.
+	 */
+	@PostMapping("/payment-access")
+	public ResponseEntity<FichaPaymentAccessResponse> accessPayment(
+			@Valid @RequestBody FichaPaymentAccessRequest request, HttpServletRequest httpRequest) {
+		paymentAccessRateLimiter.checkAllowed(PaymentAccessRateLimiter.clientKeyOf(httpRequest));
+		return ResponseEntity
+				.ok(FichaPaymentAccessResponse.from(accessFichaPaymentUseCase.access(request.folio(),
+						request.curpSuffix())));
+	}
+
+	/**
 	 * Confirms the ticket payment ({@code PENDING → PAID}) and transitions the
 	 * candidate to {@code PAID}, then sends the confirmation email (best-effort,
-	 * never blocks the response). For online checkouts (Fase 5) the optional
-	 * body carries the EVO {@code order.id}: when the ficha went through the
-	 * checkout, EVO must report {@code SUCCESS} for that order before any local
-	 * "pagado". Fichas never initiated online confirm the legacy window way
-	 * (Finanzas). {@code 400} when verification fails, {@code 409} if already
-	 * paid, {@code 404} if candidate/payment missing.
+	 * never blocks the response). The body carries the EVO {@code order.id} and
+	 * is REQUIRED: EVO must report {@code SUCCESS} for that exact order before
+	 * any local "pagado". There is no window-payment path anymore, so a request
+	 * without {@code orderId} is a {@code 400} rather than a trust-me confirm.
+	 * {@code 400} when verification fails, {@code 409} if already paid,
+	 * {@code 404} if candidate/payment missing.
 	 */
 	@PostMapping("/{id}/payments/confirm")
 	public ResponseEntity<PaymentConfirmationResponse> confirmPayment(@PathVariable UUID id,
-			@RequestBody(required = false) VerifyFichaPaymentRequest request) {
-		String orderId = request == null ? null : request.orderId();
+			@Valid @RequestBody VerifyFichaPaymentRequest request) {
 		ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult result = confirmFichaPaymentVerifiedUseCase
-				.confirm(id, orderId);
+				.confirm(id, request.orderId());
 		FichaData ficha = getCandidateFichaUseCase.get(id);
 		if (ficha != null && ficha.email() != null && !ficha.email().isBlank()) {
+			// `paidAt` del resultado, no el reloj: el comprobante tiene que llevar
+			// la fecha en que el gateway confirmó, no la de hoy. Antes se pasaba
+			// `deadline`, que el correo nunca usó.
 			fichaMailService.sendPaymentConfirmation(ficha.email(), fullName(ficha), ficha.folio(),
-					ficha.programName(), result.amount(), result.referenceNumber(), ficha.deadline(),
+					ficha.programName(), result.amount(), result.referenceNumber(), result.paidAt(),
 					result.receiptNumber());
 		}
 		return ResponseEntity.ok(PaymentConfirmationResponse.from(result));
@@ -144,33 +177,17 @@ public class CandidateController {
 	 * return step (Fase 5) can verify the result against the gateway. {@code 404}
 	 * if candidate/payment missing, {@code 409} if already paid, {@code 502} if
 	 * the gateway cannot start the session.
+	 *
+	 * <p>The body is optional and carries only an allowlisted {@code returnPath}
+	 * — see {@link CheckoutInitiationRequest}. Existing callers that POST
+	 * nothing keep working.
 	 */
 	@PostMapping("/{id}/payments/checkout")
-	public ResponseEntity<CheckoutInitiationResponse> initiateCheckout(@PathVariable UUID id) {
-		return ResponseEntity.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id)));
-	}
-
-	/**
-	 * Resends (or sends for the first time) the payment-instructions email from
-	 * the ficha screen's "Enviar instrucciones a mi correo" button. Sent
-	 * SYNCHRONOUSLY via {@link CandidateFichaMailService#sendPaymentInstructionsSync}:
-	 * unlike the confirmation email (best-effort), a delivery failure surfaces
-	 * as HTTP 502 with the SMTP cause in the message — the button never fakes
-	 * "instrucciones enviadas" nor silently drops the email. {@code 204} only
-	 * when the message actually left the SMTP queue.
-	 */
-	@PostMapping("/{id}/send-instructions")
-	public ResponseEntity<Void> sendInstructions(@PathVariable UUID id) {
-		FichaData ficha = getCandidateFichaUseCase.get(id);
-		if (ficha == null) {
-			throw new CandidateNotFoundException("No existe el candidato: " + id);
-		}
-		if (ficha.email() == null || ficha.email().isBlank()) {
-			throw new FichaEmailSendException("El candidato no tiene un correo electrónico registrado.");
-		}
-		fichaMailService.sendPaymentInstructionsSync(ficha.email(), fullName(ficha), ficha.folio(),
-				ficha.programName(), ficha.amount(), ficha.referenceNumber(), ficha.deadline());
-		return ResponseEntity.noContent().build();
+	public ResponseEntity<CheckoutInitiationResponse> initiateCheckout(@PathVariable UUID id,
+			@Valid @RequestBody(required = false) CheckoutInitiationRequest request) {
+		String returnPath = request == null ? null : request.returnPath();
+		return ResponseEntity
+				.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath)));
 	}
 
 	/**
