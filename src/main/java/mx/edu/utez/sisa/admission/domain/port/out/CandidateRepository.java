@@ -27,4 +27,13 @@ public interface CandidateRepository {
 	 * exact-per-period implementation).
 	 */
 	long countByFolioStartingWith(String prefix);
+
+	/**
+	 * Exact folio lookup for the "vuelve a pagar mi ficha" entry point
+	 * ({@code AccessFichaPaymentUseCase}), which identifies the candidate by
+	 * folio and then cross-checks the CURP suffix. Case-insensitive on the
+	 * caller's side: the use case normalizes to upper case before calling, so
+	 * this match is exact against the stored folio.
+	 */
+	Optional<Candidate> findByFolio(String folio);
 }

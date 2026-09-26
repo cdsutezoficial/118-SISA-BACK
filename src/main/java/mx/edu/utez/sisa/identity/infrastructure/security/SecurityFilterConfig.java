@@ -232,8 +232,8 @@ public class SecurityFilterConfig {
 				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint())
 						.accessDeniedHandler(accessDeniedHandler()))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers(HttpMethod.POST, "/candidates", "/candidates/*/payments/confirm",
-								"/candidates/*/payments/checkout", "/candidates/*/send-instructions")
+						.requestMatchers(HttpMethod.POST, "/candidates", "/candidates/payment-access",
+								"/candidates/*/payments/confirm", "/candidates/*/payments/checkout")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
 						.requestMatchers("/auth/login", "/auth/refresh")

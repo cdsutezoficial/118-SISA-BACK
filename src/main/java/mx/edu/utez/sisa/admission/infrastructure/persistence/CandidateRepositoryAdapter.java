@@ -34,4 +34,9 @@ public class CandidateRepositoryAdapter implements CandidateRepository {
 	public long countByFolioStartingWith(String prefix) {
 		return jpaRepository.countByFolioStartingWith(prefix);
 	}
+
+	@Override
+	public Optional<Candidate> findByFolio(String folio) {
+		return jpaRepository.findByFolio(folio);
+	}
 }

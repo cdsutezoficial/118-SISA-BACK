@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
+import mx.edu.utez.sisa.admission.shared.exception.TooManyPaymentAccessAttemptsException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
@@ -123,6 +124,18 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleEvoPaymentGateway(EvoPaymentGatewayException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request);
+	}
+
+	/**
+	 * Per-IP throttle tripped on {@code POST /candidates/payment-access} — see
+	 * {@link PaymentAccessRateLimiter}. 429 so the portal can show "espera unos
+	 * minutos" instead of a generic error, and so a brute-force script gets an
+	 * unambiguous signal to back off.
+	 */
+	@ExceptionHandler(TooManyPaymentAccessAttemptsException.class)
+	public ResponseEntity<ErrorResponse> handleTooManyPaymentAccessAttempts(TooManyPaymentAccessAttemptsException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
