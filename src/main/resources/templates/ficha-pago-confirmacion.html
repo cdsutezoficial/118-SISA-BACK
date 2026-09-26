@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Confirmación de pago — Ficha de Admisión UTEZ</title>
+  </head>
+  <!--
+    Correo de confirmación de ficha. Decisiones que no son óbvias:
+
+    * El logo va SOBRE FONDO BLANCO, no sobre la banda verde, porque el logo es
+      verde (#009475). Sobre el verde institucional desaparecería.
+    * Tablas con `role="presentation"` y estilos inline: es lo único que
+      respetan Gmail, Outlook y la app de correo del teléfono. Sin flexbox, sin
+      clases, sin CSS externo.
+    * `bgcolor` accompanies `background-color` porque Outlook ignora el segundo.
+    * `{{logo}}` se sustituye por el `<img src="cid:utez-logo">` cuando el asset
+      existe, y por cadena vacía cuando no. Un `cid` sin resolver deja una
+      imagen rota con icono de error, que en un correo transaccional se lee como
+      mensaje roto; el placeholder lo hace desapareizable sin dejar el resto de
+      la plantilla con un hueco raro.
+    * NO hay botón ni enlace: el comprobante se descarga dentro del portal, que
+      es donde vive la sesión del Aspirante. No se inventa una URL pública.
+  -->
+  <body style="margin:0; padding:0; background-color:#F8F9FA; -webkit-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8F9FA" style="background-color:#F8F9FA;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:600px; max-width:600px; background-color:#FFFFFF; border:1px solid #E5E7EB; border-radius:8px;">
+
+            <!-- Encabezado: logo sobre blanco + etiqueta a la derecha -->
+            <tr>
+              <td style="padding:24px 32px 20px 32px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="left" valign="middle">
+                      {{logo}}
+                    </td>
+                    <td align="right" valign="middle" style="font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#6B7280; line-height:18px;">
+                      Confirmación<br />de pago
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Banda de éxito -->
+            <tr>
+              <td bgcolor="#009574" style="background-color:#009574; padding:28px 32px; text-align:center;">
+                <p style="margin:0 0 8px 0; font-family:Arial,Helvetica,sans-serif; font-size:22px; line-height:28px; font-weight:bold; color:#FFFFFF;">
+                  ¡Pago de ficha confirmado!
+                </p>
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#E6F5F1;">
+                  Tu registro de Aspirante quedó completado. Guarda esta pantalla o descarga tu comprobante.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Folio y monto: los dos datos que se conservan -->
+            <tr>
+              <td style="padding:0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td width="50%" align="center" valign="top" style="width:50%; padding:24px 16px; border-right:1px solid #E5E7EB;">
+                      <p style="margin:0 0 6px 0; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:16px; font-weight:bold; color:#6B7280; text-transform:uppercase; letter-spacing:0.5px;">
+                        Tu folio
+                      </p>
+                      <p style="margin:0; font-family:'Courier New',Courier,monospace; font-size:20px; line-height:26px; font-weight:bold; color:#333333;">
+                        {{folio}}
+                      </p>
+                    </td>
+                    <td width="50%" align="center" valign="top" style="width:50%; padding:24px 16px;">
+                      <p style="margin:0 0 6px 0; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:16px; font-weight:bold; color:#6B7280; text-transform:uppercase; letter-spacing:0.5px;">
+                        Monto pagado
+                      </p>
+                      <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:26px; line-height:32px; font-weight:bold; color:#009574;">
+                        ${{monto}} MXN
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Detalle del comprobante -->
+            <tr>
+              <td style="padding:0 32px 24px 32px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8F9FA" style="background-color:#F8F9FA; border:1px solid #E5E7EB; border-radius:6px;">
+                  <tr>
+                    <td colspan="2" style="padding:16px 20px 6px 20px; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; font-weight:bold; color:#009574; text-transform:uppercase; letter-spacing:0.5px;">
+                      Comprobante
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:8px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280; width:45%;">
+                      Folio de comprobante
+                    </td>
+                    <td style="padding:8px 20px; font-family:'Courier New',Courier,monospace; font-size:13px; line-height:20px; color:#333333;">
+                      {{recibo}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:8px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Fecha de pago
+                    </td>
+                    <td style="padding:8px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#333333;">
+                      {{fechaPago}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:8px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Referencia de pago
+                    </td>
+                    <td style="padding:8px 20px; font-family:'Courier New',Courier,monospace; font-size:13px; line-height:20px; color:#333333;">
+                      {{referencia}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:8px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Carrera
+                    </td>
+                    <td style="padding:8px 20px 16px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#333333;">
+                      {{carrera}}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Qué sigue -->
+            <tr>
+              <td style="padding:0 32px 8px 32px;">
+                <p style="margin:0 0 12px 0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; font-weight:bold; color:#333333; text-transform:uppercase; letter-spacing:0.5px;">
+                  Qué sigue
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td width="18" valign="top" style="width:18px; padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; font-weight:bold; color:#009574;">
+                      1.
+                    </td>
+                    <td valign="top" style="padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Hola {{nombre}}, guarda tu folio <span style="font-family:'Courier New',Courier,monospace; color:#333333;">{{folio}}</span>. Lo necesitarás en los siguientes pasos del proceso de admisión.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td width="18" valign="top" style="width:18px; padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; font-weight:bold; color:#009574;">
+                      2.
+                    </td>
+                    <td valign="top" style="padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Descarga tu comprobante en PDF desde el portal, con tu folio. Puedes entrar cuando quieras.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td width="18" valign="top" style="width:18px; padding:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; font-weight:bold; color:#009574;">
+                      3.
+                    </td>
+                    <td valign="top" style="padding:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Presenta este comprobante al ingresar al curso de inducción.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Pie -->
+            <tr>
+              <td style="padding:20px 32px 24px 32px; border-top:1px solid #E5E7EB;">
+                <p style="margin:0 0 6px 0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; color:#9CA3AF;">
+                  El PDF que descargas en el portal es una copia sin validez oficial; la ficha oficial es la que expide la Universidad.
+                </p>
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; color:#9CA3AF;">
+                  Universidad Tecnológica de la Zona de UTEZ<br />
+                  SISA — Sistema Integral de Servicios Académicos
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
