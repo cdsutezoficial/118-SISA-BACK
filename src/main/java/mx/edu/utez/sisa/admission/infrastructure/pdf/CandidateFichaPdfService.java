@@ -6,7 +6,10 @@ import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
 import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.lowagie.text.pdf.RGBColor;
@@ -39,6 +42,13 @@ import java.time.format.DateTimeFormatter;
  * Escolares. Catalog ids reach the PDF already resolved to display names by
  * the use case (Fase 7); enum labels (sexo/estado civil/tipo de trabajo)
  * resolve here so the download reads the same Spanish as the portal.
+ *
+ * <p><b>Non-official copy.</b> The applicant can download this from her own
+ * ficha, so it must never be mistakable for the official record: the
+ * {@link #NON_OFFICIAL_NOTICE} banner sits directly under the title and the
+ * same text is repeated in the footer of EVERY page by
+ * {@link NonOfficialWatermark} — a single notice on page 1 of a 3-page ficha
+ * would be lost the moment the page is forwarded on its own.
  */
 @Component
 public class CandidateFichaPdfService {
@@ -51,12 +61,28 @@ public class CandidateFichaPdfService {
 	private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 	private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
+	/**
+	 * The applicant downloads this file herself, so it is explicitly NOT the
+	 * official ficha. Wording is fixed by the business: the only valid ficha is
+	 * the one the Universidad issues.
+	 */
+	private static final String NON_OFFICIAL_NOTICE = "Copia para el candidato — documento sin validez oficial. "
+			+ "La ficha oficial es la expedida por la Universidad.";
+
+	/** Bottom margin reserved for the repeating footer written by NonOfficialWatermark. */
+	private static final float FOOTER_MARGIN = 28f;
+
 	public byte[] render(FichaData ficha) {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		Document document = new Document();
-		PdfWriter.getInstance(document, out);
+		// reserve room for the per-page footer before any content is written
+		document.setMargins(document.leftMargin(), document.rightMargin(), document.topMargin(),
+				document.bottomMargin() + FOOTER_MARGIN);
+		PdfWriter writer = PdfWriter.getInstance(document, out);
+		writer.setPageEvent(new NonOfficialWatermark());
 		document.open();
 		document.add(title(ficha));
+		document.add(nonOfficialNotice());
 		document.add(pagoRows(ficha));
 		heading(document, "Datos Generales");
 		document.add(datosGenerales(ficha));
@@ -74,6 +100,64 @@ public class CandidateFichaPdfService {
 		document.add(antecedentesEscolares(ficha));
 		document.close();
 		return out.toByteArray();
+	}
+
+	/**
+	 * Boxed notice right under the title. A colored background plus a border
+	 * keeps it visually distinct from the "FICHA DE ADMISIÓN" heading, which is
+	 * the point: this must not read like an official certificate.
+	 */
+	private static PdfPTable nonOfficialNotice() {
+		Paragraph text = new Paragraph(NON_OFFICIAL_NOTICE,
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, BRAND));
+		text.setAlignment(Element.ALIGN_CENTER);
+		PdfPCell cell = new PdfPCell(text);
+		cell.setBackgroundColor(PAYMENT_BG);
+		cell.setBorderWidth(0.5f);
+		cell.setBorderColor(BRAND);
+		cell.setPadding(6);
+		cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+		PdfPTable table = new PdfPTable(1);
+		table.setWidthPercentage(100);
+		table.setSpacingAfter(10);
+		table.addCell(cell);
+		return table;
+	}
+
+	/**
+	 * Stamps the non-official notice plus the page number into the footer of
+	 * every page, so a single forwarded page still carries the disclaimer.
+	 *
+	 * <p>Written through {@link ColumnText} on the writer's direct content
+	 * stream rather than {@code document.add}. Adding to the document from
+	 * {@code onEndPage} recurses: the footer can overflow the remaining space,
+	 * which triggers a page break, which fires {@code onEndPage} again, which
+	 * adds another footer — infinite loop (observed as a {@code StackOverflowError}).
+	 * Direct content bypasses the document's flow entirely, so no recursion is
+	 * possible. {@link #FOOTER_MARGIN} is still reserved so the last table row
+	 * does not sit on top of the footer.
+	 */
+	private static final class NonOfficialWatermark extends PdfPageEventHelper {
+
+		@Override
+		public void onEndPage(PdfWriter writer, Document document) {
+			float left = document.leftMargin();
+			float width = writer.getPageSize().getWidth() - left - document.rightMargin();
+
+			ColumnText column = new ColumnText(writer.getDirectContent());
+			// (phrase, llx, lly, urx, ury, leading, alignment) — an absolute box
+			// near the bottom of the page, outside the document's flow
+			column.setSimpleColumn(footerText(writer), left, 16f, left + width, 16f + 24f, 8f,
+					Element.ALIGN_CENTER);
+			// a non-OK status only means the box was too small; the notice text
+			// is one short line, so there is nothing useful to do about it here
+			column.go();
+		}
+
+		private static Phrase footerText(PdfWriter writer) {
+			return new Phrase(NON_OFFICIAL_NOTICE + "   ·   Página " + writer.getPageNumber(),
+					FontFactory.getFont(FontFactory.HELVETICA, 7, LABEL_GRAY));
+		}
 	}
 
 	private static Paragraph title(FichaData ficha) {
