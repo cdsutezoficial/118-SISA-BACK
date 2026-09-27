@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -232,13 +233,20 @@ class CandidateControllerTest {
 
 	private static final String SUFFIX = "N08";
 
+	/** The registration window's closing day, as stored on the ticket. */
+	private static final LocalDate REGISTRATION_DEADLINE = LocalDate.of(2026, 9, 30);
+
+	/** The tuition concept's {@code available_until}: the date that governs payment. */
+	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
+
 	private static PaymentAccess paymentAccess(boolean alreadyPaid) {
 		return new PaymentAccess(ID, FOLIO, "Ana Torres Ramos", "Ing. en Tecnologías de la Información",
-				new BigDecimal("500.00"), "REF-20260924-000101", java.time.LocalDate.now().plusDays(10),
+				new BigDecimal("500.00"), "REF-20260924-000101", REGISTRATION_DEADLINE,
 				alreadyPaid ? mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID
 						: mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
 				alreadyPaid ? "REC-20260924-000001" : null,
-				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid);
+				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
+				PAYMENT_CLOSES_ON);
 	}
 
 	@Test
@@ -249,6 +257,44 @@ class CandidateControllerTest {
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.folio").value(FOLIO))
 				.andExpect(jsonPath("$.amount").value(500.00)).andExpect(jsonPath("$.alreadyPaid").value(false));
+	}
+
+	/**
+	 * The two dates reach the client under their own names, as {@code yyyy-MM-dd}.
+	 *
+	 * <p>Asserted on the wire because the whole defect was a projection problem: the
+	 * value was always there, it was just labelled "deadline" and rendered as
+	 * "Fecha límite de pago". A rename that silently dropped one of them would
+	 * leave the screen worse than before, so both are pinned here.
+	 */
+	@Test
+	void paymentAccessExposesBothWindowDatesUnderDistinctNames() throws Exception {
+		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX)).thenReturn(paymentAccess(false));
+
+		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"))
+				.andExpect(jsonPath("$.paymentClosesOn").value("2026-10-05"))
+				.andExpect(jsonPath("$.deadline").doesNotExist());
+	}
+
+	/**
+	 * A concept with no closing date must serialise as an explicit null, not be
+	 * dropped: the screen decides whether to render the row from the key being
+	 * present, and a missing key is indistinguishable from a contract change.
+	 */
+	@Test
+	void paymentAccessSerialisesAnAbsentPaymentWindowAsNull() throws Exception {
+		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX)).thenReturn(new PaymentAccess(ID, FOLIO,
+				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
+				"REF-20260924-000101", REGISTRATION_DEADLINE,
+				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null));
+
+		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentClosesOn").isEmpty())
+				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"));
 	}
 
 	@Test

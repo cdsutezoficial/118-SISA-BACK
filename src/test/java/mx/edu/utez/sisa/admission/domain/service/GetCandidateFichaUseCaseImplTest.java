@@ -51,6 +51,16 @@ class GetCandidateFichaUseCaseImplTest {
 	private static final Instant WINDOW_CLOSE = Instant.parse("2026-12-31T23:59:59Z");
 	private static final int MAX_CANDIDATES = 40;
 
+	/** The registration window's closing day, snapshotted onto the ticket. */
+	private static final LocalDate REGISTRATION_DEADLINE = LocalDate.of(2026, 12, 31);
+
+	/**
+	 * The tuition concept's {@code available_until}. A different day from
+	 * {@link #REGISTRATION_DEADLINE} on purpose: the PDF prints the two under
+	 * separate labels, and equal values would hide a swap.
+	 */
+	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 12, 20);
+
 	@Mock
 	private CandidateRepository candidateRepository;
 
@@ -72,6 +82,9 @@ class GetCandidateFichaUseCaseImplTest {
 	@Mock
 	private HighSchoolTypeRepository highSchoolTypeRepository;
 
+	@Mock
+	private FichaAmountResolver fichaAmountResolver;
+
 	private GetCandidateFichaUseCaseImpl useCase;
 
 	private UUID candidateId;
@@ -83,7 +96,7 @@ class GetCandidateFichaUseCaseImplTest {
 	void setUp() {
 		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository, paymentRepository,
 				programAdmissionConfigQueryPort, placeNameLookupPort, outreachChannelRepository,
-				highSchoolTypeRepository);
+				highSchoolTypeRepository, fichaAmountResolver);
 		candidateId = UUID.randomUUID();
 		personId = UUID.randomUUID();
 		configId = UUID.randomUUID();
@@ -101,11 +114,29 @@ class GetCandidateFichaUseCaseImplTest {
 
 		lenient().when(paymentRepository.findByCandidateId(candidateId)).thenReturn(Optional
 				.of(new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA, new BigDecimal("500.00"),
-						"REF-20260922-000001", LocalDate.now().plusDays(10))));
+						"REF-20260922-000001", REGISTRATION_DEADLINE)));
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
 						ProgramModality.PRESENCIAL, "2026-2", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
+
+		// The payment window is read live, so the PDF's "Fecha límite de pago" can
+		// differ from the registration window and a test can tell them apart.
+		lenient().when(fichaAmountResolver.paymentClosesOn(programId)).thenReturn(PAYMENT_CLOSES_ON);
+	}
+
+	/**
+	 * The PDF prints both windows under their own names, so the use case has to
+	 * carry both. They are pinned to different days on purpose: a mix-up between
+	 * the two would be invisible if they were equal.
+	 */
+	@Test
+	void get_carriesTheRegistrationDeadlineAndThePaymentWindowSeparately() {
+		var ficha = useCase.get(candidateId);
+
+		assertThat(ficha).isNotNull();
+		assertThat(ficha.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
+		assertThat(ficha.paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
 	}
 
 	@Test
@@ -164,7 +195,7 @@ class GetCandidateFichaUseCaseImplTest {
 
 		// Payment carries the EVO order id when an online checkout ran.
 		AdmissionPayment payment = new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA,
-				new BigDecimal("500.00"), "REF-20260922-000001", LocalDate.now().plusDays(10));
+				new BigDecimal("500.00"), "REF-20260922-000001", REGISTRATION_DEADLINE);
 		ReflectionTestUtils.setField(payment, "orderId", "TESTUTEZ-ADM-2026-000001");
 		when(paymentRepository.findByCandidateId(candidateId)).thenReturn(Optional.of(payment));
 

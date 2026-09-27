@@ -24,6 +24,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CandidateFichaPdfServiceTest {
@@ -126,6 +127,41 @@ class CandidateFichaPdfServiceTest {
 		}
 	}
 
+	/**
+	 * The applicant carries this PDF to ventanilla, so a date printed under the
+	 * wrong label is the failure that gets argued about at the window. Both
+	 * windows get their own row, with the fixture's two different days (10/03
+	 * registration, 05/03 payment) so a swap cannot pass.
+	 */
+	@Test
+	void printsBothWindowsUnderTheirOwnLabels() throws Exception {
+		byte[] pdf = service.render(fullFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			String text = text(reader);
+			assertTrue(text.contains("Fecha límite de inscripción"), "missing the registration-window row");
+			assertTrue(text.contains("Fecha límite de pago"), "missing the payment-window row");
+			assertTrue(text.contains("10/03/2026"), "missing the registration deadline");
+			assertTrue(text.contains("05/03/2026"), "missing the payment window's closing day");
+		}
+	}
+
+	/**
+	 * No closing date on the concept means the period has no end, so the row is
+	 * dropped. A dashed "Fecha límite de pago: -" would instead read as a date
+	 * that went missing, which is a different and wrong story.
+	 */
+	@Test
+	void omitsThePaymentWindowRowWhenTheConceptHasNoClosingDate() throws Exception {
+		byte[] pdf = service.render(minimalFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			String text = text(reader);
+			assertFalse(text.contains("Fecha límite de pago"),
+					"the payment-window row must be omitted, not dashed");
+		}
+	}
+
 	private static String text(PdfReader reader) throws Exception {
 		PdfTextExtractor extractor = new PdfTextExtractor(reader);
 		StringBuilder text = new StringBuilder();
@@ -152,7 +188,11 @@ class CandidateFichaPdfServiceTest {
 				"351 100 20 30",
 				"REFA-2026-000001",
 				new BigDecimal("750.00"),
+				// registrationDeadline then paymentClosesOn: different days on
+				// purpose, because the PDF prints them under separate labels and
+				// equal values would let a swap through unnoticed.
 				LocalDate.of(2026, 3, 10),
+				LocalDate.of(2026, 3, 5),
 				AdmissionPaymentStatus.PAID,
 				"REC-2026-0042",
 				Instant.parse("2026-02-02T14:30:00Z"),
@@ -186,6 +226,7 @@ class CandidateFichaPdfServiceTest {
 				"",
 				"",
 				"REF-0001",
+				null,
 				null,
 				null,
 				AdmissionPaymentStatus.PENDING,

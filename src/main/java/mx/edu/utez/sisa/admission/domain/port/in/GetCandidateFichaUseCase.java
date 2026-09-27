@@ -34,11 +34,19 @@ public interface GetCandidateFichaUseCase {
 
 	FichaData get(UUID candidateId);
 
+	/**
+	 * {@code registrationDeadline} and {@code paymentClosesOn} are the two
+	 * distinct windows the ficha has to state, not one "deadline": the first is
+	 * the sales window's closing day as of registration, the second is the
+	 * tuition concept's {@code availableUntil} read live. The PDF prints them
+	 * under their own labels — see {@code CandidateFichaPdfService}.
+	 */
 	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
 			UUID admissionConfigId, String programName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
-			BigDecimal amount, LocalDate deadline, AdmissionPaymentStatus paymentStatus, String receiptNumber,
-			Instant paidAt, String orderId, DatosGenerales datosGenerales, Domicilio domicilio,
+			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn,
+			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
+			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
 			AntecedentesEscolares antecedentesEscolares) {
 

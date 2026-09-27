@@ -22,14 +22,21 @@ import java.util.UUID;
  * calling EVO again — the applicant who already paid sees her confirmation
  * instead of a checkout button that would 409. {@code paidAt} carries the
  * confirmation date the business asked to display next to the receipt folio.
+ *
+ * <p>{@code paymentClosesOn} is what makes the checkout button honest: it is the
+ * tuition concept's {@code availableUntil} read live, i.e. the same date the
+ * checkout endpoint enforces, so a screen can never show a payment window the
+ * backend would not honour. It is {@code null} when the catalog sets no closing
+ * date, and the screen must then omit the row rather than invent one.
  */
 public record FichaPaymentAccessResponse(UUID candidateId, String folio, String nombre, String programName,
-		BigDecimal amount, String referenceNumber, LocalDate deadline, AdmissionPaymentStatus paymentStatus,
-		String receiptNumber, Instant paidAt, boolean alreadyPaid) {
+		BigDecimal amount, String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
+		String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn) {
 
 	public static FichaPaymentAccessResponse from(PaymentAccess access) {
 		return new FichaPaymentAccessResponse(access.candidateId(), access.folio(), access.nombre(),
-				access.programName(), access.amount(), access.referenceNumber(), access.deadline(),
-				access.paymentStatus(), access.receiptNumber(), access.paidAt(), access.alreadyPaid());
+				access.programName(), access.amount(), access.referenceNumber(), access.registrationDeadline(),
+				access.paymentStatus(), access.receiptNumber(), access.paidAt(), access.alreadyPaid(),
+				access.paymentClosesOn());
 	}
 }

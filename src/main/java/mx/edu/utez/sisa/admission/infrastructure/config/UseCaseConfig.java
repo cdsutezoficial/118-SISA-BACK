@@ -154,16 +154,22 @@ public class UseCaseConfig {
 		return Clock.system(ZoneId.of(zone));
 	}
 
+	/**
+	 * {@code LocalDate.now()} without a zone, deliberately: this is the date the
+	 * registration form defaults to, and the applicant is looking at a calendar
+	 * in Mexico. The window and quota checks that actually gate a registration do
+	 * not use this — they read the injected {@link Clock}.
+	 */
 	@Bean
 	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			@Value("${sisa.admission.payment.deadline-days:10}") int paymentDeadlineDays, Clock clock) {
+			Clock clock) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), paymentDeadlineDays, clock);
+				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), clock);
 	}
 
 	/**
@@ -229,10 +235,11 @@ public class UseCaseConfig {
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
-			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository) {
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
+			FichaAmountResolver fichaAmountResolver) {
 		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
-				outreachChannelRepository, highSchoolTypeRepository);
+				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver);
 	}
 
 	/**
@@ -246,8 +253,9 @@ public class UseCaseConfig {
 	public AccessFichaPaymentUseCase accessFichaPaymentUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			FichaAmountResolver fichaAmountResolver) {
 		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver);
 	}
 }

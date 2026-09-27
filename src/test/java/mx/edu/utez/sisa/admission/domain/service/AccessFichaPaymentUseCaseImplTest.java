@@ -27,6 +27,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,6 +65,20 @@ class AccessFichaPaymentUseCaseImplTest {
 	private static final Instant WINDOW_CLOSE = Instant.parse("2026-12-31T23:59:59Z");
 	private static final int MAX_CANDIDATES = 40;
 
+	/**
+	 * The registration window's closing day, as stored on the ticket. Fixed dates
+	 * rather than {@code LocalDate.now()} throughout, and deliberately different
+	 * from each other: these tests are about <em>which</em> of the two windows a
+	 * field reports, and if both dates happened to be the same day a mix-up
+	 * between them would pass unnoticed.
+	 */
+	private static final LocalDate REGISTRATION_DEADLINE = LocalDate.of(2026, 9, 30);
+
+	/** The tuition concept's {@code available_until}: the date that governs payment. */
+	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
+
+	private static final UUID PROGRAM_ID = UUID.randomUUID();
+
 	@Mock
 	private CandidateRepository candidateRepository;
 
@@ -75,12 +91,19 @@ class AccessFichaPaymentUseCaseImplTest {
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	@Mock
+	private FichaAmountResolver fichaAmountResolver;
+
 	private AccessFichaPaymentUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver);
+		// Default: the concept closes its window on this date. Every test that
+		// asserts on paymentClosesOn relies on it, and the ones that don't care
+		// are unaffected because a non-stubbed mock would answer null anyway.
+		lenient().when(fichaAmountResolver.paymentClosesOn(any())).thenReturn(PAYMENT_CLOSES_ON);
 	}
 
 	private static Candidate candidate() {
@@ -98,7 +121,7 @@ class AccessFichaPaymentUseCaseImplTest {
 
 	private static AdmissionPayment payment() {
 		return new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA, new BigDecimal("500.00"),
-				"REF-20260924-000101", LocalDate.now().plusDays(10));
+				"REF-20260924-000101", REGISTRATION_DEADLINE);
 	}
 
 	private void givenPendingCandidate() {
@@ -110,7 +133,7 @@ class AccessFichaPaymentUseCaseImplTest {
 
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo configInfo() {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
-				ProgramAdmissionConfigStatus.OPEN, UUID.randomUUID(), "Ing. en Tecnologías de la Información",
+				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ing. en Tecnologías de la Información",
 				ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES);
 	}
 
@@ -129,6 +152,70 @@ class AccessFichaPaymentUseCaseImplTest {
 		assertThat(access.alreadyPaid()).isFalse();
 		// a pending payment has no confirmation date and must not pretend to have one
 		assertThat(access.paidAt()).isNull();
+	}
+
+	/**
+	 * The two dates, and the reason they are separate fields.
+	 *
+	 * <p>{@code registrationDeadline} is a snapshot written at registration;
+	 * {@code paymentClosesOn} is asked of the catalog on every access. That
+	 * difference is the feature: extending a period is done in Conceptos de Pago
+	 * and has to move the date on a ficha that was issued weeks earlier.
+	 */
+	@Test
+	void access_reportsTheRegistrationDeadlineAndThePaymentWindowSeparately() {
+		givenPendingCandidate();
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
+		assertThat(access.paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
+	}
+
+	/** Read live, not snapshotted: the catalog decides, on every request. */
+	@Test
+	void thePaymentWindowIsReadLiveSoExtendingTheConceptMovesAPendingFicha() {
+		givenPendingCandidate();
+		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(LocalDate.of(2026, 11, 20));
+
+		assertThat(useCase.access(FOLIO, SUFFIX).paymentClosesOn()).isEqualTo(LocalDate.of(2026, 11, 20));
+	}
+
+	/**
+	 * No closing date configured is an absence, not a date. The screen has to be
+	 * able to omit the row, and it can only do that if null survives.
+	 */
+	@Test
+	void aConceptWithoutAClosingDateReportsNoPaymentWindow() {
+		givenPendingCandidate();
+		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(null);
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.paymentClosesOn()).isNull();
+		assertThat(access.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
+	}
+
+	/**
+	 * Access is the recovery path — folio plus three CURP characters — so it must
+	 * not become unavailable because a lookup came back empty. The applicant
+	 * already proved who she is; refusing to render would strand her with no way
+	 * to see what she owes.
+	 */
+	@Test
+	void aMissingAdmissionConfigStillRendersThePayment() {
+		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.of(candidate()));
+		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.empty());
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.amount()).isEqualByComparingTo("500.00");
+		assertThat(access.programName()).isNull();
+		assertThat(access.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
+		assertThat(access.paymentClosesOn()).isNull();
+		verify(fichaAmountResolver, never()).paymentClosesOn(any());
 	}
 
 	@Test

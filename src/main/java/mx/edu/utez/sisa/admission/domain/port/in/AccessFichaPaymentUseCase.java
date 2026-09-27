@@ -54,9 +54,18 @@ public interface AccessFichaPaymentUseCase {
 	 * evidence of a completed payment, so an applicant returning to an
 	 * already-paid ficha still sees her confirmation date and receipt folio
 	 * without having to open the full ficha.
+	 *
+	 * <p>Two dates, no single "deadline": {@code registrationDeadline} is the
+	 * sales window's closing day as it was when the ficha was issued, and
+	 * {@code paymentClosesOn} is the tuition concept's {@code availableUntil} read
+	 * live. Only the second one still constrains anything, and it is the one the
+	 * payment path enforces — so a screen that shows it is showing the real
+	 * deadline. {@code paymentClosesOn} is {@code null} when the catalog sets no
+	 * closing date, which the screen must render as an absence rather than as a
+	 * placeholder.
 	 */
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
-			String referenceNumber, LocalDate deadline, AdmissionPaymentStatus paymentStatus, String receiptNumber,
-			Instant paidAt, boolean alreadyPaid) {
+			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
+			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn) {
 	}
 }

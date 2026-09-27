@@ -107,8 +107,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private final LocalDate registrationDate;
 
-	private final int paymentDeadlineDays;
-
 	/**
 	 * The sales-window and quota checks compare against <em>now</em>, so the clock
 	 * is injected rather than read from a static: a {@code LocalDate.now()} captured
@@ -123,8 +121,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, int paymentDeadlineDays,
-			Clock clock) {
+			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -133,7 +130,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.registrationDate = registrationDate;
-		this.paymentDeadlineDays = paymentDeadlineDays;
 		this.clock = clock;
 	}
 
@@ -151,11 +147,38 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 		BigDecimal fichaAmount = fichaAmountResolver.resolve(config.programId(), registrationDate).amount();
 		AdmissionPayment payment = new AdmissionPayment(savedCandidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA,
-				fichaAmount, generateReference(savedCandidate.getFolio()),
-				registrationDate.plusDays(paymentDeadlineDays));
+				fichaAmount, generateReference(savedCandidate.getFolio()), registrationDeadline(config));
 		admissionPaymentRepository.save(payment);
 
-		return toResult(savedCandidate, payment);
+		return toResult(savedCandidate, payment, config);
+	}
+
+	/**
+	 * The ficha's registration deadline is the day the sales window closes, not
+	 * "ten days after today".
+	 *
+	 * <p>The old {@code registrationDate.plusDays(paymentDeadlineDays)} had no
+	 * relationship to anything the applicant could see or act on: with the period
+	 * closing 30/09 it printed 06/10, a date that contradicted both catalogs and
+	 * was enforced by nothing. Deriving it from {@code closesAt} means the number
+	 * on the ticket is the same boundary that
+	 * {@link #validateSalesWindow(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo)}
+	 * refuses registrations past, so the two can no longer disagree.
+	 *
+	 * <p>Converted through the clock's zone, not the server default: {@code
+	 * closesAt} is an {@link Instant}, and which calendar day it lands on is a
+	 * question about the university's day, not the host's. A window closing at
+	 * 05:00 UTC is 30/09 in Emiliano Zapata and 01/10 in Madrid — a host east of
+	 * UTC-6 would otherwise label the ficha with a day the applicant never saw on
+	 * the form.
+	 *
+	 * <p>No null handling on purpose: {@code closes_at} is {@code NOT NULL}, and
+	 * {@link #validateSalesWindow} already dereferences it, so a missing boundary
+	 * cannot reach here. Inventing a fallback date for a case that cannot happen
+	 * would only mean a wrong date printed on a real ticket.
+	 */
+	private LocalDate registrationDeadline(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
+		return config.closesAt().atZone(clock.getZone()).toLocalDate();
 	}
 
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
@@ -334,12 +357,20 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		return String.format("REF-%s-%s", today, seq);
 	}
 
-	private CandidateRegistrationResult toResult(Candidate candidate, AdmissionPayment payment) {
+	/**
+	 * Both dates travel back to the screen because they answer two different
+	 * questions and the old single {@code deadline} answered neither: when the
+	 * registration window shut (a snapshot, and already past by definition once
+	 * the applicant is reading this) and when the payment window shuts (live, and
+	 * the only one that still constrains anything).
+	 */
+	private CandidateRegistrationResult toResult(Candidate candidate, AdmissionPayment payment,
+			ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
 		return new CandidateRegistrationResult(candidate.getId(), candidate.getPersonId(),
 				candidate.getAdmissionConfigId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.isLlaveMxVerified(), candidate.getRegisteredAt(), candidate.isFirstChoice(),
 				candidate.getOutreachChannelId(), candidate.isEnabledForInduction(),
-				new FichaPayment(payment.getReferenceNumber(), payment.getAmount(), payment.getPaymentDeadline(),
-						payment.getPaymentStatus()));
+				new FichaPayment(payment.getReferenceNumber(), payment.getAmount(), payment.getRegistrationDeadline(),
+						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId())));
 	}
 }

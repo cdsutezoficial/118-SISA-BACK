@@ -12,6 +12,7 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -43,14 +44,17 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	private final FichaAmountResolver fichaAmountResolver;
+
 	public AccessFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.fichaAmountResolver = fichaAmountResolver;
 	}
 
 	@Override
@@ -63,16 +67,21 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 				.orElseThrow(() -> notFound());
 
 		boolean alreadyPaid = payment.getPaymentStatus() == AdmissionPaymentStatus.PAID;
-		String programName = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
-				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::programName)
-				.orElse(null);
+		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
+				.findById(candidate.getAdmissionConfigId()).orElse(null);
+
+		// Null config is tolerated rather than thrown: this is the recovery path
+		// (folio + CURP suffix), and refusing to render a ficha that demonstrably
+		// exists would strand the applicant with no way to see what they owe.
+		// paymentClosesOn already answers null when there is nothing to report.
+		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
 
 		return new PaymentAccess(candidate.getId(), candidate.getFolio(),
-				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)), programName,
-				payment.getAmount(), payment.getReferenceNumber(), payment.getPaymentDeadline(),
-				payment.getPaymentStatus(), payment.getReceiptNumber(),
+				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)),
+				config == null ? null : config.programName(), payment.getAmount(), payment.getReferenceNumber(),
+				payment.getRegistrationDeadline(), payment.getPaymentStatus(), payment.getReceiptNumber(),
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
-				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid);
+				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn);
 	}
 
 	private Candidate resolveCandidate(String folio) {

@@ -82,6 +82,48 @@ public class FichaAmountResolver {
 	}
 
 	/**
+	 * The date on which online payment of the ficha stops being accepted, or
+	 * {@code null} when the catalog sets no closing date (or the program has no
+	 * tuition concept to ask).
+	 *
+	 * <p>Read live, from the catalog, on every request — never snapshotted onto
+	 * the ticket. That is the whole point: extending a period is done by editing
+	 * the concept in Conceptos de Pago, and if the date were frozen at
+	 * registration a late applicant could not be given more time without a
+	 * per-ficha override. It also means this is the same value
+	 * {@link #requirePayableOn} enforces, so a screen that shows it is showing
+	 * what the system will actually do.
+	 *
+	 * <p>Deliberately returns {@code null} instead of throwing, and deliberately
+	 * does not check the date it returns against today. The caller is a screen
+	 * showing a pending ficha, and the interesting case is precisely the one
+	 * where the window has already closed: the applicant still has to be able to
+	 * open the ficha, see what they owe and read what the real date was. A method
+	 * that refused to answer after the fact would leave the UI with nothing to
+	 * show and a 409 as the only explanation.
+	 *
+	 * <p>{@code null} is genuinely ambiguous between "no end date configured" and
+	 * "no such program", and the two are reported the same way on purpose: in
+	 * both, the honest thing for the screen to do is omit the row rather than
+	 * invent a date.
+	 *
+	 * <p>Ambiguity is not ambiguous here. If a program somehow has more than one
+	 * active tuition concept there is no single window to report, and the strict
+	 * rule that {@link #requirePayableOn} enforces will already be refusing the
+	 * payment — so this returns {@code null} and lets that refusal be the
+	 * explanation, instead of picking one concept's date and displaying it as
+	 * though it governed.
+	 */
+	public LocalDate paymentClosesOn(UUID programId) {
+		List<PaymentConceptQueryPort.FichaConcept> concepts = paymentConceptQueryPort
+				.findActiveEnrollmentForProgram(programId);
+		if (concepts.size() != 1) {
+			return null;
+		}
+		return concepts.get(0).availableUntil();
+	}
+
+	/**
 	 * The strict "exactly one" rule, shared by pricing and by the payment-window
 	 * check so both agree on what a well-formed catalog looks like.
 	 */

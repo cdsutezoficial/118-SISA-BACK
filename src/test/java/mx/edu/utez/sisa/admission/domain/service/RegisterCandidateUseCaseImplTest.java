@@ -61,7 +61,14 @@ class RegisterCandidateUseCaseImplTest {
 	private static final UUID CHANNEL_ID = UUID.randomUUID();
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
 	private static final BigDecimal CONCEPT_COST = new BigDecimal("1578.00");
-	private static final int DEADLINE_DAYS = 10;
+
+	/**
+	 * The tuition concept's {@code available_until}, i.e. the date that actually
+	 * governs the payment. Deliberately a different day from
+	 * {@link #WINDOW_CLOSE}'s local date: if both dates came out equal, a test
+	 * could not tell which window a field was reporting.
+	 */
+	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 9, 30);
 
 	/**
 	 * The sales window and the quota are the two rules that used to live only on
@@ -120,8 +127,8 @@ class RegisterCandidateUseCaseImplTest {
 
 	/**
 	 * Same use case, different "now". {@code registrationDate} stays put so the
-	 * concept amount and the payment deadline are unaffected by which instant a
-	 * given test is exercising.
+	 * concept amount and the registration deadline are unaffected by which
+	 * instant a given test is exercising.
 	 */
 	private RegisterCandidateUseCaseImpl useCaseAt(Instant now) {
 		return useCaseAt(now, ZONE);
@@ -130,8 +137,7 @@ class RegisterCandidateUseCaseImplTest {
 	private RegisterCandidateUseCaseImpl useCaseAt(Instant now, ZoneId zone) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				outreachChannelRepository, highSchoolTypeRepository, REGISTRATION_DATE, DEADLINE_DAYS,
-				Clock.fixed(now, zone));
+				outreachChannelRepository, highSchoolTypeRepository, REGISTRATION_DATE, Clock.fixed(now, zone));
 	}
 
 	private static AdmissionConfigInfo config(Instant opensAt, Instant closesAt, int maxCandidates) {
@@ -168,10 +174,11 @@ class RegisterCandidateUseCaseImplTest {
 		stubConfig(config);
 		when(fichaAmountResolver.resolve(PROGRAM_ID, REGISTRATION_DATE))
 				.thenReturn(new FichaAmountResolver.FichaAmount(CONCEPT_COST, "Inscripción"));
+		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(PAYMENT_CLOSES_ON);
 	}
 
 	@Test
-	void register_generatesPaymentWithReferenceAmountAndDeadline() {
+	void register_generatesPaymentWithReferenceAmountAndBothWindowDates() {
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
 		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
@@ -181,8 +188,12 @@ class RegisterCandidateUseCaseImplTest {
 		assertThat(result.payment()).isNotNull();
 		assertThat(result.payment().referenceNumber()).startsWith("REF-");
 		assertThat(result.payment().amount()).isEqualByComparingTo(CONCEPT_COST);
-		assertThat(result.payment().deadline()).isEqualTo(REGISTRATION_DATE.plusDays(DEADLINE_DAYS));
 		assertThat(result.payment().paymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
+		// The registration deadline is closes_at read in the admission zone, NOT
+		// "registration + 10 days". WINDOW_CLOSE is 2026-10-01T05:00Z, which is
+		// still 30/09 in Emiliano Zapata.
+		assertThat(result.payment().registrationDeadline()).isEqualTo(LocalDate.of(2026, 9, 30));
+		assertThat(result.payment().paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
 
 		ArgumentCaptor<AdmissionPayment> paymentCaptor = ArgumentCaptor.forClass(AdmissionPayment.class);
 		verify(admissionPaymentRepository).save(paymentCaptor.capture());
@@ -190,6 +201,69 @@ class RegisterCandidateUseCaseImplTest {
 		assertThat(saved.getConcept()).isEqualTo(AdmissionPaymentConcept.ADMISSION_FICHA);
 		assertThat(saved.getReferenceNumber()).isEqualTo(result.payment().referenceNumber());
 		assertThat(saved.getPaymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
+		assertThat(saved.getRegistrationDeadline()).isEqualTo(result.payment().registrationDeadline());
+	}
+
+	/**
+	 * The whole point of the block, stated as a test: a period closing on the
+	 * 30th must not tell the applicant the 6th of the next month.
+	 *
+	 * <p>There is no longer a "10 days" anywhere to drift from, so the two dates
+	 * are pinned to the catalog and a change in either boundary moves exactly the
+	 * field it names.
+	 */
+	@Test
+	void register_neverReportsADateLaterThanTheSalesWindowItRegisteredUnder() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
+
+		CandidateRegistrationResult result = useCase.register(command());
+
+		assertThat(result.payment().registrationDeadline())
+				.isBeforeOrEqualTo(WINDOW_CLOSE.atZone(ZONE).toLocalDate())
+				.isEqualTo(WINDOW_CLOSE.atZone(ZONE).toLocalDate());
+	}
+
+	/**
+	 * The conversion follows the clock's zone, so a server that is not on UTEZ
+	 * time still stamps the ficha's deadline with the day the applicant saw on the
+	 * form.
+	 *
+	 * <p>{@code WINDOW_CLOSE} is 2026-10-01T05:00Z. That instant is 30/09 in
+	 * Emiliano Zapata and 01/10 in Madrid (UTC+2 that day), so the two zones give
+	 * two different answers — which is exactly what makes this a real assertion:
+	 * if the code read {@code ZoneId.systemDefault()} instead of the clock's zone,
+	 * the Madrid run would depend on wherever the JVM happens to be, and this
+	 * assertion would not be reproducible.
+	 */
+	@Test
+	void theRegistrationDeadlineIsClosesAtInTheClocksZoneNotTheServers() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
+
+		CandidateRegistrationResult inMorelos = useCaseAt(NOW, ZONE).register(command());
+		CandidateRegistrationResult inMadrid = useCaseAt(NOW, ZoneId.of("Europe/Madrid")).register(command());
+
+		assertThat(inMorelos.payment().registrationDeadline()).isEqualTo(LocalDate.of(2026, 9, 30));
+		assertThat(inMadrid.payment().registrationDeadline()).isEqualTo(LocalDate.of(2026, 10, 1));
+	}
+
+	/**
+	 * A concept with no closing date must not be turned into one. Inventing a
+	 * deadline here is what produced the original contradiction, so a null has to
+	 * survive all the way to the response.
+	 */
+	@Test
+	void register_leavesThePaymentWindowUnsetWhenTheConceptHasNoClosingDate() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
+		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(null);
+
+		CandidateRegistrationResult result = useCase.register(command());
+
+		assertThat(result.payment().paymentClosesOn()).isNull();
+		// and the registration date is still there, because it is a different fact
+		assertThat(result.payment().registrationDeadline()).isEqualTo(LocalDate.of(2026, 9, 30));
 	}
 
 	@Test

@@ -22,6 +22,7 @@ import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -58,11 +59,14 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 
 	private final HighSchoolTypeRepository highSchoolTypeRepository;
 
+	private final FichaAmountResolver fichaAmountResolver;
+
 	public GetCandidateFichaUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
-			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository) {
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
+			FichaAmountResolver fichaAmountResolver) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -70,6 +74,7 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		this.placeNameLookupPort = placeNameLookupPort;
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
+		this.fichaAmountResolver = fichaAmountResolver;
 	}
 
 	@Override
@@ -100,12 +105,17 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		DiversityProfile diversity = person.getDiversityProfile();
 		EmploymentInfo employment = person.getEmploymentInfo();
 		HighSchoolBackground school = person.getHighSchoolBackground();
+		// The PDF is the artifact the applicant carries to ventanilla, so it is
+		// the worst place to print a date under the wrong label: it has to name
+		// both windows separately, and the payment one is read live so an
+		// extension granted after the ficha was issued shows up on the reprint.
+		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
 		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName, person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
 				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(), payment.getAmount(),
-				payment.getPaymentDeadline(), payment.getPaymentStatus(), payment.getReceiptNumber(), payment.getPaidAt(),
-				payment.getOrderId(),
+				payment.getRegistrationDeadline(), paymentClosesOn, payment.getPaymentStatus(), payment.getReceiptNumber(),
+				payment.getPaidAt(), payment.getOrderId(),
 				new FichaData.DatosGenerales(person.getBirthDate(), person.getGender(), person.getNationality(),
 						resolveState(person.getBirthStateId()), resolveMunicipality(person.getBirthMunicipalityId()),
 						person.getMaritalStatus(), person.getNativeLanguage(), Boolean.TRUE.equals(person.getHasChildren())),

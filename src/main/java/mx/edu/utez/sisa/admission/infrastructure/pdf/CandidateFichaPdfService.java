@@ -36,8 +36,8 @@ import java.time.format.DateTimeFormatter;
  *
  * <p>Fase 8 restructured the layout to mirror the "Paso 4" confirmation of
  * {@code CandidatoRegistro.tsx}: title + period, then the payment block
- * (folio, program, amount, reference, deadline, status, receipt, EVO order)
- * and the sectioned form — Datos Generales, Domicilio Actual, Contacto,
+ * (folio, program, amount, reference, the two window dates, status, receipt, EVO
+ * order) and the sectioned form — Datos Generales, Domicilio Actual, Contacto,
  * Información Complementaria, Ingresos, Selección de Carrera and Antecedentes
  * Escolares. Catalog ids reach the PDF already resolved to display names by
  * the use case (Fase 7); enum labels (sexo/estado civil/tipo de trabajo)
@@ -184,7 +184,18 @@ public class CandidateFichaPdfService {
 		pagoRow(table, "Carrera", ficha.programName());
 		pagoRow(table, "Monto a pagar", ficha.amount());
 		pagoRow(table, "Referencia de pago", ficha.referenceNumber());
-		pagoRow(table, "Fecha límite de pago", ficha.deadline());
+		// Two rows, not one, and neither may borrow the other's label. The PDF is
+		// what the applicant carries to ventanilla, so a date printed under the
+		// wrong name is the version that ends up argued about at the window. The
+		// registration window explains why the ficha stops being issuable; the
+		// payment window is the one that decides whether the money still goes in.
+		pagoRow(table, "Fecha límite de inscripción", ficha.registrationDeadline());
+		// The payment row is omitted rather than dashed when the concept has no
+		// closing date: a printed "Fecha límite de pago: -" reads as a date that
+		// got lost, whereas an absent row just means that period has no end.
+		if (ficha.paymentClosesOn() != null) {
+			pagoRow(table, "Fecha límite de pago", ficha.paymentClosesOn());
+		}
 		pagoRow(table, "Estado de pago", ficha.paymentStatus().name());
 		if (ficha.receiptNumber() != null) {
 			pagoRow(table, "Recibo", ficha.receiptNumber());

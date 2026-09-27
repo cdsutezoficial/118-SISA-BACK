@@ -79,11 +79,29 @@ public interface RegisterCandidateUseCase {
 	}
 
 	/**
-	 * The admission-ticket payment generated together with the candidate:
-	 * reference, amount and deadline. Mirrors the frontend ficha's
-	 * "Monto a Pagar / Referencia / Fecha Límite" (screen 13).
+	 * The admission-ticket payment generated together with the candidate.
+	 *
+	 * <p>Two dates, because the screen used to show one under the label "Fecha
+	 * límite de pago" and it was neither the payment deadline nor enforceable:
+	 *
+	 * <ul>
+	 * <li>{@code registrationDeadline} — the sales window's closing day,
+	 * snapshotted at registration from {@code ProgramAdmissionConfig.closesAt}.
+	 * By the time anyone reads this response the applicant is already registered,
+	 * so this date is history: it explains why the ficha stops being issuable,
+	 * not when to pay.</li>
+	 * <li>{@code paymentClosesOn} — the tuition concept's
+	 * {@code availableUntil}, read live. This is the one that constrains the
+	 * payment, and the one the payment path enforces.</li>
+	 * </ul>
+	 *
+	 * <p>{@code paymentClosesOn} is {@code null} when the catalog sets no closing
+	 * date, which the screen must render as "no deadline" rather than as a
+	 * placeholder date.
+	 *
+	 * <p>Mirrors the frontend ficha's "Monto a Pagar / Referencia" (screen 13).
 	 */
-	record FichaPayment(String referenceNumber, BigDecimal amount, LocalDate deadline,
-			AdmissionPaymentStatus paymentStatus) {
+	record FichaPayment(String referenceNumber, BigDecimal amount, LocalDate registrationDeadline,
+			AdmissionPaymentStatus paymentStatus, LocalDate paymentClosesOn) {
 	}
 }

@@ -20,8 +20,9 @@ import java.util.UUID;
  * {@code 118-SISA-CLAUDE/docs/design/dominio/03-admision.md}. Created as
  * {@code PENDING} together with its {@link Candidate} by
  * {@code RegisterCandidateUseCase} (the ticket generates a payment reference,
- * amount and deadline the moment the ficha is created); transitioned to
- * {@code PAID} by {@code ConfirmAdmissionPaymentUseCase}.
+ * amount and the registration window's closing date the moment the ficha is
+ * created); transitioned to {@code PAID} by
+ * {@code ConfirmAdmissionPaymentUseCase}.
  *
  * <p>One {@code AdmissionPayment} per {@code Candidate} for the
  * {@code ADMISSION_FICHA} concept (identity: {@code candidateId}). The
@@ -71,8 +72,27 @@ public class AdmissionPayment {
 	@Column(name = "receipt_number", length = 40)
 	private String receiptNumber;
 
+	/**
+	 * The registration sales window's closing date, snapshotted when the ficha
+	 * was issued: {@code ProgramAdmissionConfig.closesAt}, not a count of days
+	 * after registration.
+	 *
+	 * <p><b>Legacy column name.</b> The column is still called
+	 * {@code payment_deadline} and the field deliberately keeps mapping to it.
+	 * Renaming a {@code NOT NULL} column is not free under
+	 * {@code ddl-auto=update}: Hibernate would add the new column and leave the
+	 * old one behind, so every existing row would fail the new column's
+	 * {@code NOT NULL} the next time it was written. The misleading name is a
+	 * cheaper thing to carry than a migration, and it is confined to this
+	 * annotation — everything above it speaks {@code registrationDeadline}.
+	 *
+	 * <p>This is <em>not</em> the payment deadline. The payment window lives in
+	 * {@code PaymentConcept.availableUntil} and is read live, because editing the
+	 * concept is how a period gets extended and every pending ficha of that
+	 * program has to move with it. See {@code FichaAmountResolver#paymentClosesOn}.
+	 */
 	@Column(name = "payment_deadline", nullable = false)
-	private LocalDate paymentDeadline;
+	private LocalDate registrationDeadline;
 
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
@@ -90,13 +110,13 @@ public class AdmissionPayment {
 	}
 
 	public AdmissionPayment(UUID candidateId, AdmissionPaymentConcept concept, BigDecimal amount,
-			String referenceNumber, LocalDate paymentDeadline) {
+			String referenceNumber, LocalDate registrationDeadline) {
 		this.candidateId = candidateId;
 		this.concept = concept;
 		this.amount = amount;
 		this.referenceNumber = referenceNumber;
 		this.paymentStatus = AdmissionPaymentStatus.PENDING;
-		this.paymentDeadline = paymentDeadline;
+		this.registrationDeadline = registrationDeadline;
 		this.createdAt = Instant.now();
 	}
 
@@ -151,8 +171,12 @@ public class AdmissionPayment {
 		return receiptNumber;
 	}
 
-	public LocalDate getPaymentDeadline() {
-		return paymentDeadline;
+	/**
+	 * When the registration window this ficha was issued under closes. See the
+	 * field javadoc for why the column is still {@code payment_deadline}.
+	 */
+	public LocalDate getRegistrationDeadline() {
+		return registrationDeadline;
 	}
 
 	public Instant getCreatedAt() {
