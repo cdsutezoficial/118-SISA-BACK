@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
@@ -30,7 +31,25 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 		return lookupJpaRepository
 				.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
 						programId, onDate)
-				.stream().map(c -> new FichaConcept(c.getName(), c.getCost(), c.getCostExternal(), c.isExternal()))
-				.toList();
+				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
+	}
+
+	@Override
+	public List<FichaConcept> findActiveEnrollmentForProgram(UUID programId) {
+		return lookupJpaRepository
+				.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
+						programId)
+				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
+	}
+
+	/**
+	 * The window travels with the concept even on the date-filtered query, where
+	 * it is redundant — the caller has already filtered on it. Keeping the mapping
+	 * in one place is what stops the two queries from drifting into returning
+	 * different shapes for the same record.
+	 */
+	private static FichaConcept toFichaConcept(PaymentConcept c) {
+		return new FichaConcept(c.getName(), c.getCost(), c.getCostExternal(), c.isExternal(), c.getAvailableFrom(),
+				c.getAvailableUntil());
 	}
 }

@@ -7,11 +7,15 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,6 +35,11 @@ import java.util.UUID;
  * <li>the payment must still be {@code PENDING} (409,
  * {@code CandidateAlreadyPaidException}) — an already-paid ficha cannot start
  * a new online session;</li>
+ * <li>the tuition concept's availability window must contain today (409,
+ * {@code PaymentConceptExpiredException}, or
+ * {@code FichaPaymentConceptNotFoundException} when the program has no tuition
+ * concept at all). Checked <em>before</em> the gateway is called — see
+ * {@link #requireConceptWindowOpen};</li>
  * <li>the gateway {@code INITIATE_CHECKOUT} must produce a session (failure →
  * {@code EvoPaymentGatewayException} → 502).</li>
  * </ol>
@@ -65,17 +74,38 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 */
 	private final Set<String> allowedReturnPaths;
 
-	public InitiateFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
-			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl) {
-		this(candidateRepository, admissionPaymentRepository, evoPaymentsGateway, orderIdBuilder, currency, returnUrl,
-				cancelUrl, checkoutJsUrl, Set.of());
-	}
+	/**
+	 * Resolves the candidate's program so the tuition concept's window can be
+	 * re-checked at payment time, and prices nothing.
+	 */
+	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	private final FichaAmountResolver fichaAmountResolver;
+
+	/**
+	 * Supplies "today" for that window check. Injected, and zone-pinned by
+	 * {@code UseCaseConfig}, because a period boundary decided from the server's
+	 * default zone is a date the applicant cannot see anywhere on screen.
+	 */
+	private final Clock clock;
+
+	/**
+	 * A single constructor, deliberately.
+	 *
+	 * <p>This class used to offer shorter overloads. When the concept-window check
+	 * was added they would have had to default its three collaborators to
+	 * {@code null}, which means a caller could construct a checkout interactor
+	 * that either throws {@code NullPointerException} on the first payment or —
+	 * worse, with a null guard — silently accepts payments outside the period the
+	 * catalog says are closed. A rule that can be forgotten by choosing a
+	 * constructor is not a rule. Every dependency is required, so the only way to
+	 * build this is to decide what "today" means and where the concept lives.
+	 */
 	public InitiateFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl,
-			Set<String> allowedReturnPaths) {
+			Set<String> allowedReturnPaths, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			FichaAmountResolver fichaAmountResolver, Clock clock) {
 		this.candidateRepository = candidateRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -85,6 +115,9 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.cancelUrl = cancelUrl;
 		this.checkoutJsUrl = checkoutJsUrl;
 		this.allowedReturnPaths = allowedReturnPaths == null ? Set.of() : Set.copyOf(allowedReturnPaths);
+		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.fichaAmountResolver = fichaAmountResolver;
+		this.clock = clock;
 	}
 
 	@Override
@@ -102,6 +135,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
 
+		requireConceptWindowOpen(candidate);
+
 		String returnUrl = resolveReturnUrl(returnPath);
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
@@ -115,6 +150,34 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.merchant(),
 				session.successIndicator(), checkoutJsUrl);
+	}
+
+	/**
+	 * Refuses to start a checkout outside the tuition concept's availability
+	 * window, and does it <em>before</em> the gateway is touched.
+	 *
+	 * <p>That ordering is the whole point of the method. The window is checked at
+	 * registration too, but registration and payment are days apart and the
+	 * catalog can change in between — extending a period is how staff normally
+	 * handle a late applicant, and closing it is how they close a cohort. A
+	 * ticket issued on the last open day would otherwise stay payable for as long
+	 * as the applicant kept clicking, which is exactly the contradiction this
+	 * block exists to remove.
+	 *
+	 * <p>Cutting before the gateway call is what makes a closed period free. Once
+	 * {@code INITIATE_CHECKOUT} has run, Evo has an order in {@code PENDING} that
+	 * it will remember, and re-opening the period would then hit the duplicate
+	 * order rejection from {@code §2.3} of the plan on an id we already burned.
+	 *
+	 * <p>The amount is not consulted here and never re-priced: what the applicant
+	 * pays is still {@code payment.getAmount()}, frozen at registration.
+	 */
+	private void requireConceptWindowOpen(Candidate candidate) {
+		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
+				.findById(candidate.getAdmissionConfigId())
+				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
+		fichaAmountResolver.requirePayableOn(config.programId(), LocalDate.now(clock));
 	}
 
 	/**

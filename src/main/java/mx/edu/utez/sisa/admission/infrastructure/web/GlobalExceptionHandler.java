@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -120,6 +121,17 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(AmbiguousFichaPaymentConceptException.class)
 	public ResponseEntity<ErrorResponse> handleAmbiguousFichaPaymentConcept(AmbiguousFichaPaymentConceptException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	/**
+	 * The tuition concept exists but its availability window is closed. 409, and
+	 * the message is forwarded verbatim because it is applicant-facing and names
+	 * the date that actually matters.
+	 */
+	@ExceptionHandler(PaymentConceptExpiredException.class)
+	public ResponseEntity<ErrorResponse> handlePaymentConceptExpired(PaymentConceptExpiredException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}

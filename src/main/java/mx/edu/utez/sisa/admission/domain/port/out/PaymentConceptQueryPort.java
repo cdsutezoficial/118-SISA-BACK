@@ -27,10 +27,30 @@ public interface PaymentConceptQueryPort {
 	List<FichaConcept> findActiveEnrollmentForProgram(UUID programId, LocalDate onDate);
 
 	/**
+	 * The same concepts with the availability window <em>not applied</em>.
+	 *
+	 * <p>This exists purely to tell two failures apart. "The program has no
+	 * tuition concept at all" is a catalog misconfiguration the staff has to fix;
+	 * "the concept exists but its window has closed" is the normal end of a
+	 * sales period, and the applicant deserves to be told the date rather than
+	 * sent to a screen about a missing record. With only the date-filtered
+	 * query, both arrive as the same empty list and both had to be reported the
+	 * same way.
+	 */
+	List<FichaConcept> findActiveEnrollmentForProgram(UUID programId);
+
+	/**
 	 * Minimal pricing projection the admission flow needs. The amount charged
 	 * is {@code costExternal} when the concept is external, {@code cost}
 	 * otherwise.
+	 *
+	 * <p>{@code availableFrom}/{@code availableUntil} are the raw catalog
+	 * boundaries, {@code null} meaning "open on that side". They are carried
+	 * rather than pre-filtered so a caller can report <em>which</em> boundary was
+	 * missed; a message that only said "not available" would leave the applicant
+	 * with nothing to act on.
 	 */
-	record FichaConcept(String name, BigDecimal cost, BigDecimal costExternal, boolean isExternal) {
+	record FichaConcept(String name, BigDecimal cost, BigDecimal costExternal, boolean isExternal,
+			LocalDate availableFrom, LocalDate availableUntil) {
 	}
 }

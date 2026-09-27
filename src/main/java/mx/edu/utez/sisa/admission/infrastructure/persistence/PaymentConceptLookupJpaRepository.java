@@ -41,4 +41,25 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 	List<PaymentConcept> findActiveTuitionForProgram(@Param("status") PaymentConceptStatus status,
 			@Param("type") PaymentConceptType type, @Param("programId") UUID programId,
 			@Param("onDate") LocalDate onDate);
+
+	/**
+	 * Identical to {@link #findActiveTuitionForProgram} minus the two
+	 * {@code availableFrom}/{@code availableUntil} predicates.
+	 *
+	 * <p>Kept as a separate method rather than a nullable {@code onDate} on the
+	 * existing one on purpose: {@code (c.availableFrom IS NULL OR c.availableFrom
+	 * <= :onDate)} with a null parameter silently yields the empty list, so one
+	 * method would have to branch on null to mean two different things, and a
+	 * caller that forgot the branch would get a plausible-looking empty result
+	 * instead of an error.
+	 */
+	@Query(value = """
+			SELECT c FROM PaymentConcept c
+			WHERE c.status = :status
+			  AND c.type = :type
+			  AND c.isTuition = true
+			  AND :programId MEMBER OF c.programIds
+			""")
+	List<PaymentConcept> findActiveTuitionForProgramIgnoringWindow(@Param("status") PaymentConceptStatus status,
+			@Param("type") PaymentConceptType type, @Param("programId") UUID programId);
 }

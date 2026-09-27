@@ -213,12 +213,15 @@ public class UseCaseConfig {
 	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
+			Clock clock,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths) {
 		Set<String> allowlist = Arrays.stream(allowedReturnPaths.split(",")).map(String::trim)
 				.filter(path -> !path.isEmpty()).collect(Collectors.toUnmodifiableSet());
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
-				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist);
+				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
+				fichaAmountResolver, clock);
 	}
 
 	@Bean

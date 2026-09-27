@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
@@ -7,9 +8,12 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.Ini
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
+import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,7 +22,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -27,7 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,6 +67,21 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
+	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
+
+	private static final UUID PROGRAM_ID = UUID.randomUUID();
+
+	/**
+	 * Fixed so the window check is a fact about the test rather than about the day
+	 * it runs, and pinned to the same zone the application configures.
+	 */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final LocalDate TODAY = LocalDate.of(2026, 9, 25);
+
+	/** Noon on {@link #TODAY} as an instant, so the local date is unambiguous. */
+	private static final Instant NOW_AT_NOON = TODAY.atTime(12, 0).atZone(ZONE).toInstant();
+
 	@Mock
 	private CandidateRepository candidateRepository;
 
@@ -70,18 +94,31 @@ class InitiateFichaPaymentUseCaseImplTest {
 	@Mock
 	private OrderIdBuilder orderIdBuilder;
 
+	@Mock
+	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
+
+	@Mock
+	private FichaAmountResolver fichaAmountResolver;
+
 	private InitiateFichaPaymentUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		// lenient: the 404/409 guard cases throw before the builder is ever consulted
 		lenient().when(orderIdBuilder.build(any())).thenReturn(ORDER_ID);
+		// lenient: only the paths that get past the PAID check resolve the config
+		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
+						ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null,
+						LocalDate.of(2026, 9, 1).atStartOfDay(ZONE).toInstant(),
+						LocalDate.of(2026, 9, 30).atStartOfDay(ZONE).toInstant(), 40)));
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL);
+				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
+				programAdmissionConfigQueryPort, fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE));
 	}
 
 	private static Candidate candidate() {
-		return new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		return new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 	}
 
 	private static AdmissionPayment payment() {
@@ -135,7 +172,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				admissionPaymentRepository, evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
-				CANCEL, SDK_URL);
+				CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver,
+				Clock.fixed(NOW_AT_NOON, ZONE));
 
 		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
 		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
@@ -154,7 +192,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		String returnWithQuery = RETURN + "?origen=checkout";
 		InitiateFichaPaymentUseCaseImpl customUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				admissionPaymentRepository, evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
-				SDK_URL);
+				SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE));
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
@@ -212,9 +250,19 @@ class InitiateFichaPaymentUseCaseImplTest {
 	// -- returnPath: the "return me to my own screen" feature, and its guardrails --
 
 	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlist() {
-		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL,
-				Set.of("/portal/registro/ficha", "/portal/ficha/pago"));
+		return useCaseWithAllowlistAndCancel(CANCEL);
+	}
+
+	/**
+	 * Every collaborator is required, so the helper has to name all of them. The
+	 * fixed clock and the config stub come from {@code setUp}, which is why the
+	 * window tests below can rely on "today" meaning {@link #TODAY}.
+	 */
+	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlistAndCancel(String cancelBase) {
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+				orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
+				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE));
 	}
 
 	private void givenPayableCandidate() {
@@ -279,12 +327,6 @@ class InitiateFichaPaymentUseCaseImplTest {
 	// would have refused to show them (e.g. the weak folio+CURP lookup landing on
 	// the full ficha). --
 
-	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlistAndCancel(String cancelBase) {
-		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
-				Set.of("/portal/registro/ficha", "/portal/ficha/pago"));
-	}
-
 	@Test
 	void allowlistedReturnPathAlsoSwapsTheCancelUrlPath() {
 		givenPayableCandidate();
@@ -319,11 +361,95 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 		new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, "", SDK_URL,
-				Set.of("/portal/registro/ficha", "/portal/ficha/pago")).initiateCheckout(CANDIDATE_ID,
+				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE)).initiateCheckout(CANDIDATE_ID,
 						"/portal/ficha/pago");
 
 		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
 				+ "&orderId=" + ORDER_ID;
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> expected.equals(order.cancelUrl())));
+	}
+
+	// ── block 3: the tuition concept's availability window, re-checked at payment ──
+
+	/**
+	 * The test the whole block exists for. A concept window that closed after
+	 * registration must stop the checkout — and, critically, must stop it
+	 * <em>before</em> the gateway is called. Once {@code INITIATE_CHECKOUT} has
+	 * run, Evo holds a PENDING order against an id we will never reuse, so
+	 * re-opening the period would immediately hit the duplicate-order rejection
+	 * documented in §2.3 of the plan. Refusing locally is what keeps a closed
+	 * period reversible.
+	 */
+	@Test
+	void aClosedConceptWindowStopsTheCheckoutWithoutCallingEvo() {
+		// Deliberately NOT givenPayableCandidate(): that helper stubs the gateway
+		// session, and leaving the stub unused is itself the assertion — Mockito's
+		// strict mode fails the test if the use case ever reaches Evo.
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		doThrow(new PaymentConceptExpiredException("El pago de la ficha de esta carrera cerró el 20/09/2026."))
+				.when(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(PaymentConceptExpiredException.class).hasMessageContaining("20/09/2026");
+
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(admissionPaymentRepository, never()).save(any());
+	}
+	@Test
+	void theWindowIsCheckedAgainstTheCandidatesOwnProgram() {
+		givenPayableCandidate();
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		// candidate → admissionConfig → program: getting this chain wrong would
+		// check a different career's concept and pass a closed one.
+		verify(programAdmissionConfigQueryPort).findById(ADMISSION_CONFIG_ID);
+		verify(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
+	}
+
+	@Test
+	void theAmountIsTheOneFrozenAtRegistration() {
+		givenPayableCandidate();
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		// The catalog cost is deliberately NOT consulted: admission_payment.amount
+		// was set when the ficha was issued, and a price edit between issuing and
+		// paying must not change what the applicant owes. requirePayableOn asks
+		// the resolver about the window and nothing else; resolve() — the only
+		// method that can produce a number — is never called.
+		verify(fichaAmountResolver, never()).resolve(any(), any());
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order.amount()
+				.compareTo(new BigDecimal("500.00")) == 0));
+	}
+
+	@Test
+	void aFichaWhoseAdmissionConfigVanishedIsRejectedRatherThanPaid() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(ProgramAdmissionConfigNotFoundException.class);
+
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
+
+	@Test
+	void anAlreadyPaidFichaIsRejectedBeforeTheWindowIsEvenConsulted() {
+		AdmissionPayment paid = payment();
+		paid.markPaid("REC-1");
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(CandidateAlreadyPaidException.class);
+
+		// "You already paid" is the more useful answer than "the period closed",
+		// so the window is not even looked at.
+		verify(fichaAmountResolver, never()).requirePayableOn(any(), any());
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
 	}
 }

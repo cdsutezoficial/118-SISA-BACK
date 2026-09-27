@@ -27,7 +27,7 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Real-DB (H2) coverage for
+ * Real-DB coverage for
  * {@link ProgramAdmissionConfigJpaRepository#findOpenOfferedOptions}, in the
  * style of {@code ProgramAdmissionConfigRepositoryAdapterSearchIT}.
  *
@@ -35,8 +35,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * are enforced <em>in SQL</em> rather than in a use case, so a unit test with a
  * mocked repository would prove nothing about it: a typo in the JPQL, a wrong
  * entity name, or a filter that quietly compares against the wrong column only
- * surfaces when Hibernate parses the query and MySQL/H2 executes it. Both
+ * surfaces when Hibernate parses the query and the database executes it. Both
  * happen here.
+ *
+ * <h2>Warning: this class recreates the schema it points at</h2>
+ * There is no embedded test database configured, so {@code ddl-auto=create-drop}
+ * runs against whatever {@code DB_URL} names — the local MySQL development
+ * database by default — dropping and rebuilding it from the entities. Point
+ * {@code DB_URL} at a throwaway database when running this locally.
  */
 @DataJpaTest
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
