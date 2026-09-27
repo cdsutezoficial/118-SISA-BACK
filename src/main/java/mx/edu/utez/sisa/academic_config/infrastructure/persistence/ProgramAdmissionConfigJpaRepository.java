@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,6 +58,22 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 	 * the picker can label a config by program name + modality. Interface
 	 * projection keeps the read light (glide-light reads, same convention as
 	 * {@code ProgramOptionProjection}).
+	 *
+	 * <p>It also applies the two rules that decide whether a config is actually
+	 * sellable, so the picker cannot offer a career the registration endpoint is
+	 * about to reject: {@code now} must be inside {@code opensAt}/{@code closesAt},
+	 * and fewer than {@code maxCandidates} fichas may be paid. Without them the
+	 * applicant picks a career, fills four steps, and only then reads why it failed.
+	 *
+	 * <p>Both boundaries are inclusive, matching
+	 * {@code RegisterCandidateUseCaseImpl}'s checks — the two have to agree or the
+	 * picker starts lying the moment the clock passes a boundary.
+	 *
+	 * <p>The quota subquery reaches into {@code admission}'s tables on purpose: the
+	 * rule is "paid fichas &lt; quota", and only a query over {@code Candidate} +
+	 * {@code AdmissionPayment} can answer the paid half. It is read-only and stays
+	 * here because this repository already backs the public picker's query, so
+	 * moving it would mean a second round trip on the page's first request.
 	 */
 	@Query(value = """
 			SELECT c.id AS id, p.name AS programName, p.modality AS modality
@@ -64,9 +81,16 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 			JOIN AcademicProgram p ON p.id = c.programId
 			WHERE c.status = mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus.OPEN
 			  AND c.isOffered = true
+			  AND :now BETWEEN c.opensAt AND c.closesAt
+			  AND (SELECT COUNT(pay)
+			         FROM Candidate cand
+			         JOIN AdmissionPayment pay ON pay.candidateId = cand.id
+			         WHERE cand.admissionConfigId = c.id
+			           AND pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID
+			      ) < c.maxCandidates
 			ORDER BY p.name
 			""")
-	List<ProgramAdmissionConfigOptionProjection> findOpenOfferedOptions();
+	List<ProgramAdmissionConfigOptionProjection> findOpenOfferedOptions(@Param("now") Instant now);
 
 	/** Minimal projection for the public picker — {@code id}, program name (label) and modality. */
 	interface ProgramAdmissionConfigOptionProjection {

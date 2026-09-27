@@ -50,7 +50,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -132,16 +134,36 @@ public class UseCaseConfig {
 		return new ChangeHighSchoolTypeStatusUseCaseImpl(highSchoolTypeRepository);
 	}
 
+	/**
+	 * The single source of "now" for the admission flow's time-dependent rules —
+	 * the sales window, and (from the payment phase) the concept's availability
+	 * window. A bean rather than a static call so those rules are testable against
+	 * a fixed instant and so they cannot disagree with each other about what day
+	 * it is.
+	 *
+	 * <p>The zone is configured, not inherited from the JVM. That distinction is
+	 * the whole point: {@code opensAt}/{@code closesAt} are stored as UTC
+	 * {@code Instant}s, but staff and applicants read them as calendar dates in
+	 * Mexico. On a server whose default zone is UTC, {@code Clock.systemDefaultZone()}
+	 * would resolve "opens 01/09 00:00 local" to 31/08 and tell an applicant to
+	 * come back on the wrong day. Pinning the zone makes the rule agree with the
+	 * calendar on screen whether the app runs in Mexico City, UTC, or a container.
+	 */
+	@Bean
+	public Clock clock(@Value("${sisa.admission.zone:America/Mexico_City}") String zone) {
+		return Clock.system(ZoneId.of(zone));
+	}
+
 	@Bean
 	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			@Value("${sisa.admission.payment.deadline-days:10}") int paymentDeadlineDays) {
+			@Value("${sisa.admission.payment.deadline-days:10}") int paymentDeadlineDays, Clock clock) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), paymentDeadlineDays);
+				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), paymentDeadlineDays, clock);
 	}
 
 	/**

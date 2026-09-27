@@ -12,7 +12,9 @@ import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataExce
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.admission.shared.exception.TooManyPaymentAccessAttemptsException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,9 @@ import java.time.Instant;
  * plus the candidate-registration family: {@code CandidateAlreadyExistsException},
  * {@code ProgramAdmissionConfigNotFoundException} (404),
  * {@code ProgramAdmissionConfigNotOpenException} (409),
+ * {@link ProgramAdmissionConfigSalesClosedException} /
+ * {@link ProgramAdmissionConfigCapacityReachedException} (409 — the dates and the
+ * quota the Configuración de Admisión screen edits, finally enforced),
  * {@code InvalidCandidateFichaDataException} (400),
  * {@code CandidateNotFoundException} (404 — payment-confirmation / ficha-read
  * family) and {@code CandidateAlreadyPaidException} (409 — repeat
@@ -87,6 +92,23 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ProgramAdmissionConfigNotOpenException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotOpen(ProgramAdmissionConfigNotOpenException ex,
 			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	/**
+	 * The sales window is closed. The message is applicant-facing (it names the
+	 * date, not the config), so it is forwarded as-is rather than replaced with a
+	 * generic 409.
+	 */
+	@ExceptionHandler(ProgramAdmissionConfigSalesClosedException.class)
+	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigSalesClosed(
+			ProgramAdmissionConfigSalesClosedException ex, HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(ProgramAdmissionConfigCapacityReachedException.class)
+	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigCapacityReached(
+			ProgramAdmissionConfigCapacityReachedException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
 	}
 

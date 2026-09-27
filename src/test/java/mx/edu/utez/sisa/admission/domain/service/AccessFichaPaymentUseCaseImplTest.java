@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +54,14 @@ class AccessFichaPaymentUseCaseImplTest {
 	private static final UUID PERSON_ID = UUID.randomUUID();
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
+
+	// Sales window / quota ride along on the projection. This use case only reads
+	// the config to name the program on the payment page, so the values just have
+	// to be plausible — the rules themselves are covered in
+	// RegisterCandidateUseCaseImplTest.
+	private static final Instant WINDOW_OPEN = Instant.parse("2026-01-01T00:00:00Z");
+	private static final Instant WINDOW_CLOSE = Instant.parse("2026-12-31T23:59:59Z");
+	private static final int MAX_CANDIDATES = 40;
 
 	@Mock
 	private CandidateRepository candidateRepository;
@@ -102,7 +111,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo configInfo() {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
 				ProgramAdmissionConfigStatus.OPEN, UUID.randomUUID(), "Ing. en Tecnologías de la Información",
-				ProgramModality.PRESENCIAL, "2026-1");
+				ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES);
 	}
 
 	@Test

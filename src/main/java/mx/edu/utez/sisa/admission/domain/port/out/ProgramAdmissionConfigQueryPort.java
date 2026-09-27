@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.domain.port.out;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,16 +14,23 @@ import java.util.UUID;
  * looking up the config this way rather than importing
  * {@code academic_config}'s repository port directly (same "own minimal
  * access" rationale as {@code CandidatePersonRepository} / academic_config's
- * {@code PersonLookupJpaRepository}). Cap-resistant (paid-ficha count vs
- * {@code maxCandidates}) validation is deferred until {@code AdmissionPayment}
- * exists (plan §5).
+ * {@code PersonLookupJpaRepository}).
+ *
+ * <p>The cap is not resolved here: {@code maxCandidates} comes across on the
+ * projection, but the paid-ficha count it is compared against belongs to
+ * {@code admission}'s own tables, so the use case asks
+ * {@code AdmissionPaymentRepository} for it. The rule reads "PAID fichas <
+ * maxCandidates" and each side of that comparison is owned by the context that
+ * owns its data.
  */
 public interface ProgramAdmissionConfigQueryPort {
 
 	/**
 	 * Minimal projection of the config the admission flow needs: its id,
-	 * sales-window status, program id/name/modality and the destination-period
-	 * name. Expands the original {@code (id, status, programName)} shape so
+	 * sales-window status, program id/name/modality, the destination-period
+	 * name and the three fields that actually gate a registration — the
+	 * {@code opensAt}/{@code closesAt} instants and {@code maxCandidates}.
+	 * Expands the original {@code (id, status, programName)} shape so
 	 * the ficha (PDF / confirmation / payment-instructions emails) can display
 	 * the program and period without {@code admission} importing
 	 * {@code academic_config}'s program/period repositories. {@code programId}
@@ -38,8 +46,12 @@ public interface ProgramAdmissionConfigQueryPort {
 	 *                  resolved from the {@code AcademicProgram} — the admission flow never stores
 	 *                  modality on {@code Candidate} itself (derived from the program).
 	 * @param periodName the destination-period name the accepted candidates enroll into.
+	 * @param opensAt   when ticket sales open — registration outside the window is a 409.
+	 * @param closesAt  when ticket sales close — registration outside the window is a 409.
+	 * @param maxCandidates how many <em>paid</em> fichas the program may sell; the
+	 *                      count behind it lives in {@code admission}.
 	 */
 	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
-			ProgramModality modality, String periodName) {
+			ProgramModality modality, String periodName, Instant opensAt, Instant closesAt, int maxCandidates) {
 	}
 }

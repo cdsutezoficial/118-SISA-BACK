@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +36,13 @@ class GetFichaAmountUseCaseImplTest {
 
 	private static final LocalDate QUOTE_DATE = LocalDate.of(2026, 9, 25);
 
+	// Carried by the projection but not consulted by this use case — it only
+	// quotes the concept's amount. The rules the window gates are covered in
+	// RegisterCandidateUseCaseImplTest.
+	private static final Instant WINDOW_OPEN = Instant.parse("2026-01-01T00:00:00Z");
+	private static final Instant WINDOW_CLOSE = Instant.parse("2026-12-31T23:59:59Z");
+	private static final int MAX_CANDIDATES = 40;
+
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
@@ -52,7 +60,8 @@ class GetFichaAmountUseCaseImplTest {
 	void quotesTheProgramConceptAmount() {
 		when(programAdmissionConfigQueryPort.findById(CONFIG_ID))
 				.thenReturn(Optional.of(new AdmissionConfigInfo(CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null)));
+						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, WINDOW_OPEN,
+						WINDOW_CLOSE, MAX_CANDIDATES)));
 		when(fichaAmountResolver.resolve(PROGRAM_ID, QUOTE_DATE))
 				.thenReturn(new FichaAmountResolver.FichaAmount(new BigDecimal("1578.00"), "Inscripción"));
 

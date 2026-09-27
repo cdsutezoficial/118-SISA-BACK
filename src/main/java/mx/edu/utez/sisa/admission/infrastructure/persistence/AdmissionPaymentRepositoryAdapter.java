@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import org.springframework.stereotype.Component;
 
@@ -28,5 +29,10 @@ public class AdmissionPaymentRepositoryAdapter implements AdmissionPaymentReposi
 	@Override
 	public Optional<AdmissionPayment> findByCandidateId(UUID candidateId) {
 		return jpaRepository.findByCandidateId(candidateId);
+	}
+
+	@Override
+	public long countPaidByAdmissionConfigId(UUID admissionConfigId) {
+		return jpaRepository.countPaidByAdmissionConfigId(admissionConfigId, AdmissionPaymentStatus.PAID);
 	}
 }

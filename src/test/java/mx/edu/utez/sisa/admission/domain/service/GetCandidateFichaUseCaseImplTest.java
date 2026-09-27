@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Optional;
@@ -42,6 +43,13 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class GetCandidateFichaUseCaseImplTest {
+
+	// Carried by the projection; this use case only needs the program name, so
+	// the window/quota just have to be plausible. The rules they gate are covered
+	// in RegisterCandidateUseCaseImplTest.
+	private static final Instant WINDOW_OPEN = Instant.parse("2026-01-01T00:00:00Z");
+	private static final Instant WINDOW_CLOSE = Instant.parse("2026-12-31T23:59:59Z");
+	private static final int MAX_CANDIDATES = 40;
 
 	@Mock
 	private CandidateRepository candidateRepository;
@@ -97,7 +105,7 @@ class GetCandidateFichaUseCaseImplTest {
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
-						ProgramModality.PRESENCIAL, "2026-2")));
+						ProgramModality.PRESENCIAL, "2026-2", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
 	}
 
 	@Test

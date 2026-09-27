@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -112,9 +113,15 @@ public class ProgramAdmissionConfigController {
 		return ResponseEntity.ok(toResponse(result));
 	}
 
+	/**
+	 * The public wizard's program picker. Filtering happens in the query, not
+	 * here: a closed sales window and an exhausted quota both make a config
+	 * unsellable, and the applicant should not see the career at all rather than
+	 * pick it and read the reason four steps later.
+	 */
 	@GetMapping("/options")
 	public List<OptionResponse> listProgramAdmissionConfigOptions() {
-		return programAdmissionConfigJpaRepository.findOpenOfferedOptions().stream()
+		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(Instant.now()).stream()
 				.map(o -> new OptionResponse(o.getId(), o.getProgramName(), o.getModality().name())).toList();
 	}
 

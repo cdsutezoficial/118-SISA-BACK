@@ -22,8 +22,10 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsExcepti
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.shared.model.Address;
 import mx.edu.utez.sisa.shared.model.DiversityProfile;
 import mx.edu.utez.sisa.shared.model.EmploymentInfo;
@@ -33,6 +35,8 @@ import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
@@ -69,8 +73,14 @@ import java.util.UUID;
  * 409, {@link CandidateAlreadyExistsException};</li>
  * <li>the chosen {@code ProgramAdmissionConfig} must exist (404,
  * {@link ProgramAdmissionConfigNotFoundException}) and be {@code OPEN}
- * (409, {@link ProgramAdmissionConfigNotOpenException}) — its ticket-sales
- * window is open;</li>
+ * (409, {@link ProgramAdmissionConfigNotOpenException}) — the staff-controlled
+ * toggle;</li>
+ * <li>{@code now} must fall inside {@code opensAt}/{@code closesAt} (409,
+ * {@link ProgramAdmissionConfigSalesClosedException}) and the config's
+ * {@code maxCandidates} must not be spent (409,
+ * {@link ProgramAdmissionConfigCapacityReachedException}, counted in <em>paid</em>
+ * fichas). Together with the toggle above, these are the three things that decide
+ * whether a registration is accepted;</li>
  * <li>a non-null {@code outreachChannelId} must resolve (404,
  * {@code OutreachChannelNotFoundException}) and a non-null
  * {@code schoolTypeId} must resolve (404,
@@ -78,6 +88,8 @@ import java.util.UUID;
  * </ol>
  */
 public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
+
+	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private final CandidateRepository candidateRepository;
 
@@ -97,12 +109,22 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private final int paymentDeadlineDays;
 
+	/**
+	 * The sales-window and quota checks compare against <em>now</em>, so the clock
+	 * is injected rather than read from a static: a {@code LocalDate.now()} captured
+	 * when the bean was built (as {@code registrationDate} still is) would freeze
+	 * the window at application startup, which in dev hides the bug and in
+	 * production silently sells tickets outside the dates on screen.
+	 */
+	private final Clock clock;
+
 	public RegisterCandidateUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, int paymentDeadlineDays) {
+			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, int paymentDeadlineDays,
+			Clock clock) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -112,6 +134,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.registrationDate = registrationDate;
 		this.paymentDeadlineDays = paymentDeadlineDays;
+		this.clock = clock;
 	}
 
 	@Override
@@ -150,6 +173,9 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 					"La configuración de admisión no está abierta: " + config.id());
 		}
 
+		validateSalesWindow(config);
+		validateQuota(config);
+
 		if (command.seleccionCarrera().outreachChannelId() != null
 				&& outreachChannelRepository.findById(command.seleccionCarrera().outreachChannelId()).isEmpty()) {
 			throw new OutreachChannelNotFoundException(
@@ -163,6 +189,56 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		}
 
 		return config;
+	}
+
+	/**
+	 * {@code opensAt}/{@code closesAt} are the two dates the Configuración de
+	 * Admisión screen puts next to a "Venta de fichas" label, so honouring them is
+	 * the whole point: without this the only thing gating a registration is the
+	 * {@code status} toggle, which staff flip by hand and which knows nothing about
+	 * the calendar.
+	 *
+	 * <p>Boundaries are inclusive on both ends — a sale that closes at 18:00 on the
+	 * 30th is still sellable at 18:00 on the 30th. The message names the boundary
+	 * that was missed and carries no identifiers, so the applicant can be shown it
+	 * as-is.
+	 */
+	private void validateSalesWindow(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
+		Instant now = clock.instant();
+		if (now.isBefore(config.opensAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException("La venta de fichas para esta carrera abre el "
+					+ formatDate(config.opensAt()) + ".");
+		}
+		if (now.isAfter(config.closesAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException("La venta de fichas para esta carrera cerró el "
+					+ formatDate(config.closesAt()) + ".");
+		}
+	}
+
+	/**
+	 * The quota is spent by <em>payments</em>, not by registrations: the field is
+	 * read on screen as a cap on fichas sold, and a registration that is never paid
+	 * is not a ficha sold. This is what "pueden registrarse 100 pero solo pagan 15"
+	 * means, and it is why the count is asked of {@code AdmissionPaymentRepository}
+	 * instead of being a counter on the config.
+	 */
+	private void validateQuota(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
+		long paid = admissionPaymentRepository.countPaidByAdmissionConfigId(config.id());
+		if (paid >= config.maxCandidates()) {
+			throw new ProgramAdmissionConfigCapacityReachedException(
+					"Esta carrera alcanzó su cupo de " + config.maxCandidates() + " fichas.");
+		}
+	}
+
+	/**
+	 * Renders an instant as the calendar date the applicant is looking at, in the
+	 * clock's own zone — the same zone the comparison above was made in, so the
+	 * date we quote and the date we enforced cannot disagree by a day. The pattern
+	 * is explicit rather than locale-defaulted because this string is shown on
+	 * screen, where the rest of the app already uses {@code dd/MM/yyyy}.
+	 */
+	private String formatDate(Instant instant) {
+		return DATE_FORMAT.format(instant.atZone(clock.getZone()).toLocalDate());
 	}
 
 	private Person buildPerson(RegisterCandidateCommand command) {

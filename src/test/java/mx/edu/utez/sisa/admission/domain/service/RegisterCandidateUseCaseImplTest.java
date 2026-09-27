@@ -22,6 +22,8 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import mx.edu.utez.sisa.shared.model.Person;
@@ -34,13 +36,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +62,33 @@ class RegisterCandidateUseCaseImplTest {
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
 	private static final BigDecimal CONCEPT_COST = new BigDecimal("1578.00");
 	private static final int DEADLINE_DAYS = 10;
+
+	/**
+	 * The sales window and the quota are the two rules that used to live only on
+	 * screen, so they are tested against a clock we control rather than
+	 * {@code Instant.now()}: "today" would otherwise make every test pass or fail
+	 * depending on the day CI runs, and the boundary cases (exactly
+	 * {@code opensAt}, exactly {@code closesAt}) would be untestable.
+	 */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final Instant NOW = Instant.parse("2026-09-25T18:00:00Z");
+
+	private static final LocalDate REGISTRATION_DATE = LocalDate.of(2026, 9, 25);
+
+	/**
+	 * Anchored mid-day on purpose. The boundaries are stored as UTC instants but
+	 * the message the applicant reads is a local date, so a boundary sitting on
+	 * midnight UTC renders as the <em>previous</em> day in this zone — real, and
+	 * covered by {@link #register_namesTheMissingBoundaryInTheClocksZone()}, but
+	 * noise in every other window test. Midday makes the rendered date obvious.
+	 */
+	private static final Instant WINDOW_OPEN = Instant.parse("2026-09-01T15:00:00Z");
+
+	/** 30/09 23:00 in {@link #ZONE} — "closes on the 30th", not "closes at midnight". */
+	private static final Instant WINDOW_CLOSE = Instant.parse("2026-10-01T05:00:00Z");
+
+	private static final int MAX_CANDIDATES = 40;
 
 	@Mock
 	private CandidateRepository candidateRepository;
@@ -79,27 +115,65 @@ class RegisterCandidateUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), DEADLINE_DAYS);
+		useCase = useCaseAt(NOW);
 	}
 
-	@Test
-	void register_generatesPaymentWithReferenceAmountAndDeadline() {
+	/**
+	 * Same use case, different "now". {@code registrationDate} stays put so the
+	 * concept amount and the payment deadline are unaffected by which instant a
+	 * given test is exercising.
+	 */
+	private RegisterCandidateUseCaseImpl useCaseAt(Instant now) {
+		return useCaseAt(now, ZONE);
+	}
+
+	private RegisterCandidateUseCaseImpl useCaseAt(Instant now, ZoneId zone) {
+		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				outreachChannelRepository, highSchoolTypeRepository, REGISTRATION_DATE, DEADLINE_DAYS,
+				Clock.fixed(now, zone));
+	}
+
+	private static AdmissionConfigInfo config(Instant opensAt, Instant closesAt, int maxCandidates) {
+		return new AdmissionConfigInfo(ADMISSION_CONFIG_ID, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
+				"Ingeniería en Sistemas", null, null, opensAt, closesAt, maxCandidates);
+	}
+
+	/**
+	 * Just the two lookups that happen before the sales window and the quota are
+	 * checked. The rejection tests use only this: stubbing the channel / school
+	 * type / concept amount here would leave unused stubs behind, which
+	 * {@code MockitoExtension}'s strict mode treats as a failure.
+	 */
+	private void stubConfig(AdmissionConfigInfo config) {
+		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.empty());
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.of(config));
+	}
+
+	/**
+	 * Everything a registration needs beyond the two new rules: the CURP is free,
+	 * the config is returned, the reference data resolves, and the repository hands
+	 * back the saved rows. Window/quota tests call this and then override only the
+	 * one stub they are actually about.
+	 */
+	private void stubAcceptedRegistration(AdmissionConfigInfo config) {
 		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
 		ReflectionTestUtils.setField(person, "id", UUID.randomUUID());
 		when(outreachChannelRepository.findById(CHANNEL_ID))
 				.thenReturn(Optional.of(new OutreachChannel("Portal de admisión")));
 		when(highSchoolTypeRepository.findById(SCHOOL_TYPE_ID))
 				.thenReturn(Optional.of(new mx.edu.utez.sisa.admission.domain.model.HighSchoolType("Bachillerato")));
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.empty());
 		when(candidatePersonRepository.save(any())).thenReturn(person);
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
-				.thenReturn(Optional.of(new AdmissionConfigInfo(ADMISSION_CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						PROGRAM_ID, "Ingeniería en Sistemas", null, null)));
-		when(fichaAmountResolver.resolve(PROGRAM_ID, LocalDate.now()))
+		stubConfig(config);
+		when(fichaAmountResolver.resolve(PROGRAM_ID, REGISTRATION_DATE))
 				.thenReturn(new FichaAmountResolver.FichaAmount(CONCEPT_COST, "Inscripción"));
+	}
+
+	@Test
+	void register_generatesPaymentWithReferenceAmountAndDeadline() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
 		CandidateRegistrationResult result = useCase.register(command());
 
@@ -107,7 +181,7 @@ class RegisterCandidateUseCaseImplTest {
 		assertThat(result.payment()).isNotNull();
 		assertThat(result.payment().referenceNumber()).startsWith("REF-");
 		assertThat(result.payment().amount()).isEqualByComparingTo(CONCEPT_COST);
-		assertThat(result.payment().deadline()).isEqualTo(LocalDate.now().plusDays(DEADLINE_DAYS));
+		assertThat(result.payment().deadline()).isEqualTo(REGISTRATION_DATE.plusDays(DEADLINE_DAYS));
 		assertThat(result.payment().paymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
 
 		ArgumentCaptor<AdmissionPayment> paymentCaptor = ArgumentCaptor.forClass(AdmissionPayment.class);
@@ -116,6 +190,100 @@ class RegisterCandidateUseCaseImplTest {
 		assertThat(saved.getConcept()).isEqualTo(AdmissionPaymentConcept.ADMISSION_FICHA);
 		assertThat(saved.getReferenceNumber()).isEqualTo(result.payment().referenceNumber());
 		assertThat(saved.getPaymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
+	}
+
+	@Test
+	void register_rejectsASaleThatHasNotOpenedYet() {
+		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		RegisterCandidateUseCaseImpl beforeOpening = useCaseAt(WINDOW_OPEN.minusSeconds(1));
+
+		assertThatThrownBy(() -> beforeOpening.register(command()))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
+				.hasMessageContaining("01/09/2026");
+	}
+
+	@Test
+	void register_rejectsASaleThatAlreadyClosed() {
+		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		RegisterCandidateUseCaseImpl afterClosing = useCaseAt(WINDOW_CLOSE.plusSeconds(1));
+
+		assertThatThrownBy(() -> afterClosing.register(command()))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
+				.hasMessageContaining("30/09/2026");
+	}
+
+	@Test
+	void register_acceptsTheExactInstantTheSaleOpensAndTheExactInstantItCloses() {
+		// Both boundaries are inclusive. "Cierra el 30/09" has to mean through the
+		// last instant of the 30th, and "abre el 01/09" has to include midnight —
+		// otherwise the picker and this check disagree by one day at each edge.
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
+
+		assertThatCode(() -> useCaseAt(WINDOW_OPEN).register(command())).doesNotThrowAnyException();
+		assertThatCode(() -> useCaseAt(WINDOW_CLOSE).register(command())).doesNotThrowAnyException();
+	}
+
+	@Test
+	void register_rejectsWhenThePaidFichasAlreadyHitTheQuota() {
+		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID))
+				.thenReturn((long) MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> useCase.register(command()))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
+				.hasMessageContaining(String.valueOf(MAX_CANDIDATES));
+	}
+
+	@Test
+	void register_acceptsTheLastFreeSlot() {
+		// Off by one is the whole bug class here: "quedan 15" must still register.
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID))
+				.thenReturn((long) MAX_CANDIDATES - 1);
+
+		assertThatCode(() -> useCase.register(command())).doesNotThrowAnyException();
+	}
+
+	@Test
+	void register_checksTheQuotaAgainstThisConfigOnly() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+
+		useCase.register(command());
+
+		verify(admissionPaymentRepository).countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID);
+	}
+
+	@Test
+	void register_reportsTheWindowBeforeConsumingTheQuota() {
+		// A closed sale must not depend on a count query: the applicant gets the
+		// date, and we do not pay for a DB round trip we are about to discard.
+		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+		RegisterCandidateUseCaseImpl afterClosing = useCaseAt(WINDOW_CLOSE.plusSeconds(1));
+
+		assertThatThrownBy(() -> afterClosing.register(command()))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class);
+
+		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
+	}
+
+	@Test
+	void register_namesTheMissingBoundaryInTheClocksZone() {
+		// One stored instant, two clock zones, two different calendar days. The
+		// rendered date must come from the clock the comparison used — if it were
+		// formatted in a hardcoded zone, one of these two would tell the applicant
+		// to come back on a day the rule itself is not looking at.
+		Instant opensAt = Instant.parse("2026-09-01T00:00:00Z");
+		stubConfig(config(opensAt, WINDOW_CLOSE, MAX_CANDIDATES));
+		Instant justBefore = opensAt.minusSeconds(1);
+
+		assertThatThrownBy(() -> useCaseAt(justBefore, ZoneOffset.UTC).register(command()))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
+				.hasMessageContaining("01/09/2026");
+
+		assertThatThrownBy(() -> useCaseAt(justBefore, ZONE).register(command()))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
+				.hasMessageContaining("31/08/2026");
 	}
 
 	private static RegisterCandidateCommand command() {

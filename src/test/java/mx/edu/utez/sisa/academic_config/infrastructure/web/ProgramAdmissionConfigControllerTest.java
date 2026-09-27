@@ -33,6 +33,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,6 +42,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -337,18 +339,27 @@ class ProgramAdmissionConfigControllerTest {
 		when(projection.getId()).thenReturn(configId);
 		when(projection.getProgramName()).thenReturn("Ingeniería en Software");
 		when(projection.getModality()).thenReturn(ProgramModality.PRESENCIAL);
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions()).thenReturn(List.of(projection));
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class)))
+				.thenReturn(List.of(projection));
 
+		Instant beforeCall = Instant.now();
 		mockMvc.perform(get("/program-admission-configs/options"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].id").value(configId.toString()))
 				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
 				.andExpect(jsonPath("$[0].code").value("PRESENCIAL"));
+
+		// The controller — not the repository — decides what "now" means: the
+		// sales window and the quota are filtered in SQL against this instant, so a
+		// caller that stopped passing it would silently get every OPEN config back.
+		ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
+		verify(programAdmissionConfigJpaRepository).findOpenOfferedOptions(now.capture());
+		assertThat(now.getValue()).isBetween(beforeCall, Instant.now());
 	}
 
 	@Test
 	void listProgramAdmissionConfigOptionsReturnsEmptyListWhenNoOpenConfigs() throws Exception {
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions()).thenReturn(List.of());
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class))).thenReturn(List.of());
 
 		mockMvc.perform(get("/program-admission-configs/options"))
 				.andExpect(status().isOk())
