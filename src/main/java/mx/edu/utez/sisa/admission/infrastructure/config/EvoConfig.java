@@ -23,6 +23,15 @@ public record EvoConfig(String baseUrl, String apiUsername, String apiPassword, 
 		String checkoutJsUrl, String returnUrl, String cancelUrl, String orderIdPrefix, Integer orderIdLength,
 		String currency, String merchantName) {
 
+	/**
+	 * The integration guide shipped with the gateway documents {@code order.id} as
+	 * {@code Min length: 1, Max length: 40} and requires it to be unique per order.
+	 * Anything above that is not a stricter policy, it is an id the gateway will
+	 * reject at checkout — so it gets pulled down here rather than trusted, and the
+	 * default is the ceiling so the folio keeps the whole remaining budget.
+	 */
+	private static final int MAX_ORDER_ID_LENGTH = 40;
+
 	public EvoConfig {
 		baseUrl = trimToNull(baseUrl);
 		apiUsername = trimToNull(apiUsername);
@@ -33,7 +42,8 @@ public record EvoConfig(String baseUrl, String apiUsername, String apiPassword, 
 		cancelUrl = trimToNull(cancelUrl);
 		orderIdPrefix = trimToNull(orderIdPrefix);
 		merchantName = trimToNull(merchantName);
-		orderIdLength = orderIdLength == null || orderIdLength <= 0 ? 32 : orderIdLength;
+		orderIdLength = orderIdLength == null || orderIdLength <= 0 ? MAX_ORDER_ID_LENGTH
+				: Math.min(orderIdLength, MAX_ORDER_ID_LENGTH);
 		currency = currency == null || currency.isBlank() ? "MXN" : currency.trim();
 	}
 

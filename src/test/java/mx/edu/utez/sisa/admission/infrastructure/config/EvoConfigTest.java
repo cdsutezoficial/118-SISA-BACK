@@ -28,7 +28,7 @@ class EvoConfigTest {
 	void appliesSafeDefaultsWhenPropertiesAreAbsent() {
 		runner.run(context -> {
 			EvoConfig evo = context.getBean(EvoConfig.class);
-			assertThat(evo.orderIdLength()).isEqualTo(32);
+			assertThat(evo.orderIdLength()).isEqualTo(40);
 			assertThat(evo.currency()).isEqualTo("MXN");
 		});
 	}
@@ -37,13 +37,32 @@ class EvoConfigTest {
 	void bindsConfiguredValues() {
 		runner.withPropertyValues(
 				"sisa.evo.base-url=https://evopaymentsmexico.gateway.mastercard.com/api/rest/version/72/merchant/TESTUTEZ",
-				"sisa.evo.merchant-id=TESTUTEZ", "sisa.evo.order-id-length=64", "sisa.evo.currency=USD").run(context -> {
+				"sisa.evo.merchant-id=TESTUTEZ", "sisa.evo.order-id-length=40", "sisa.evo.currency=USD").run(context -> {
 					EvoConfig evo = context.getBean(EvoConfig.class);
 					assertThat(evo.baseUrl()).contains("/merchant/TESTUTEZ");
 					assertThat(evo.merchantId()).isEqualTo("TESTUTEZ");
-					assertThat(evo.orderIdLength()).isEqualTo(64);
+					assertThat(evo.orderIdLength()).isEqualTo(40);
 					assertThat(evo.currency()).isEqualTo("USD");
 				});
+	}
+
+	/**
+	 * The guide caps {@code order.id} at 40 chars, so a length above that is not a
+	 * stricter policy — it is an order id the gateway rejects at checkout. The
+	 * config pulls it down instead of passing it through, which is what keeps a
+	 * mistyped {@code EVO_ORDER_ID_LENGTH} from failing only at the first payment.
+	 */
+	@Test
+	void clampsTheOrderIdLengthToTheGatewayCeiling() {
+		runner.withPropertyValues("sisa.evo.order-id-length=64").run(
+				context -> assertThat(context.getBean(EvoConfig.class).orderIdLength()).isEqualTo(40));
+	}
+
+	@Test
+	void fallsBackToTheCeilingWhenTheLengthIsNotANumber() {
+		runner.withPropertyValues("sisa.evo.order-id-length=0", "sisa.evo.order-id-length=-1").run(context -> {
+			assertThat(context.getBean(EvoConfig.class).orderIdLength()).isEqualTo(40);
+		});
 	}
 
 	@Test

@@ -27,19 +27,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link InitiateFichaPaymentUseCaseImpl} (Fase 4): a
- * successful checkout builds the EVO order (order.id = prefix+folio, amount
+ * successful checkout builds the EVO order (order.id from the builder, amount
  * from the payment concept, description with the folio), persists
  * {@code order_id} + {@code checkout_session_id} on the payment, returns the
  * Checkout SDK URL and appends the candidate/order to the return URLs;
  * 404/409 guard cases; gateway failure propagates
  * as {@link EvoPaymentGatewayException} (→ 502 at the web layer, handled in
  * {@code CandidateControllerTest}).
+ *
+ * <p>The builder is mocked so the order id is a fixed string here — how that id
+ * is composed is {@link OrderIdBuilderTest}'s business. What matters in this
+ * class is that the use case feeds it the folio and then threads the result
+ * through the order, the return URLs and the persisted payment, which is what
+ * {@link #twoCheckoutsOfTheSameFichaAreTwoDifferentOrders()} pins down.
  */
 @ExtendWith(MockitoExtension.class)
 class InitiateFichaPaymentUseCaseImplTest {
@@ -51,8 +58,6 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
-	private final OrderIdBuilder orderIdBuilder = new OrderIdBuilder("TESTUTEZ", 32);
-
 	@Mock
 	private CandidateRepository candidateRepository;
 
@@ -62,10 +67,15 @@ class InitiateFichaPaymentUseCaseImplTest {
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
 
+	@Mock
+	private OrderIdBuilder orderIdBuilder;
+
 	private InitiateFichaPaymentUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
+		// lenient: the 404/409 guard cases throw before the builder is ever consulted
+		lenient().when(orderIdBuilder.build(any())).thenReturn(ORDER_ID);
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL);
 	}
@@ -96,6 +106,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 		assertThat(result.successIndicator()).isEqualTo("AAAA/BRAVO/SUCCESS0001");
 		assertThat(result.checkoutJsUrl()).isEqualTo(SDK_URL);
 
+		verify(orderIdBuilder).build("ADM-2026-000001");
+
 		String expectedReturn = RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID;
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> ORDER_ID.equals(order.id())
 				&& "REF-2026-000001".equals(order.reference())
@@ -104,8 +116,37 @@ class InitiateFichaPaymentUseCaseImplTest {
 				&& expectedReturn.equals(order.returnUrl()) && expectedReturn.equals(order.cancelUrl())));
 		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
 		verify(admissionPaymentRepository).save(saved.capture());
-		assertThat(saved.getValue().getOrderId()).isEqualTo("TESTUTEZ-ADM-2026-000001");
+		assertThat(saved.getValue().getOrderId()).isEqualTo(ORDER_ID);
 		assertThat(saved.getValue().getCheckoutSessionId()).isEqualTo("SESSION0001BR");
+	}
+
+	/**
+	 * The regression that motivated the random suffix: paying the same ficha twice
+	 * used to send Evo the very same {@code order.id}, which the gateway refuses
+	 * ("payment for this order has already been received") and, worse, which an
+	 * applicant could derive from the folio and present as proof of payment. Each
+	 * checkout now gets its own id, and the latest one is what the payment keeps.
+	 */
+	@Test
+	void twoCheckoutsOfTheSameFichaAreTwoDifferentOrders() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
+				admissionPaymentRepository, evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
+				CANCEL, SDK_URL);
+
+		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
+		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
+
+		assertThat(first).isNotEqualTo(second);
+		assertThat(first).startsWith("TESTUTEZ-ADM-2026-000001-");
+		assertThat(second).startsWith("TESTUTEZ-ADM-2026-000001-");
+
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository, times(2)).save(saved.capture());
+		assertThat(saved.getAllValues().get(1).getOrderId()).isEqualTo(second);
 	}
 
 	@Test
