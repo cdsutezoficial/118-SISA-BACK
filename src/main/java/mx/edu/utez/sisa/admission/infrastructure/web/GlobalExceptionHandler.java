@@ -60,6 +60,31 @@ import java.time.Instant;
 @Component("admissionGlobalExceptionHandler")
 public class GlobalExceptionHandler {
 
+	/**
+	 * Stable machine-readable discriminators. These are part of the HTTP contract:
+	 * the frontend branches on them, so a rename is a breaking change, while the
+	 * messages next to them are copy and may be reworded freely.
+	 *
+	 * <p>The three the registration wizard must tell apart are
+	 * {@link #CODE_QUOTA_REACHED}, {@link #CODE_SALES_WINDOW_CLOSED} and
+	 * {@link #CODE_CANDIDATE_ALREADY_EXISTS} — all three arrive as 409 and each one
+	 * sends the applicant somewhere different.
+	 */
+	public static final String CODE_QUOTA_REACHED = "ADMISSION_QUOTA_REACHED";
+	public static final String CODE_SALES_WINDOW_CLOSED = "ADMISSION_SALES_WINDOW_CLOSED";
+	public static final String CODE_CONFIG_NOT_OPEN = "ADMISSION_CONFIG_NOT_OPEN";
+	public static final String CODE_PAYMENT_WINDOW_CLOSED = "ADMISSION_PAYMENT_WINDOW_CLOSED";
+	public static final String CODE_CANDIDATE_ALREADY_EXISTS = "ADMISSION_CANDIDATE_ALREADY_EXISTS";
+	public static final String CODE_CANDIDATE_NOT_FOUND = "ADMISSION_CANDIDATE_NOT_FOUND";
+	public static final String CODE_CONFIG_NOT_FOUND = "ADMISSION_CONFIG_NOT_FOUND";
+	public static final String CODE_CONCEPT_NOT_FOUND = "ADMISSION_CONCEPT_NOT_FOUND";
+	public static final String CODE_CONCEPT_AMBIGUOUS = "ADMISSION_CONCEPT_AMBIGUOUS";
+	public static final String CODE_ALREADY_PAID = "ADMISSION_ALREADY_PAID";
+	public static final String CODE_FICHA_DATA_INVALID = "ADMISSION_FICHA_DATA_INVALID";
+	public static final String CODE_VERIFICATION_INVALID = "ADMISSION_VERIFICATION_INVALID";
+	public static final String CODE_EVO_GATEWAY_ERROR = "ADMISSION_EVO_GATEWAY_ERROR";
+	public static final String CODE_RATE_LIMITED = "ADMISSION_PAYMENT_ACCESS_RATE_LIMITED";
+
 	@ExceptionHandler(HighSchoolTypeNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleHighSchoolTypeNotFound(HighSchoolTypeNotFoundException ex,
 			HttpServletRequest request) {
@@ -69,7 +94,7 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ProgramAdmissionConfigNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotFound(ProgramAdmissionConfigNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, CODE_CONFIG_NOT_FOUND, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(OutreachChannelNotFoundException.class)
@@ -81,19 +106,19 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(CandidateNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleCandidateNotFound(CandidateNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, CODE_CANDIDATE_NOT_FOUND, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(CandidateAlreadyExistsException.class)
 	public ResponseEntity<ErrorResponse> handleCandidateAlreadyExists(CandidateAlreadyExistsException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_CANDIDATE_ALREADY_EXISTS, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(ProgramAdmissionConfigNotOpenException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigNotOpen(ProgramAdmissionConfigNotOpenException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_CONFIG_NOT_OPEN, ex.getMessage(), request);
 	}
 
 	/**
@@ -104,25 +129,30 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ProgramAdmissionConfigSalesClosedException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigSalesClosed(
 			ProgramAdmissionConfigSalesClosedException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_SALES_WINDOW_CLOSED, ex.getMessage(), request);
 	}
 
+	/**
+	 * The quota is full. Shouted with its own code because the wizard uses it to
+	 * send the applicant back to the career step with a refreshed list, instead of
+	 * telling them to check their CURP.
+	 */
 	@ExceptionHandler(ProgramAdmissionConfigCapacityReachedException.class)
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigCapacityReached(
 			ProgramAdmissionConfigCapacityReachedException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_QUOTA_REACHED, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(FichaPaymentConceptNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleFichaPaymentConceptNotFound(FichaPaymentConceptNotFoundException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_CONCEPT_NOT_FOUND, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(AmbiguousFichaPaymentConceptException.class)
 	public ResponseEntity<ErrorResponse> handleAmbiguousFichaPaymentConcept(AmbiguousFichaPaymentConceptException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_CONCEPT_AMBIGUOUS, ex.getMessage(), request);
 	}
 
 	/**
@@ -133,31 +163,31 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(PaymentConceptExpiredException.class)
 	public ResponseEntity<ErrorResponse> handlePaymentConceptExpired(PaymentConceptExpiredException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_PAYMENT_WINDOW_CLOSED, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(CandidateAlreadyPaidException.class)
 	public ResponseEntity<ErrorResponse> handleCandidateAlreadyPaid(CandidateAlreadyPaidException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, CODE_ALREADY_PAID, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(InvalidCandidateFichaDataException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidCandidateFichaData(InvalidCandidateFichaDataException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, CODE_FICHA_DATA_INVALID, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(InvalidPaymentVerificationException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidPaymentVerification(InvalidPaymentVerificationException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, CODE_VERIFICATION_INVALID, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(EvoPaymentGatewayException.class)
 	public ResponseEntity<ErrorResponse> handleEvoPaymentGateway(EvoPaymentGatewayException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request);
+		return build(HttpStatus.BAD_GATEWAY, CODE_EVO_GATEWAY_ERROR, ex.getMessage(), request);
 	}
 
 	/**
@@ -169,12 +199,27 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(TooManyPaymentAccessAttemptsException.class)
 	public ResponseEntity<ErrorResponse> handleTooManyPaymentAccessAttempts(TooManyPaymentAccessAttemptsException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request);
+		return build(HttpStatus.TOO_MANY_REQUESTS, CODE_RATE_LIMITED, ex.getMessage(), request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
+		return build(status, null, message, request);
+	}
+
+	/**
+	 * Builds the error body with a stable {@code code} alongside the
+	 * human-readable {@code message}.
+	 *
+	 * <p>Why both: the wizard has to tell "this career just filled up, go pick
+	 * another" apart from "this CURP is already registered" and from "the sales
+	 * window closed" — three different recoveries. All three arrive as 409, and
+	 * the messages are reworded by copy edits, so branching on the message is a
+	 * trap. The code is the contract; the message is for the applicant.
+	 */
+	private ResponseEntity<ErrorResponse> build(HttpStatus status, String code, String message,
+			HttpServletRequest request) {
 		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), status.getReasonPhrase(), message,
-				request.getRequestURI());
+				request.getRequestURI(), code);
 		return ResponseEntity.status(status).body(body);
 	}
 }
