@@ -1,0 +1,19 @@
+# Secretos: nunca entran al contexto de build. La configuracion llega
+# al contenedor por env_file, no por un archivo copiado.
+.env
+.env.*
+
+# Salidas de compilacion: se regeneran dentro de la imagen.
+target/
+
+# Nada de esto lo usa el build.
+.git
+.gitignore
+.gitattributes
+.idea
+docs/
+openspec/
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yml

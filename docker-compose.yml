@@ -1,0 +1,125 @@
+# ──────────────────────────────────────────────
+# SISA — API + base de datos
+#
+# Un solo archivo para los tres ambientes. Este compose NO tiene ningun valor
+# por omision: todo sale del .env, y si falta algo el comando falla diciendo
+# que variable falta, en vez de inventarse un valor.
+#
+#   docker compose --env-file .env.cds     up -d --build   # local/cds
+#   docker compose --env-file .env.testdti up -d --build   # test
+#   docker compose --env-file .env.prod    up -d --build   # produccion
+#
+# El archivo que se pasa con --env-file cumple dos funciones:
+#   1. Resuelve los ${...} de este compose (red, puertos, recursos, BD).
+#   2. Se inyecta como env_file en el contenedor del API, de modo que Spring
+#      Boot recibe cada variable tal cual esta escrita ahi.
+#
+# Excepcion: los puertos de la derecha (3306 y 8080) son literales a
+# proposito. Son el puerto DENTRO del contenedor y dependen de la imagen
+# (MySQL siempre escucha en 3306; el jar se arranca con SERVER_PORT=8080 y su
+# healthcheck mira ahi). Si tambien fueran variable, un .env mal puesto
+# desalinearia el compose de la imagen y el contenedor arrancaria sin
+# connections. Lo que si cambia por ambiente es el puerto del host, el de la
+# izquierda.
+#
+# Ver .env.example para el catalogo completo.
+# ──────────────────────────────────────────────
+services:
+
+  # ────────────────────────────────────────────
+  # Base de datos: MySQL 8.4
+  # ────────────────────────────────────────────
+  db-sisa:
+    image: mysql:8.4
+    container_name: db-sisa
+    hostname: db-sisa
+    ports:
+      - "${DB_BIND:?falta DB_BIND en el .env}:${DB_PORT:?falta DB_PORT en el .env}:3306"
+    volumes:
+      - vol-db-sisa:/var/lib/mysql
+    networks:
+      - sisa-net
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:?falta DB_NAME en el .env}
+      # No son DB_USERNAME/DB_PASSWORD de la app: MySQL no deja crear un
+      # usuario llamado root, y en local esas dos son root para el MySQL de
+      # tu maquina. El usuario del contenedor tiene su propio par.
+      MYSQL_USER: ${DB_APP_USER:?falta DB_APP_USER en el .env}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:?falta DB_APP_PASSWORD en el .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?falta DB_ROOT_PASSWORD en el .env}
+    deploy:
+      resources:
+        limits:
+          cpus: "${DB_CPUS_LIMIT:?falta DB_CPUS_LIMIT en el .env}"
+          memory: ${DB_MEMORY_LIMIT:?falta DB_MEMORY_LIMIT en el .env}
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    # -h 127.0.0.1 y no "localhost": durante la inicializacion del entrypoint
+    # el servidor temporal solo escucha en el socket unix, asi que esta
+    # comprobacion sigue fallando (healthy=false) hasta que la base queda lista.
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u \"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # Backend: Spring Boot (Java 21) — HTTP
+  # Solo visible en la red Docker; el reverse proxy externo termina SSL.
+  # ────────────────────────────────────────────
+  api-sisa:
+    image: sisa-api:latest
+    build:
+      context: .
+    container_name: api-sisa
+    hostname: api-sisa
+    ports:
+      - "${API_BIND:?falta API_BIND en el .env}:${API_PORT:?falta API_PORT en el .env}:8080"
+    networks:
+      - sisa-net
+    depends_on:
+      db-sisa:
+        condition: service_healthy
+    # Todo lo que este en el .env (JWT, correo, EvoPayments, CORS, zona de
+    # admision...) se pasa tal cual. Spring Boot da prioridad a las variables
+    # de entorno sobre application.properties, asi que no hay que duplicar
+    # ninguna clave aqui.
+    env_file:
+      - ${SISA_ENV_FILE:?falta SISA_ENV_FILE en el .env}
+    # Lo unico que el .env no puede acertar: la BD del contenedor es el
+    # servicio de arriba, nunca localhost. Estas entradas ganan sobre
+    # env_file, por eso pueden coexistir con las de la app.
+    environment:
+      DB_URL: "jdbc:mysql://db-sisa:3306/${DB_NAME:?falta DB_NAME en el .env}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+      DB_USERNAME: ${DB_APP_USER:?falta DB_APP_USER en el .env}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?falta DB_APP_PASSWORD en el .env}
+    deploy:
+      resources:
+        limits:
+          cpus: "${BACKEND_CPUS_LIMIT:?falta BACKEND_CPUS_LIMIT en el .env}"
+          memory: ${BACKEND_MEMORY_LIMIT:?falta BACKEND_MEMORY_LIMIT en el .env}
+        reservations:
+          cpus: "0.25"
+          memory: 384M
+    restart: unless-stopped
+
+# La red se declara en el .env del ambiente:
+#   local    → DOCKER_NETWORK=sisa-api-net     DOCKER_NETWORK_EXTERNAL=false
+#   testdti  → DOCKER_NETWORK=net-cds-test     DOCKER_NETWORK_EXTERNAL=true
+#   prod     → DOCKER_NETWORK=sisava-network   DOCKER_NETWORK_EXTERNAL=true
+# En testdti y prod la red ya existe porque el reverse proxy vive ahi, y el
+# compose del front debe apuntar a la MISMA.
+networks:
+  sisa-net:
+    name: ${DOCKER_NETWORK:?falta DOCKER_NETWORK en el .env}
+    external: ${DOCKER_NETWORK_EXTERNAL:?falta DOCKER_NETWORK_EXTERNAL en el .env}
+
+volumes:
+  # Con nombre explicito (y no vol-db-sisa) para que dos ambientes en la MISMA
+  # maquina no compartan la misma base: en los servidores da igual, pero en
+  # local, levantarte con .env.testdti no debe pisarte la base de desarrollo.
+  vol-db-sisa:
+    name: ${DB_VOLUME_NAME:?falta DB_VOLUME_NAME en el .env}
