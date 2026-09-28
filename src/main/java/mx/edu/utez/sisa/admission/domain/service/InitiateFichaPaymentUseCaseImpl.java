@@ -10,8 +10,8 @@ import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Clock;
@@ -90,6 +90,14 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	private final Clock clock;
 
 	/**
+	 * Takes and gives back the program's quota slot around the gateway call, in
+	 * its own short transactions. A collaborator rather than an inline step
+	 * because {@code REQUIRES_NEW} only works through a Spring proxy, so the claim
+	 * has to be committed by a different bean than the one calling the gateway.
+	 */
+	private final CheckoutSlotClaimer checkoutSlotClaimer;
+
+	/**
 	 * A single constructor, deliberately.
 	 *
 	 * <p>This class used to offer shorter overloads. When the concept-window check
@@ -105,7 +113,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl,
 			Set<String> allowedReturnPaths, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, Clock clock) {
+			FichaAmountResolver fichaAmountResolver, Clock clock, CheckoutSlotClaimer checkoutSlotClaimer) {
 		this.candidateRepository = candidateRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -118,10 +126,39 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
 		this.clock = clock;
+		this.checkoutSlotClaimer = checkoutSlotClaimer;
 	}
 
+	/**
+	 * Starts the payment for a ficha.
+	 *
+	 * <p>Deliberately <b>not</b> {@code @Transactional}. This method spans a call
+	 * to a third-party payment gateway, and holding a database transaction open
+	 * across it is how a slow provider turns into held locks, long-running
+	 * connections and rollbacks of work that was already fine. Each write here
+	 * therefore gets its own short transaction, owned by {@link CheckoutSlotClaimer},
+	 * and nothing is open while Evo is being contacted.
+	 *
+	 * <p>Order of operations, and each step is placed for a reason:
+	 * <ol>
+	 * <li>validate the ficha exists and is unpaid (no locks, cheapest checks
+	 * first);</li>
+	 * <li>{@code requireConceptWindowOpen} — before the gateway, because after it
+	 * a closed period would need a refund to undo;</li>
+	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row lock
+	 * and <em>commits</em>, so the slot is held while Evo is called but the lock is
+	 * not;</li>
+	 * <li>the gateway call;</li>
+	 * <li>{@link CheckoutSlotClaimer#persistCheckoutSession} — the order ids the
+	 * confirmation will look up.</li>
+	 * </ol>
+	 *
+	 * <p>On a gateway refusal the claim is handed back, but only when the failure
+	 * proves no order was created. An ambiguous failure keeps the claim: Evo may
+	 * hold an order that is captured later, and that ficha's payment is real money
+	 * whether or not we got a response.
+	 */
 	@Override
-	@Transactional
 	public InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
@@ -137,16 +174,26 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 		requireConceptWindowOpen(candidate);
 
+		checkoutSlotClaimer.claim(candidateId);
+
 		String returnUrl = resolveReturnUrl(returnPath);
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
 				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), payment.getAmount(),
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
-		EvoPaymentsGatewayPort.EvoSession session = evoPaymentsGateway.initiateCheckoutSession(order);
 
-		payment.registerCheckout(orderId, session.id());
-		admissionPaymentRepository.save(payment);
+		EvoPaymentsGatewayPort.EvoSession session;
+		try {
+			session = evoPaymentsGateway.initiateCheckoutSession(order);
+		} catch (EvoPaymentGatewayException ex) {
+			if (!ex.orderMayHaveBeenCreated()) {
+				checkoutSlotClaimer.release(candidateId);
+			}
+			throw ex;
+		}
+
+		checkoutSlotClaimer.persistCheckoutSession(candidateId, orderId, session.id());
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.merchant(),
 				session.successIndicator(), checkoutJsUrl);

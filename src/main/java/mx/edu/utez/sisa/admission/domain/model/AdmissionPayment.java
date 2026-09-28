@@ -73,6 +73,18 @@ public class AdmissionPayment {
 	private String receiptNumber;
 
 	/**
+	 * When this ficha claimed one of its career's quota slots, or {@code null} if
+	 * it holds none.
+	 *
+	 * <p>Nullable on purpose and added without a backfill: the occupancy count is
+	 * a query, not a stored number, so there is nothing to migrate — a ficha with
+	 * {@code null} simply is not holding a slot, which is the correct state for
+	 * every payment that exists today.
+	 */
+	@Column(name = "checkout_claimed_at")
+	private Instant checkoutClaimedAt;
+
+	/**
 	 * The registration sales window's closing date, snapshotted when the ficha
 	 * was issued: {@code ProgramAdmissionConfig.closesAt}, not a count of days
 	 * after registration.
@@ -206,6 +218,39 @@ public class AdmissionPayment {
 		}
 		this.orderId = orderId;
 		this.checkoutSessionId = checkoutSessionId;
+	}
+
+	/**
+	 * Marks this ficha as holding one of its career's quota slots.
+	 *
+	 * <p>Called <em>before</em> the gateway is touched, and committed before the
+	 * gateway call, because the moment Evo has an order the money may already be
+	 * captured — and a payment that was charged cannot be refused afterwards
+	 * without a refund. The claim is what makes "no more than
+	 * {@code maxCandidates} fichas" enforceable at that exact point.
+	 *
+	 * <p>A claim stops counting on its own, with no scheduled cleanup, once the
+	 * tuition concept's {@code available_until} has passed: the count is a function
+	 * of stored data, so a ficha nobody paid for simply falls out of it.
+	 */
+	public void claimCheckoutSlot() {
+		if (this.paymentStatus != AdmissionPaymentStatus.PENDING) {
+			throw new IllegalStateException("Only PENDING payments can claim a checkout slot");
+		}
+		this.checkoutClaimedAt = Instant.now();
+	}
+
+	/**
+	 * Gives the slot back immediately after the gateway refused the checkout, so
+	 * the quota does not stay held until the payment window closes for an order
+	 * that does not exist.
+	 */
+	public void releaseCheckoutSlot() {
+		this.checkoutClaimedAt = null;
+	}
+
+	public Instant getCheckoutClaimedAt() {
+		return checkoutClaimedAt;
 	}
 
 	@Override

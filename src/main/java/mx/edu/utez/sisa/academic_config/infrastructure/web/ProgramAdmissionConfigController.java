@@ -36,7 +36,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -79,18 +81,26 @@ public class ProgramAdmissionConfigController {
 
 	private final ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository;
 
+	/**
+	 * Supplies "now" to the options query. Injected rather than read from
+	 * {@code Instant.now()} so the picker and the checkout enforce the same
+	 * boundary in the same zone.
+	 */
+	private final Clock clock;
+
 	public ProgramAdmissionConfigController(ListProgramAdmissionConfigsUseCase listProgramAdmissionConfigsUseCase,
 			OpenProgramAdmissionUseCase openProgramAdmissionUseCase,
 			GetProgramAdmissionConfigUseCase getProgramAdmissionConfigUseCase,
 			UpdateProgramAdmissionConfigUseCase updateProgramAdmissionConfigUseCase,
 			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase,
-			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository) {
+			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository, Clock clock) {
 		this.listProgramAdmissionConfigsUseCase = listProgramAdmissionConfigsUseCase;
 		this.openProgramAdmissionUseCase = openProgramAdmissionUseCase;
 		this.getProgramAdmissionConfigUseCase = getProgramAdmissionConfigUseCase;
 		this.updateProgramAdmissionConfigUseCase = updateProgramAdmissionConfigUseCase;
 		this.changeProgramAdmissionConfigStatusUseCase = changeProgramAdmissionConfigStatusUseCase;
 		this.programAdmissionConfigJpaRepository = programAdmissionConfigJpaRepository;
+		this.clock = clock;
 	}
 
 	@PostMapping
@@ -118,10 +128,18 @@ public class ProgramAdmissionConfigController {
 	 * here: a closed sales window and an exhausted quota both make a config
 	 * unsellable, and the applicant should not see the career at all rather than
 	 * pick it and read the reason four steps later.
+	 *
+	 * <p>"Now" comes from the injected, zone-pinned {@code Clock} rather than
+	 * {@code Instant.now()}. It was the latter until the quota rule started
+	 * expiring claims against a calendar date: the picker decided the sales window
+	 * in the server's default zone and the checkout decided the same boundary in
+	 * the admission zone, so a career could appear in the list and be refused by
+	 * the very next screen. One clock, one zone, one answer.
 	 */
 	@GetMapping("/options")
 	public List<OptionResponse> listProgramAdmissionConfigOptions() {
-		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(Instant.now()).stream()
+		Instant now = clock.instant();
+		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(now, LocalDate.now(clock)).stream()
 				.map(o -> new OptionResponse(o.getId(), o.getProgramName(), o.getModality().name())).toList();
 	}
 

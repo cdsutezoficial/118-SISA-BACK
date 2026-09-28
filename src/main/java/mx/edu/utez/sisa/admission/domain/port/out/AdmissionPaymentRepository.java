@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.admission.domain.port.out;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,4 +36,42 @@ public interface AdmissionPaymentRepository {
 	 * @param admissionConfigId the config whose paid fichas are counted
 	 */
 	long countPaidByAdmissionConfigId(UUID admissionConfigId);
+
+	/**
+	 * How many of a program's quota slots are taken, counted the way the quota is
+	 * actually enforced: a paid ficha, or a pending one that has claimed a slot at
+	 * checkout while its payment window is still open.
+	 *
+	 * <p>Replaces {@link #countPaidByAdmissionConfigId} as <b>the</b> quota rule.
+	 * Counting only paid fichas was the original bug: the check ran at
+	 * registration, the slot was consumed at payment, and those are days apart — so
+	 * any number of people could register on the same reading of the counter and
+	 * all of them could go on to pay.
+	 *
+	 * <p>Keyed by program, not by config, because the expiry rule reads the
+	 * tuition concept's window, which is found per program. A config belongs to
+	 * exactly one program so the quota a staff member edits and the one enforced
+	 * here stay the same number.
+	 *
+	 * @param programId the program whose occupied slots are counted
+	 * @param onDate    today, in the admission zone, used for window expiry
+	 */
+	long countOccupiedByProgramId(UUID programId, LocalDate onDate);
+
+	/**
+	 * {@link #countOccupiedByProgramId} minus the requesting candidate's own
+	 * ficha.
+	 *
+	 * <p>This is the one the checkout claim must use. A candidate retrying a
+	 * checkout already holds a claim, and their own claim is inside the plain
+	 * count — so on a career that sold its last slot, {@code occupied >= max}
+	 * would refuse them a retry for a slot that is theirs. Excluding themselves
+	 * makes the comparison mean "is there room for one more ficha besides the one
+	 * I already hold".
+	 *
+	 * @param programId   the program whose occupied slots are counted
+	 * @param candidateId the candidate whose own ficha is left out
+	 * @param onDate      today, in the admission zone, used for window expiry
+	 */
+	long countOccupiedByProgramIdExcludingCandidate(UUID programId, UUID candidateId, LocalDate onDate);
 }

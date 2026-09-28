@@ -81,7 +81,11 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 					"El proveedor de pagos (EVO) no pudo iniciar el pago en línea: " + describeError(res == null ? null : res.error()));
 		}
 		if (res.session() == null || res.session().id() == null || res.session().id().isBlank()) {
-			throw new EvoPaymentGatewayException("El proveedor de pagos (EVO) no devolvió una sesión de pago.");
+			// Evo said SUCCESS but handed back no session. The order is therefore
+			// very likely registered on their side, so the caller must keep the quota
+			// claim: this payment can still be captured.
+			throw EvoPaymentGatewayException.possiblyCreated(
+					"El proveedor de pagos (EVO) no devolvió una sesión de pago.", null);
 		}
 		log.info("EVO: sesión de pago iniciada para la orden {}", order.id());
 		return new EvoSession(res.session().id(), res.merchant(), res.successIndicator(), res.session().version());
@@ -100,6 +104,13 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		return new EvoOrderStatus(orderId, res.result(), res.amount());
 	}
 
+	/**
+	 * POSTs an order-creating call. Only ever used to create the checkout order, so
+	 * its network failure is the ambiguous kind: the request may have reached EVO
+	 * and registered an order this side never saw the answer to. Marking it lets the
+	 * caller hold the quota claim instead of handing back a slot for a payment that
+	 * may still be captured.
+	 */
 	private <T> T post(String path, Map<String, Object> payload, Class<T> responseType) {
 		try {
 			return restClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(payload)
@@ -107,7 +118,7 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		} catch (RestClientResponseException ex) {
 			throw gatewayException(ex.getResponseBodyAsString(), ex);
 		} catch (RestClientException ex) {
-			throw new EvoPaymentGatewayException(
+			throw EvoPaymentGatewayException.possiblyCreated(
 					"No se pudo contactar al proveedor de pagos (EVO): " + rootCauseMessage(ex), ex);
 		}
 	}

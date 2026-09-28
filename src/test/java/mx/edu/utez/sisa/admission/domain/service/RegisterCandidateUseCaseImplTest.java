@@ -180,7 +180,6 @@ class RegisterCandidateUseCaseImplTest {
 	@Test
 	void register_generatesPaymentWithReferenceAmountAndBothWindowDates() {
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
 		CandidateRegistrationResult result = useCase.register(command());
 
@@ -215,7 +214,6 @@ class RegisterCandidateUseCaseImplTest {
 	@Test
 	void register_neverReportsADateLaterThanTheSalesWindowItRegisteredUnder() {
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
 		CandidateRegistrationResult result = useCase.register(command());
 
@@ -239,7 +237,6 @@ class RegisterCandidateUseCaseImplTest {
 	@Test
 	void theRegistrationDeadlineIsClosesAtInTheClocksZoneNotTheServers() {
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
 		CandidateRegistrationResult inMorelos = useCaseAt(NOW, ZONE).register(command());
 		CandidateRegistrationResult inMadrid = useCaseAt(NOW, ZoneId.of("Europe/Madrid")).register(command());
@@ -256,7 +253,6 @@ class RegisterCandidateUseCaseImplTest {
 	@Test
 	void register_leavesThePaymentWindowUnsetWhenTheConceptHasNoClosingDate() {
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(null);
 
 		CandidateRegistrationResult result = useCase.register(command());
@@ -292,46 +288,58 @@ class RegisterCandidateUseCaseImplTest {
 		// last instant of the 30th, and "abre el 01/09" has to include midnight —
 		// otherwise the picker and this check disagree by one day at each edge.
 		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID)).thenReturn(0L);
 
 		assertThatCode(() -> useCaseAt(WINDOW_OPEN).register(command())).doesNotThrowAnyException();
 		assertThatCode(() -> useCaseAt(WINDOW_CLOSE).register(command())).doesNotThrowAnyException();
 	}
 
+	/**
+	 * The regression this whole block exists for: registration must not look at
+	 * the quota at all.
+	 *
+	 * <p>It used to count paid fichas and refuse on {@code paid >= max}. The check
+	 * was correct arithmetic on a stale fact — it ran at registration, while the
+	 * slot it was protecting would not be consumed until payment, possibly days
+	 * later. Everybody who read the counter the same way got in, so the check
+	 * prevented nothing; the overshoot only surfaced at the bank. The count now
+	 * happens once, at the checkout, under a row lock.
+	 */
 	@Test
-	void register_rejectsWhenThePaidFichasAlreadyHitTheQuota() {
-		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID))
-				.thenReturn((long) MAX_CANDIDATES);
+	void register_neverConsultsTheQuota() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
 
-		assertThatThrownBy(() -> useCase.register(command()))
-				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
-				.hasMessageContaining(String.valueOf(MAX_CANDIDATES));
+		useCase.register(command());
+
+		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
+		verify(admissionPaymentRepository, never()).countOccupiedByProgramId(any(), any());
+		verify(admissionPaymentRepository, never()).countOccupiedByProgramIdExcludingCandidate(any(), any(), any());
 	}
 
+	/**
+	 * "Pueden registrarse 100 pero solo pagan 15" — with the registration side of
+	 * that sentence spelled out. A career with <em>zero</em> slots still takes new
+	 * registrations; refusing here is what used to make the quota look enforced
+	 * when it was not.
+	 *
+	 * <p>Stated as {@code maxCandidates = 0} rather than as a stubbed count of
+	 * paid fichas, because the paid count is not consulted at all any more: a stub
+	 * returning "15 of 15 sold" would be read by nobody and would only assert that
+	 * the mock was never asked — which is the other test's job. Zero slots is a
+	 * state the config can genuinely be in, and it survives a future implementation
+	 * that starts reading some other counter.
+	 */
 	@Test
-	void register_acceptsTheLastFreeSlot() {
-		// Off by one is the whole bug class here: "quedan 15" must still register.
-		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-		when(admissionPaymentRepository.countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID))
-				.thenReturn((long) MAX_CANDIDATES - 1);
+	void register_acceptsEvenWhenTheCareerHasNoSlotsLeft() {
+		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, 0));
 
 		assertThatCode(() -> useCase.register(command())).doesNotThrowAnyException();
 	}
 
 	@Test
-	void register_checksTheQuotaAgainstThisConfigOnly() {
-		stubAcceptedRegistration(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
-
-		useCase.register(command());
-
-		verify(admissionPaymentRepository).countPaidByAdmissionConfigId(ADMISSION_CONFIG_ID);
-	}
-
-	@Test
-	void register_reportsTheWindowBeforeConsumingTheQuota() {
-		// A closed sale must not depend on a count query: the applicant gets the
-		// date, and we do not pay for a DB round trip we are about to discard.
+	void register_reportsTheClosedWindowBeforeAnythingElse() {
+		// A closed sale is the one thing that still refuses a registration, and it
+		// must not depend on a count query: the applicant gets the date, and we do
+		// not pay for a DB round trip we are about to discard.
 		stubConfig(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
 		RegisterCandidateUseCaseImpl afterClosing = useCaseAt(WINDOW_CLOSE.plusSeconds(1));
 

@@ -29,6 +29,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.service.AccessFichaPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.CheckoutSlotClaimer;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
@@ -220,14 +221,14 @@ public class UseCaseConfig {
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
-			Clock clock,
+			Clock clock, CheckoutSlotClaimer checkoutSlotClaimer,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths) {
 		Set<String> allowlist = Arrays.stream(allowedReturnPaths.split(",")).map(String::trim)
 				.filter(path -> !path.isEmpty()).collect(Collectors.toUnmodifiableSet());
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
-				fichaAmountResolver, clock);
+				fichaAmountResolver, clock, checkoutSlotClaimer);
 	}
 
 	@Bean

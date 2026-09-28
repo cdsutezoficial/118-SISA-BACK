@@ -38,7 +38,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -90,6 +93,14 @@ class ProgramAdmissionConfigControllerTest {
 	@MockitoBean
 	private ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository;
 
+	/**
+	 * The picker reads "now" from the zone-pinned clock the composition root
+	 * provides, so that it and the checkout enforce the sales window and the
+	 * claim expiry in the same zone.
+	 */
+	@MockitoBean
+	private Clock clock;
+
 	@MockitoBean
 	private JwtService jwtService;
 
@@ -103,6 +114,12 @@ class ProgramAdmissionConfigControllerTest {
 		callerId = UUID.randomUUID();
 		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
 				callerId.toString(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+		// A mock Clock returns null from instant() and getZone(), either of which would
+		// blow up the picker before the test could say anything about it. Pin it to the
+		// real clock so the sales-window assertions still compare against the wall
+		// clock, and so LocalDate.now(clock) resolves to today's date.
+		when(clock.instant()).thenAnswer(invocation -> Instant.now());
+		when(clock.getZone()).thenAnswer(invocation -> ZoneId.systemDefault());
 	}
 
 	@AfterEach
@@ -339,7 +356,7 @@ class ProgramAdmissionConfigControllerTest {
 		when(projection.getId()).thenReturn(configId);
 		when(projection.getProgramName()).thenReturn("Ingeniería en Software");
 		when(projection.getModality()).thenReturn(ProgramModality.PRESENCIAL);
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class)))
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(LocalDate.class)))
 				.thenReturn(List.of(projection));
 
 		Instant beforeCall = Instant.now();
@@ -353,13 +370,20 @@ class ProgramAdmissionConfigControllerTest {
 		// sales window and the quota are filtered in SQL against this instant, so a
 		// caller that stopped passing it would silently get every OPEN config back.
 		ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
-		verify(programAdmissionConfigJpaRepository).findOpenOfferedOptions(now.capture());
+		ArgumentCaptor<LocalDate> today = ArgumentCaptor.forClass(LocalDate.class);
+		verify(programAdmissionConfigJpaRepository).findOpenOfferedOptions(now.capture(), today.capture());
 		assertThat(now.getValue()).isBetween(beforeCall, Instant.now());
+		// The claim-expiry half of the occupancy rule is a calendar date, not an
+		// instant: it is compared against the concept's own date columns. Deriving it
+		// from the same clock is what stops the picker and the checkout from
+		// disagreeing about which day a claim dies.
+		assertThat(today.getValue()).isEqualTo(LocalDate.now());
 	}
 
 	@Test
 	void listProgramAdmissionConfigOptionsReturnsEmptyListWhenNoOpenConfigs() throws Exception {
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class))).thenReturn(List.of());
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(LocalDate.class)))
+				.thenReturn(List.of());
 
 		mockMvc.perform(get("/program-admission-configs/options"))
 				.andExpect(status().isOk())

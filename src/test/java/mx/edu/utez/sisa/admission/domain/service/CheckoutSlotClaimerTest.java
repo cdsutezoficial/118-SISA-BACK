@@ -1,0 +1,301 @@
+package mx.edu.utez.sisa.admission.domain.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Optional;
+import java.util.UUID;
+
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
+import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+/**
+ * Unit tests for {@link CheckoutSlotClaimer}, the rule that makes
+ * "no more than {@code maxCandidates} fichas" true.
+ *
+ * <p>Three things are being pinned here, and each one is a way the design could
+ * have quietly failed:
+ * <ol>
+ * <li><b>The lock is taken before the count is read</b>, and the count asks about
+ * the program's occupancy rather than one config's payments. Getting the order
+ * wrong reintroduces the race the lock exists to close.</li>
+ * <li><b>The candidate's own claim is excluded from the count.</b> Without it, a
+ * candidate retrying a checkout is refused for a slot they already hold, which
+ * only shows up on the last place of a full career — the worst possible moment to
+ * discover it.</li>
+ * <li><b>Refusal writes nothing.</b> A rejected claim must leave the ficha
+ * exactly as it was, or a career would silently shrink every time somebody was
+ * turned away.</li>
+ * </ol>
+ *
+ * <p>What this class cannot prove is the mutual exclusion itself: {@code
+ * AdmissionQuotaPort#lockQuota} is mocked, so the row lock is asserted as an
+ * intent, not as an observed serialisation. That is
+ * {@code CheckoutSlotClaimerConcurrencyIT}'s job, and pretending otherwise here
+ * would be a test that passes for the wrong reason.
+ */
+@ExtendWith(MockitoExtension.class)
+class CheckoutSlotClaimerTest {
+
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final LocalDate TODAY = LocalDate.of(2026, 9, 25);
+
+	private static final Instant NOW = TODAY.atTime(12, 0).atZone(ZONE).toInstant();
+
+	private static final int MAX_CANDIDATES = 15;
+
+	private static final UUID CANDIDATE_ID = UUID.randomUUID();
+
+	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
+
+	private static final UUID PROGRAM_ID = UUID.randomUUID();
+
+	@Mock
+	private AdmissionQuotaPort admissionQuotaPort;
+
+	@Mock
+	private AdmissionPaymentRepository admissionPaymentRepository;
+
+	@Mock
+	private CandidateRepository candidateRepository;
+
+	private CheckoutSlotClaimer claimer;
+
+	@BeforeEach
+	void setUp() {
+		claimer = new CheckoutSlotClaimer(admissionQuotaPort, admissionPaymentRepository, candidateRepository,
+				Clock.fixed(NOW, ZONE));
+		lenientCandidateAndPayment();
+	}
+
+	private void lenientCandidateAndPayment() {
+		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		lenient().when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
+				.thenReturn(Optional.of(payment()));
+		lenient().when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES, PROGRAM_ID));
+		lenient().when(admissionPaymentRepository
+				.countOccupiedByProgramIdExcludingCandidate(any(), any(), any())).thenReturn(0L);
+	}
+
+	private static Candidate candidate() {
+		return new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+	}
+
+	private static AdmissionPayment payment() {
+		return new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA, new BigDecimal("500.00"),
+				"REF-2026-000001", TODAY.plusDays(10));
+	}
+
+	@Test
+	void aFreeSlotIsClaimedAndStamped() {
+		claimer.claim(CANDIDATE_ID);
+
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository).save(saved.capture());
+		assertThat(saved.getValue().getCheckoutClaimedAt()).isNotNull();
+	}
+
+	/**
+	 * The lock has to be held before the count is read, or two candidates can both
+	 * read the same number and both conclude there is room.
+	 */
+	@Test
+	void theQuotaIsLockedBeforeItIsCounted() {
+		claimer.claim(CANDIDATE_ID);
+
+		InOrder inOrder = inOrder(admissionQuotaPort, admissionPaymentRepository);
+		inOrder.verify(admissionQuotaPort).lockQuota(ADMISSION_CONFIG_ID);
+		inOrder.verify(admissionPaymentRepository)
+				.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY);
+	}
+
+	/**
+	 * The count is scoped to the program and to today, because the claim expires
+	 * against the tuition concept's window and a config is only one period of one
+	 * program's sales.
+	 */
+	@Test
+	void theCountIsScopedToTheProgramAndToToday() {
+		claimer.claim(CANDIDATE_ID);
+
+		verify(admissionPaymentRepository).countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY);
+		verify(admissionPaymentRepository, never()).countOccupiedByProgramId(any(), any());
+	}
+
+	/** Off by one, the classic: fifteen sold means the sixteenth is refused. */
+	@Test
+	void aFullQuotaIsRefused() {
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn((long) MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
+				.hasMessageContaining(String.valueOf(MAX_CANDIDATES));
+	}
+
+	/**
+	 * The sentence a candidate reads when a career is full, matched in full rather
+	 * than by substring.
+	 *
+	 * <p>This is the whole sentence on purpose. It shipped as "La carrera alcanzo su
+	 * cupo de 1 fichas pagadas", which was wrong twice: a grammar slip, and a claim
+	 * that the quota was taken by people who paid. The count includes checkouts still
+	 * in flight, so that version told candidates they had lost to paying applicants
+	 * when the last place might have been sitting unsettled. It also said nothing
+	 * about waiting, which is correct — there is no queue, the quota is a cap — and
+	 * anything that adds a "try again later" would be promising a release that
+	 * nothing in the system schedules.
+	 */
+	@Test
+	void theFullQuotaMessageIsPinned() {
+		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES, PROGRAM_ID));
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn((long) MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+				.hasMessage("Esta carrera alcanzó su cupo de 15 fichas.");
+	}
+
+	/** A career capped at one sells "1 ficha". The plural is what shipped. */
+	@Test
+	void theFullQuotaMessageIsSingularForASinglePlace() {
+		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(1, PROGRAM_ID));
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn(1L);
+
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+				.hasMessage("Esta carrera alcanzó su cupo de 1 ficha.");
+	}
+
+	/** One place left must still be claimable, or the last place could never sell. */
+	@Test
+	void theLastFreeSlotIsClaimable() {
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn((long) MAX_CANDIDATES - 1);
+
+		claimer.claim(CANDIDATE_ID);
+
+		verify(admissionPaymentRepository).save(any());
+	}
+
+	/**
+	 * A refusal must not touch the ficha. Saving a claim on the way out would
+	 * shrink the career by one every time somebody was turned away, which shows up
+	 * days later as a career that quietly sells fewer fichas than it advertises.
+	 */
+	@Test
+	void aRefusedClaimWritesNothing() {
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn((long) MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
+
+		verify(admissionPaymentRepository, never()).save(any());
+	}
+
+	/**
+	 * The retry case. A candidate whose checkout was abandoned already holds a
+	 * claim; if the count included it, a career that had just sold its last place
+	 * would refuse the retry for a slot that is theirs.
+	 */
+	@Test
+	void aRetryIsCountedAsRoomBesideItsOwnClaimNotAgainstIt() {
+		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn((long) MAX_CANDIDATES - 1);
+
+		claimer.claim(CANDIDATE_ID);
+
+		verify(admissionPaymentRepository).save(any());
+	}
+
+	@Test
+	void releasingHandsTheSlotBack() {
+		AdmissionPayment claimed = payment();
+		claimed.claimCheckoutSlot();
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(claimed));
+
+		claimer.release(CANDIDATE_ID);
+
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository).save(saved.capture());
+		assertThat(saved.getValue().getCheckoutClaimedAt()).isNull();
+	}
+
+	/** Releasing must not re-read the quota: the slot is the candidate's to give back. */
+	@Test
+	void releasingDoesNotConsultTheQuota() {
+		claimer.release(CANDIDATE_ID);
+
+		verify(admissionQuotaPort, never()).lockQuota(any());
+		verify(admissionPaymentRepository, never())
+				.countOccupiedByProgramIdExcludingCandidate(any(), any(), any());
+	}
+
+	@Test
+	void persistingTheSessionStoresBothGatewayIds() {
+		claimer.persistCheckoutSession(CANDIDATE_ID, "TESTUTEZ-ADM-2026-000001-abc", "SESSION0001BR");
+
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository).save(saved.capture());
+		assertThat(saved.getValue().getOrderId()).isEqualTo("TESTUTEZ-ADM-2026-000001-abc");
+		assertThat(saved.getValue().getCheckoutSessionId()).isEqualTo("SESSION0001BR");
+	}
+
+	/**
+	 * A candidate with no ficha cannot be released either, and saying so beats
+	 * quietly doing nothing: a silent skip would leave the caller's retry loop
+	 * holding a claim it could never give back.
+	 */
+	@Test
+	void aMissingFichaIsReportedRatherThanSkipped() {
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID))
+				.isInstanceOf(CandidateNotFoundException.class).hasMessageContaining("no tiene ficha de pago");
+	}
+
+	/**
+	 * A paid ficha has no slot to give back — it already holds one permanently.
+	 * Refusing to rewrite it keeps a late release from resurrecting a claim on a
+	 * payment that is already settled.
+	 */
+	@Test
+	void aPaidFichaCannotBeReclaimed() {
+		AdmissionPayment paid = payment();
+		paid.markPaid("REC-20260925-000001");
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
+
+		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID)).isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("PENDING");
+	}
+}

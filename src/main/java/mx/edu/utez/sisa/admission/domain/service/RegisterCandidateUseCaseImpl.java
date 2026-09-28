@@ -22,7 +22,6 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsExcepti
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
@@ -76,11 +75,12 @@ import java.util.UUID;
  * (409, {@link ProgramAdmissionConfigNotOpenException}) — the staff-controlled
  * toggle;</li>
  * <li>{@code now} must fall inside {@code opensAt}/{@code closesAt} (409,
- * {@link ProgramAdmissionConfigSalesClosedException}) and the config's
- * {@code maxCandidates} must not be spent (409,
- * {@link ProgramAdmissionConfigCapacityReachedException}, counted in <em>paid</em>
- * fichas). Together with the toggle above, these are the three things that decide
- * whether a registration is accepted;</li>
+ * {@link ProgramAdmissionConfigSalesClosedException}). Together with the toggle
+ * above, these are the two things that decide whether a registration is
+ * accepted. <b>The quota is not one of them</b>: {@code maxCandidates} caps
+ * fichas sold, and it is enforced at the checkout
+ * ({@code CheckoutSlotClaimer#claim}), not here — see the note on the removed
+ * check below;</li>
  * <li>a non-null {@code outreachChannelId} must resolve (404,
  * {@code OutreachChannelNotFoundException}) and a non-null
  * {@code schoolTypeId} must resolve (404,
@@ -197,7 +197,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		}
 
 		validateSalesWindow(config);
-		validateQuota(config);
 
 		if (command.seleccionCarrera().outreachChannelId() != null
 				&& outreachChannelRepository.findById(command.seleccionCarrera().outreachChannelId()).isEmpty()) {
@@ -239,20 +238,22 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	}
 
 	/**
-	 * The quota is spent by <em>payments</em>, not by registrations: the field is
-	 * read on screen as a cap on fichas sold, and a registration that is never paid
-	 * is not a ficha sold. This is what "pueden registrarse 100 pero solo pagan 15"
-	 * means, and it is why the count is asked of {@code AdmissionPaymentRepository}
-	 * instead of being a counter on the config.
+	 * There is deliberately no quota check here.
+	 *
+	 * <p>This used to count paid fichas and refuse the registration, and it was
+	 * wrong in the way that matters: it read the quota days before the thing it was
+	 * protecting. A candidate who registered on Monday and clicked "pay" on Friday
+	 * was checked on Monday, against a count that could not include a payment they
+	 * had not made yet. Everybody who read the counter the same way got through,
+	 * and the overshoot only showed up at the bank.
+	 *
+	 * <p>The rule now lives at the checkout instead
+	 * ({@code CheckoutSlotClaimer#claim}), which is where the money is actually
+	 * requested and the last point a refusal is still free. Registration stays open
+	 * for as many people as want it: "pueden registrarse 100 pero solo pagan 15"
+	 * means the cap is on fichas <em>sold</em>, and a registration nobody pays for
+	 * is not a ficha sold.
 	 */
-	private void validateQuota(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
-		long paid = admissionPaymentRepository.countPaidByAdmissionConfigId(config.id());
-		if (paid >= config.maxCandidates()) {
-			throw new ProgramAdmissionConfigCapacityReachedException(
-					"Esta carrera alcanzó su cupo de " + config.maxCandidates() + " fichas.");
-		}
-	}
-
 	/**
 	 * Renders an instant as the calendar date the applicant is looking at, in the
 	 * clock's own zone — the same zone the comparison above was made in, so the
