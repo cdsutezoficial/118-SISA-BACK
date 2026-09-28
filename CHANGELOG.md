@@ -4,6 +4,79 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-28] El tipo ADMISSION: la ficha deja de pedir prestado ENROLLMENT
+
+Commit: `19ead19`.
+
+### La cuota de admisión se prestaba el tipo de la cuota de inscripción
+
+El precio de la ficha, el conteo de lugares ocupados y el desplegable de carreras buscaban
+un concepto `ENROLLMENT` con `is_tuition` encendido. Ese tipo nominaba dos cosas
+distintas: la cuota de admisión y la cuota cuatrimestral de inscripción. Además hacía que
+el vocabulario de admisión fuera inalcanzable desde el catálogo: la UI no ofrecía ningún
+tipo "Admisión" que registrar, así que quien pagaba la ficha terminaba creando —o
+renombrando— un concepto de inscripción.
+
+`PaymentConceptType.ADMISSION` entra al enum y los cinco lookups pasan a apuntar a él.
+`is_tuition` sigue siendo la bandera que acota a uno por programa, así que no cambian ni
+la cardinalidad ni los dos 409 que ya existían (no hay ninguno / hay varios).
+
+`findActiveEnrollmentForProgram` conserva el nombre a propósito: el concepto de dominio
+sigue siendo la inscripción del programa; lo que cambió es el tipo con el que se busca.
+
+| Capa | Archivo | Cambio |
+|---|---|---|
+| Domain | `academic_config/domain/model/PaymentConceptType.java` | **Nuevo valor `ADMISSION`** + Javadoc que explica por qué existe |
+| Infra | `admission/infrastructure/persistence/PaymentConceptQueryAdapter.java` | Las 2 consultas del precio piden `ADMISSION` |
+| Infra | `admission/infrastructure/persistence/AdmissionPaymentRepositoryAdapter.java` | Las 2 consultas de ocupación piden `ADMISSION` |
+| Infra | `academic_config/infrastructure/persistence/ProgramAdmissionConfigJpaRepository.java` | El JPQL del desplegable filtra por `ADMISSION` |
+| Puerto | `admission/domain/port/out/PaymentConceptQueryPort.java` | Javadoc alineado al tipo consultado |
+| Puerto | `admission/domain/port/out/ProgramAdmissionConfigQueryPort.java` | Ídem |
+| Puerto | `admission/domain/port/in/GetFichaAmountUseCase.java` | Ídem |
+| Domain service | `admission/domain/service/FichaAmountResolver.java` | Ídem |
+| Domain service | `admission/domain/service/GetFichaAmountUseCaseImpl.java` | Ídem |
+| Domain service | `admission/domain/service/RegisterCandidateUseCaseImpl.java` | Ídem |
+| Infra | `admission/infrastructure/persistence/PaymentConceptLookupJpaRepository.java` | Javadoc de las consultas |
+| Infra | `admission/infrastructure/web/FichaAmountController.java` | Javadoc del 409 |
+| Shared | `admission/shared/exception/FichaPaymentConceptNotFoundException.java` | Javadoc |
+| Shared | `admission/shared/exception/AmbiguousFichaPaymentConceptException.java` | Javadoc |
+
+**Sin migración de esquema.** El enum se persiste como `EnumType.STRING` sobre `VARCHAR`, así
+que el valor nuevo entra solo.
+
+### ⚠️ Migración de datos requerida
+
+En ambientes que ya tengan conceptos de admisión hay que correr esto **antes de desplegar**:
+
+```sql
+UPDATE payment_concept SET type = 'ADMISSION' WHERE type = 'ENROLLMENT' AND is_tuition = true;
+```
+
+Sin ella, un programa cuya ficha ya estaba precioada devuelve **409 por falta de concepto
+`ADMISSION`**, y la UI no tiene forma de arreglarlo: el listado ya no presenta `ENROLLMENT`
+como admisión. El caso de las fichas ya vendidas no se rompe (el pago ya ocurrió), pero sí
+la cotización de las que aún no se cobran.
+
+### Los mensajes de error no se tocaron
+
+`FichaAmountResolver` sigue diciendo "concepto de inscripción" al Aspirante. Es copy orientado
+a la persona y el término sigue siendo correcto; lo que estaba mal era el tipo con el que
+el backend buscaba, no la palabra que se le muestra.
+
+### Pruebas
+
+Los cuatro IT afectados se actualizan al tipo nuevo.
+`aTuitionOfTheEnrollmentTypeIsNotTheAdmissionFee` queda como guarda de regresión: crea un
+concepto `ENROLLMENT` con `is_tuition` activo y vigente, y afirma que **no** aparece en el
+precio de la ficha. Es exactamente el arreglo que se revirtió por error, y sin esa prueba
+pasaría inadvertido porque el flujo seguiría funcionando —con el tipo equivocado—.
+
+1016 unitarias + 30 de integración (`ProgramAdmissionConfigOptionsQueryIT` 16,
+`CheckoutSlotClaimerConcurrencyIT` 2, `PaymentConceptWindowQueryIT` 12) en verde contra
+MySQL real.
+
+---
+
 ## [2026-09-27] El cupo se reserva en el checkout + códigos de error estables
 
 Dos commits: `1e4a824` y `5c1ce31`.
