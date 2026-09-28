@@ -57,6 +57,16 @@ Antes de este plan, en `admission` solo existían los catálogos (`OutreachChann
 
 Cap-resistant (fichas pagadas vs `maxCandidates`): **diferido** hasta que exista `AdmissionPayment` (no se rechaza config llena en esta fase).
 
+> **Superado (2026-09-27).** Este diferimiento se cerró en dos pasos. Primero se
+> validó el cupo contra fichas pagadas al registrarse, y eso resultó ser el problema:
+> leía el contador días antes de lo que protegía. Hoy **el registro no valida cupo en
+> absoluto** — el lugar se reserva en el checkout (`CheckoutSlotClaimer.claim`), que es
+> donde se pide el dinero y el último punto en que decir que no no cuesta un reembolso.
+> Un lugar ocupado es una ficha pagada o una pendiente que ya lo reservó mientras su
+> ventana siga abierta. El conteo sigue siendo por `programId` y la regla acordada es
+> por periodo: eso está **pendiente de decisión de producto**, ver
+> `decision-cupo-proceso-admision.md` en la raíz de `/sisa`.
+
 ### Puertos out
 
 - `CandidateRepository`: `save`, `findById`, `countByFolioStartingWith(prefix)` (base del folio Año→seq).
