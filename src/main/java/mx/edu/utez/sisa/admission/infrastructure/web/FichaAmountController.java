@@ -36,7 +36,7 @@ public class FichaAmountController {
 
 	/**
 	 * {@code 200} with the catalog amount; {@code 404} when the config id is
-	 * unknown; {@code 409} when the program has no active enrollment concept to
+	 * unknown; {@code 409} when the program has no active admission concept to
 	 * price the ficha, or more than one (ambiguous price).
 	 */
 	@GetMapping("/{id}/ficha-amount")

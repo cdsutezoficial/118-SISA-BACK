@@ -39,16 +39,24 @@ public class AdmissionPaymentRepositoryAdapter implements AdmissionPaymentReposi
 		return jpaRepository.countPaidByAdmissionConfigId(admissionConfigId, AdmissionPaymentStatus.PAID);
 	}
 
+	/**
+	 * Both occupancy counts are scoped by "the program has an ADMISSION concept
+	 * that can be paid today": the seat is only taken against a concept the
+	 * candidate can actually buy, so a program whose admission window has closed
+	 * or that has no admission concept yet does not report as full. A concept
+	 * created as ENROLLMENT does not count here \u2014 it is a semester quota, not
+	 * an admission fee.
+	 */
 	@Override
 	public long countOccupiedByProgramId(UUID programId, LocalDate onDate) {
 		return jpaRepository.countOccupiedByProgramId(programId, AdmissionPaymentStatus.PAID,
-				AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT, onDate);
+				AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION, onDate);
 	}
 
 	@Override
 	public long countOccupiedByProgramIdExcludingCandidate(UUID programId, UUID candidateId, LocalDate onDate) {
 		return jpaRepository.countOccupiedByProgramIdExcludingCandidate(programId, candidateId,
 				AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE,
-				PaymentConceptType.ENROLLMENT, onDate);
+				PaymentConceptType.ADMISSION, onDate);
 	}
 }

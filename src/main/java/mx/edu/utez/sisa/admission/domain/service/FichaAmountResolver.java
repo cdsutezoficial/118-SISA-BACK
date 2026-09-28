@@ -13,7 +13,7 @@ import java.util.UUID;
 
 /**
  * Single source of truth for the admission-ficha price (Fase 11): the amount is
- * the cost of the chosen program's {@code ACTIVE} {@code ENROLLMENT} payment
+ * the cost of the chosen program's {@code ACTIVE} {@code ADMISSION} payment
  * concept on the given date — never a static config value, never a
  * client-supplied number.
  *
@@ -22,7 +22,7 @@ import java.util.UUID;
  * ticket) and the public quote endpoint that feeds the registration wizard's
  * review step ({@code GetFichaAmountUseCaseImpl}) apply the very same rule.
  *
- * <p>Resolution is STRICT — exactly one active enrollment concept must exist:
+ * <p>Resolution is STRICT — exactly one active admission concept must exist:
  * zero → {@link FichaPaymentConceptNotFoundException}, more than one →
  * {@link AmbiguousFichaPaymentConceptException} (both projected as {@code 409
  * Conflict}: the requested program exists, it just cannot be priced as things
@@ -50,7 +50,7 @@ public class FichaAmountResolver {
 	}
 
 	/**
-	 * @param programId the program whose enrollment concept prices the ficha
+	 * @param programId the program whose admission concept prices the ficha
 	 * @param onDate    the date the concept must be active on (the registration
 	 *                  date; concept windows are period-scoped)
 	 */

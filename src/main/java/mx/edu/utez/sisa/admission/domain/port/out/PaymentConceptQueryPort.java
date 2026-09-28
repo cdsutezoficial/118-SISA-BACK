@@ -9,19 +9,19 @@ import java.util.UUID;
  * Read-only out-port over {@code PaymentConcept} (a bounded context NOT owned
  * by admission — the concept catalog lives in {@code academic_config}).
  * {@code admission} resolves the ficha amount from the candidate's program's
- * {@code ENROLLMENT} concept this way rather than importing
+ * {@code ADMISSION} concept this way rather than importing
  * {@code academic_config}'s repository port directly (same "own minimal
  * access" rationale as {@code ProgramAdmissionConfigQueryPort}).
  *
  * <p>Strict resolution (Fase 11): registration requires EXACTLY ONE active
- * {@code ENROLLMENT} concept for the program on the registration date — zero
+ * {@code ADMISSION} concept for the program on the registration date — zero
  * means no ficha can be priced (error), more than one is ambiguous (error).
  * Never falls back to a hardcoded/config amount.
  */
 public interface PaymentConceptQueryPort {
 
 	/**
-	 * All {@code ACTIVE} {@code ENROLLMENT} concepts of a program whose
+	 * All {@code ACTIVE} {@code ADMISSION} concepts of a program whose
 	 * availability window (when set) contains {@code onDate}.
 	 */
 	List<FichaConcept> findActiveEnrollmentForProgram(UUID programId, LocalDate onDate);

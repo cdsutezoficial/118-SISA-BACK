@@ -18,7 +18,7 @@ import java.util.UUID;
  *
  * <p>Only existence is enforced here ({@code 404} when the config id is
  * unknown): an {@code OPEN} window is the registration command's rule to
- * enforce, and a window that is not sellable simply has no active enrollment
+ * enforce, and a window that is not sellable simply has no active admission
  * concept to quote.
  */
 public class GetFichaAmountUseCaseImpl implements GetFichaAmountUseCase {

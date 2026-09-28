@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * JPA-backed {@link PaymentConceptQueryPort} adapter: finds the {@code ACTIVE}
- * {@code ENROLLMENT} concepts flagged {@code is_tuition} that price the ficha
+ * {@code ADMISSION} concepts flagged {@code is_tuition} that price the ficha
  * of a program and maps only the minimal projection (concept name + pricing)
  * the admission flow needs. The {@code is_tuition} narrowing lives in
  * {@link PaymentConceptLookupJpaRepository#findActiveTuitionForProgram}.
@@ -29,7 +29,7 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 	@Override
 	public List<FichaConcept> findActiveEnrollmentForProgram(UUID programId, LocalDate onDate) {
 		return lookupJpaRepository
-				.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
+				.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
 						programId, onDate)
 				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
 	}
@@ -37,7 +37,7 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 	@Override
 	public List<FichaConcept> findActiveEnrollmentForProgram(UUID programId) {
 		return lookupJpaRepository
-				.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
+				.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
 						programId)
 				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
 	}

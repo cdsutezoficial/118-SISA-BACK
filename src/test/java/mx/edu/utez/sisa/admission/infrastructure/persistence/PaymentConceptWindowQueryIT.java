@@ -115,17 +115,33 @@ class PaymentConceptWindowQueryIT {
 	// ── the filters both queries share ──
 
 	/**
-	 * {@code isTuition} is what keeps a program's other active enrollment
+	 * {@code isTuition} is what keeps a program's other active admission
 	 * concepts (campus fee, materials) out of the ficha price. Without it a
 	 * single extra concept would make the ficha ambiguous, and the applicant
 	 * would be told to contact support.
 	 */
 	@Test
-	void anActiveEnrollmentConceptThatIsNotTheTuitionIsExcluded() {
-		repository.save(newConcept("Materiales", PaymentConceptType.ENROLLMENT, false, false, null, null, PROGRAM));
+	void anActiveAdmissionConceptThatIsNotTheTuitionIsExcluded() {
+		repository.save(newConcept("Materiales", PaymentConceptType.ADMISSION, false, false, null, null, PROGRAM));
 		repository.save(tuition("Inscripción", ON_DATE.minusDays(10), ON_DATE.plusDays(10), PROGRAM));
 
 		assertThat(withoutWindow()).extracting(PaymentConcept::getName).containsExactly("Inscripción");
+	}
+
+	/**
+	 * The regression guard for wiring the admission flow to its own type. A
+	 * tuition-flagged {@code ENROLLMENT} concept is the semester quota, not the
+	 * admission fee: it must never be priced as the ficha even though it is
+	 * active, tuition and attached to the same program. This is what would break
+	 * silently if the lookups were ever pointed back at {@code ENROLLMENT}.
+	 */
+	@Test
+	void aTuitionOfTheEnrollmentTypeIsNotTheAdmissionFee() {
+		repository.save(newConcept("Inscripción semestre", PaymentConceptType.ENROLLMENT, true, false, null, null,
+				PROGRAM));
+
+		assertThat(withoutWindow()).isEmpty();
+		assertThat(dateFiltered(ON_DATE)).isEmpty();
 	}
 
 	@Test
@@ -171,16 +187,16 @@ class PaymentConceptWindowQueryIT {
 
 	private List<PaymentConcept> withoutWindow() {
 		return repository.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE,
-				PaymentConceptType.ENROLLMENT, PROGRAM);
+				PaymentConceptType.ADMISSION, PROGRAM);
 	}
 
 	private List<PaymentConcept> dateFiltered(LocalDate onDate) {
-		return repository.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
+		return repository.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
 				PROGRAM, onDate);
 	}
 
 	private static PaymentConcept tuition(String name, LocalDate from, LocalDate until, UUID... programIds) {
-		return newConcept(name, PaymentConceptType.ENROLLMENT, true, false, from, until, programIds);
+		return newConcept(name, PaymentConceptType.ADMISSION, true, false, from, until, programIds);
 	}
 
 	private static PaymentConcept newConcept(String name, PaymentConceptType type, boolean isTuition,

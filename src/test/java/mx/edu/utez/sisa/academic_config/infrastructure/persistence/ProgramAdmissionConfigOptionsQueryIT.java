@@ -241,7 +241,7 @@ class ProgramAdmissionConfigOptionsQueryIT {
 		for (ProgramAdmissionConfig config : configs) {
 			long occupiedByClaimer = admissionPaymentJpaRepository.countOccupiedByProgramId(config.getProgramId(),
 					AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE,
-					PaymentConceptType.ENROLLMENT, TODAY);
+					PaymentConceptType.ADMISSION, TODAY);
 			boolean roomForAnother = occupiedByClaimer < config.getMaxCandidates();
 			boolean offeredByDropdown = idsOf(options()).contains(config.getId());
 
@@ -315,13 +315,17 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	/**
-	 * The tuition concept a claimed ficha is measured against. A claim only occupies
+	 * The admission concept a claimed ficha is measured against. A claim only occupies
 	 * a slot while this concept can still be paid, so a test that stamps claims
-	 * without creating one is measuring nothing.
+	 * without creating one is measuring nothing. The type must be
+	 * {@code ADMISSION}: both the dropdown's embedded copy of the rule and
+	 * {@code AdmissionPaymentOccupancyQueries} filter on it, so an
+	 * {@code ENROLLMENT} row would make the two definitions disagree and the
+	 * agreement assertion below would fail for the wrong reason.
 	 */
 	private void saveTuitionConceptFor(ProgramAdmissionConfig config, LocalDate availableUntil) {
 		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
-				PaymentConceptType.ENROLLMENT, true, false, null, null, false, TODAY.minusDays(30), availableUntil,
+				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(30), availableUntil,
 				null, new BigDecimal("1578.00"), false, null, false, false, null, List.of(),
 				List.of(config.getProgramId()));
 		concept.activate();

@@ -35,13 +35,13 @@ public interface ProgramAdmissionConfigQueryPort {
 	 * the program and period without {@code admission} importing
 	 * {@code academic_config}'s program/period repositories. {@code programId}
 	 * powers the payment-concept resolution at registration (the ficha amount
-	 * is the cost of the program's {@code ENROLLMENT} concept, Fase 11).
+	 * is the cost of the program's {@code ADMISSION} concept, Fase 11).
 	 */
 	Optional<AdmissionConfigInfo> findById(UUID id);
 
 	/**
 	 * @param programId the chosen program's id (also used to resolve the
-	 *                  {@code ENROLLMENT} payment concept that prices the ficha)
+	 *                  {@code ADMISSION} payment concept that prices the ficha)
 	 * @param modality  the chosen program's delivery modality ({@code PRESENCIAL}/{@code MIXTA}),
 	 *                  resolved from the {@code AcademicProgram} — the admission flow never stores
 	 *                  modality on {@code Candidate} itself (derived from the program).
