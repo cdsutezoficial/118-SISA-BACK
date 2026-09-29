@@ -84,8 +84,7 @@ public class PaymentConceptController {
 						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
 						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
 						request.isExternal(), request.costExternal(), request.isAccumulable(),
-						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds(),
-						request.programIds()));
+						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
 	}
 
@@ -98,8 +97,7 @@ public class PaymentConceptController {
 						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
 						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
 						request.isExternal(), request.costExternal(), request.isAccumulable(),
-						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds(),
-						request.programIds()));
+						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds()));
 		return ResponseEntity.ok(toResponse(result));
 	}
 
@@ -145,8 +143,7 @@ public class PaymentConceptController {
 				result.type(), result.isTuition(), result.isStandalone(), result.maxPerStudent(),
 				result.maxPerPeriod(), result.requiresValidation(), result.availableFrom(), result.availableUntil(),
 				result.status(), result.areaId(), result.cost(), result.isExternal(), result.costExternal(),
-				result.isAccumulable(), result.isMulticoncept(), result.quotaLimit(), result.linkedConceptIds(),
-				result.programIds());
+				result.isAccumulable(), result.isMulticoncept(), result.quotaLimit(), result.linkedConceptIds());
 	}
 
 	private static PaymentConceptListItemResponse toItem(PaymentConceptSummary summary) {

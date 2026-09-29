@@ -17,10 +17,14 @@ import java.util.UUID;
  * {@code InvalidPaymentConceptDataException}, same convention as
  * {@code AcademicPlan}'s {@code minPassingGrade} range (see
  * {@code CreateAcademicPlanRequest}'s Javadoc).
+ *
+ * <p>No {@code programIds}: a concept's scope is stated by its rates, created
+ * through the rates endpoints. A client still sending the old field is not an
+ * error — Jackson ignores unknown properties by default here.
  */
 public record CreatePaymentConceptRequest(@NotBlank String name, String description, String policies,
 		@NotNull PaymentConceptType type, boolean isTuition, boolean isStandalone, Integer maxPerStudent,
 		Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
 		UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-		boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+		boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 }

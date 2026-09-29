@@ -75,7 +75,17 @@ interface AdmissionPaymentOccupancyQueries {
 			                SELECT c FROM PaymentConcept c
 			                WHERE c.status = :conceptStatus
 			                  AND c.type = :conceptType
-			                  AND :programId MEMBER OF c.programIds
+			                  AND EXISTS (
+			                      SELECT r FROM PaymentRate r
+			                      WHERE r.conceptId = c.id
+			                        AND r.periodId IS NULL
+			                        AND r.validFrom <= :onDate
+			                        AND (r.validTo IS NULL OR r.validTo >= :onDate)
+			                        AND (r.programId = :programId
+			                             OR (r.programId IS NULL AND r.level = (
+			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
+			                             OR (r.programId IS NULL AND r.level IS NULL))
+			                      )
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))
 			""")
@@ -114,7 +124,17 @@ interface AdmissionPaymentOccupancyQueries {
 			                SELECT c FROM PaymentConcept c
 			                WHERE c.status = :conceptStatus
 			                  AND c.type = :conceptType
-			                  AND :programId MEMBER OF c.programIds
+			                  AND EXISTS (
+			                      SELECT r FROM PaymentRate r
+			                      WHERE r.conceptId = c.id
+			                        AND r.periodId IS NULL
+			                        AND r.validFrom <= :onDate
+			                        AND (r.validTo IS NULL OR r.validTo >= :onDate)
+			                        AND (r.programId = :programId
+			                             OR (r.programId IS NULL AND r.level = (
+			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
+			                             OR (r.programId IS NULL AND r.level IS NULL))
+			                      )
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))
 			""")

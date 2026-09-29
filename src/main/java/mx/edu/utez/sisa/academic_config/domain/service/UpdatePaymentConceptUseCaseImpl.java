@@ -3,7 +3,6 @@ package mx.edu.utez.sisa.academic_config.domain.service;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.PaymentConceptResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePaymentConceptUseCase;
-import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentAreaRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentConceptRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
@@ -26,13 +25,10 @@ public class UpdatePaymentConceptUseCaseImpl implements UpdatePaymentConceptUseC
 
 	private final PaymentAreaRepository paymentAreaRepository;
 
-	private final AcademicProgramRepository academicProgramRepository;
-
 	public UpdatePaymentConceptUseCaseImpl(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
+			PaymentAreaRepository paymentAreaRepository) {
 		this.paymentConceptRepository = paymentConceptRepository;
 		this.paymentAreaRepository = paymentAreaRepository;
-		this.academicProgramRepository = academicProgramRepository;
 	}
 
 	@Override
@@ -45,15 +41,14 @@ public class UpdatePaymentConceptUseCaseImpl implements UpdatePaymentConceptUseC
 		CreatePaymentConceptUseCaseImpl.validate(command.maxPerStudent(), command.maxPerPeriod(),
 				command.availableFrom(), command.availableUntil(), command.cost(), command.isExternal(),
 				command.costExternal(), command.quotaLimit());
-		CreatePaymentConceptUseCaseImpl.validateReferences(command.areaId(), command.programIds(),
-				command.linkedConceptIds(), command.paymentConceptId(), paymentAreaRepository,
-				academicProgramRepository, paymentConceptRepository);
+		CreatePaymentConceptUseCaseImpl.validateReferences(command.areaId(), command.linkedConceptIds(),
+				command.paymentConceptId(), paymentAreaRepository, paymentConceptRepository);
 
 		concept.updateDetails(command.name(), command.description(), command.policies(), command.type(),
 				command.isTuition(), command.isStandalone(), command.maxPerStudent(), command.maxPerPeriod(),
 				command.requiresValidation(), command.availableFrom(), command.availableUntil(), command.areaId(),
 				command.cost(), command.isExternal(), command.costExternal(), command.isAccumulable(),
-				command.isMulticoncept(), command.quotaLimit(), command.linkedConceptIds(), command.programIds());
+				command.isMulticoncept(), command.quotaLimit(), command.linkedConceptIds());
 		PaymentConcept saved = paymentConceptRepository.save(concept);
 
 		return CreatePaymentConceptUseCaseImpl.toResult(saved);

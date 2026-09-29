@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
@@ -80,6 +81,9 @@ class ProgramAdmissionConfigOptionsQueryIT {
 
 	@Autowired
 	private PaymentConceptJpaRepository paymentConceptJpaRepository;
+
+	@Autowired
+	private PaymentRateJpaRepository paymentRateJpaRepository;
 
 	@Test
 	void returnsAnOpenOfferedConfigInsideItsWindow() {
@@ -315,21 +319,27 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	/**
-	 * The admission concept a claimed ficha is measured against. A claim only occupies
-	 * a slot while this concept can still be paid, so a test that stamps claims
-	 * without creating one is measuring nothing. The type must be
-	 * {@code ADMISSION}: both the dropdown's embedded copy of the rule and
-	 * {@code AdmissionPaymentOccupancyQueries} filter on it, so an
+	 * The admission concept a claimed ficha is measured against, plus the rate
+	 * that makes it apply to this program. A claim only occupies a slot while
+	 * this concept can still be paid, so a test that stamps claims without
+	 * creating one is measuring nothing — and since scope now lives in the
+	 * rates, a concept with no rate reaching the program does not apply at all
+	 * and would leave the slot unoccupied. The type must be {@code ADMISSION}:
+	 * the dropdown's embedded copy of the rule and
+	 * {@code AdmissionPaymentOccupancyQueries} both filter on it, so an
 	 * {@code ENROLLMENT} row would make the two definitions disagree and the
 	 * agreement assertion below would fail for the wrong reason.
 	 */
 	private void saveTuitionConceptFor(ProgramAdmissionConfig config, LocalDate availableUntil) {
 		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
 				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(30), availableUntil,
-				null, new BigDecimal("1578.00"), false, null, false, false, null, List.of(),
-				List.of(config.getProgramId()));
+				null, new BigDecimal("1578.00"), false, null, false, false, null, List.of());
 		concept.activate();
-		paymentConceptJpaRepository.save(concept);
+		concept = paymentConceptJpaRepository.save(concept);
+		// A rate bound to this exact program: the most specific rung of the ladder,
+		// so the concept applies no matter what the program's level is.
+		paymentRateJpaRepository.save(new PaymentRate(concept.getId(), config.getProgramId(), null,
+				new BigDecimal("1578.00"), null, TODAY.minusDays(30)));
 	}
 
 	private void saveFicha(UUID admissionConfigId, boolean paid) {

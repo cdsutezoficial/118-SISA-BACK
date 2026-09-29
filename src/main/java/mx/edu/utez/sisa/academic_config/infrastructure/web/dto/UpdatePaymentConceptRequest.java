@@ -13,10 +13,14 @@ import java.util.UUID;
  * Request body for {@code PUT /payment-concepts/{id}}. {@code status} is
  * deliberately absent — status transitions go through
  * {@code PATCH /payment-concepts/{id}/status}.
+ *
+ * <p>No {@code programIds}, for the same reason as
+ * {@code CreatePaymentConceptRequest}: scope lives in the rates, so editing the
+ * concept cannot orphan the programs it used to claim to apply to.
  */
 public record UpdatePaymentConceptRequest(@NotBlank String name, String description, String policies,
 		@NotNull PaymentConceptType type, boolean isTuition, boolean isStandalone, Integer maxPerStudent,
 		Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
 		UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-		boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+		boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 }

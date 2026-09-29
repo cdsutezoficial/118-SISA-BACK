@@ -3,11 +3,14 @@ package mx.edu.utez.sisa.admission.infrastructure.persistence;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.TestPropertySource;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -19,12 +22,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@link PaymentConceptLookupJpaRepository}, in the style of
  * {@code ProgramAdmissionConfigOptionsQueryIT}.
  *
- * <p>These are the queries block 3 of the plan hinges on, and both are pure JPQL
- * over {@code payment_concept}: a unit test with a mocked repository returns
- * whatever the mock was told to return and would pass even if the query
- * filtered on the wrong column. The distinction that matters — the date-filtered
- * query excludes a closed concept, the window-ignoring one still finds it — is
- * only observable when the predicates are actually parsed and executed.
+ * <p>These are the queries block 3 of the plan hinges on, and both are JPQL that
+ * spans {@code payment_concept} and {@code payment_rate}: a unit test with a
+ * mocked repository returns whatever the mock was told to return and would pass
+ * even if the query filtered on the wrong column. The distinction that matters —
+ * the date-filtered query excludes a closed concept, the window-ignoring one
+ * still finds it — is only observable when the predicates are actually parsed and
+ * executed.
  *
  * <h2>Warning: this class recreates the schema it points at</h2>
  * {@code ddl-auto=create-drop} means whatever database {@code DB_URL} names is
@@ -50,6 +54,9 @@ class PaymentConceptWindowQueryIT {
 	@Autowired
 	private PaymentConceptLookupJpaRepository repository;
 
+	@Autowired
+	private PaymentRateLookupJpaRepository rates;
+
 	// ── the window-ignoring query: what makes "closed" distinguishable from "absent" ──
 
 	/**
@@ -61,8 +68,7 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void theWindowIgnoringQueryFindsAConceptTheDateFilteredOneHides() {
-		PaymentConcept closed = repository.save(admission("Ficha 2026", ON_DATE.minusDays(30), ON_DATE.minusDays(1),
-				PROGRAM));
+		PaymentConcept closed = repository.save(admission("Ficha 2026", ON_DATE.minusDays(30), ON_DATE.minusDays(1)));
 
 		assertThat(dateFiltered(ON_DATE)).isEmpty();
 		assertThat(withoutWindow()).extracting(PaymentConcept::getName).containsExactly(closed.getName());
@@ -70,7 +76,7 @@ class PaymentConceptWindowQueryIT {
 
 	@Test
 	void aConceptThatHasNotOpenedYetIsAlsoFoundByTheWindowIgnoringQuery() {
-		repository.save(admission("Ficha 2027", ON_DATE.plusDays(1), ON_DATE.plusDays(60), PROGRAM));
+		repository.save(admission("Ficha 2027", ON_DATE.plusDays(1), ON_DATE.plusDays(60)));
 
 		assertThat(dateFiltered(ON_DATE)).isEmpty();
 		assertThat(withoutWindow()).hasSize(1);
@@ -83,7 +89,7 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void theWindowBoundsAreInclusiveOnBothEnds() {
-		repository.save(admission("Ficha 2026", ON_DATE, ON_DATE, PROGRAM));
+		repository.save(admission("Ficha 2026", ON_DATE, ON_DATE));
 
 		assertThat(dateFiltered(ON_DATE)).hasSize(1);
 		assertThat(dateFiltered(ON_DATE.minusDays(1))).isEmpty();
@@ -93,7 +99,7 @@ class PaymentConceptWindowQueryIT {
 	/** A null bound means "no limit on that side", not "never payable". */
 	@Test
 	void aConceptWithoutDatesIsAlwaysPayable() {
-		repository.save(admission("Ficha sin fechas", null, null, PROGRAM));
+		repository.save(admission("Ficha sin fechas", null, null));
 
 		assertThat(dateFiltered(ON_DATE)).hasSize(1);
 		assertThat(dateFiltered(ON_DATE.plusYears(5))).hasSize(1);
@@ -102,8 +108,8 @@ class PaymentConceptWindowQueryIT {
 
 	@Test
 	void aHalfOpenWindowOnlyBoundsTheSideItSets() {
-		repository.save(admission("Desde 2026", ON_DATE, null, PROGRAM));
-		repository.save(admission("Hasta 2026", null, ON_DATE, PROGRAM));
+		repository.save(admission("Desde 2026", ON_DATE, null));
+		repository.save(admission("Hasta 2026", null, ON_DATE));
 
 		assertThat(dateFiltered(ON_DATE)).hasSize(2);
 		assertThat(dateFiltered(ON_DATE.minusDays(1))).extracting(PaymentConcept::getName)
@@ -124,8 +130,8 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void anAdmissionConceptIsIncludedWhateverTheTuitionFlagSays() {
-		repository.save(concept("Materiales", PaymentConceptType.ADMISSION, false, null, null, PROGRAM));
-		repository.save(concept("Inscripción", PaymentConceptType.ADMISSION, true, null, null, PROGRAM));
+		repository.save(pricedConcept("Materiales", PaymentConceptType.ADMISSION, false, null, null));
+		repository.save(pricedConcept("Inscripción", PaymentConceptType.ADMISSION, true, null, null));
 
 		assertThat(withoutWindow()).extracting(PaymentConcept::getName)
 				.containsExactlyInAnyOrder("Materiales", "Inscripción");
@@ -142,7 +148,7 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void aTuitionOfTheEnrollmentTypeIsNotTheAdmissionFee() {
-		repository.save(concept("Inscripción semestre", PaymentConceptType.ENROLLMENT, true, null, null, PROGRAM));
+		repository.save(pricedConcept("Inscripción semestre", PaymentConceptType.ENROLLMENT, true, null, null));
 
 		assertThat(withoutWindow()).isEmpty();
 		assertThat(dateFiltered(ON_DATE)).isEmpty();
@@ -150,25 +156,62 @@ class PaymentConceptWindowQueryIT {
 
 	@Test
 	void aTuitionOfAnotherTypeIsExcluded() {
-		repository.save(concept("Reinscripción", PaymentConceptType.REINSCRIPTION, true, null, null, PROGRAM));
+		repository.save(pricedConcept("Reinscripción", PaymentConceptType.REINSCRIPTION, true, null, null));
 
 		assertThat(withoutWindow()).isEmpty();
 	}
 
 	@Test
 	void anInactiveConceptIsExcluded() {
-		PaymentConcept deactivated = repository.save(admission("Inscripción", null, null, PROGRAM));
+		PaymentConcept deactivated = repository.save(admission("Inscripción", null, null));
 		deactivated.deactivate();
 		repository.save(deactivated);
 
 		assertThat(withoutWindow()).isEmpty();
 	}
 
+	/**
+	 * The scope rule, now the only one. There is no list of programs on the
+	 * concept any more: a rate bound to another program, or to a level this
+	 * program does not have, does not make the concept apply here. A general
+	 * rate is added afterwards to prove the exclusion was about scope and not
+	 * about the concept having no rates at all.
+	 */
 	@Test
-	void aConceptBelongingToAnotherProgramIsExcluded() {
-		repository.save(admission("Inscripción", null, null, OTHER_PROGRAM));
+	void aConceptWhoseOnlyRatesPointElsewhereDoesNotApply() {
+		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "Descripcion", "Politicas",
+				PaymentConceptType.ADMISSION, true, false, 1, 2, true, null, null, null, null, false, null, false,
+				false, null, List.of()));
+		rateFor(concept, OTHER_PROGRAM, null, LocalDate.of(2000, 1, 1));
+		rateFor(concept, null, AcademicLevel.POSGRADO, LocalDate.of(2000, 1, 1));
 
 		assertThat(withoutWindow()).isEmpty();
+		assertThat(dateFiltered(ON_DATE)).isEmpty();
+
+		// the same concept, now with a rate that does reach this program
+		rateFor(concept, PROGRAM, null, LocalDate.of(2000, 1, 1));
+		assertThat(withoutWindow()).hasSize(1);
+	}
+
+	/**
+	 * A rate that has expired, or not opened yet, does not make the concept
+	 * apply on that date. The window-ignoring query drops the date predicates
+	 * too, so it still sees the concept — which is what lets the resolver say
+	 * "the ficha exists but its price is not valid today" instead of the vaguer
+	 * "there is no ficha for this career".
+	 */
+	@Test
+	void aRateOutOfItsOwnDateRangeDoesNotApplyOnThatDate() {
+		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "Descripcion", "Politicas",
+				PaymentConceptType.ADMISSION, true, false, 1, 2, true, null, null, null, null, false, null, false,
+				false, null, List.of()));
+		rateFor(concept, PROGRAM, null, ON_DATE.plusDays(10));
+
+		assertThat(dateFiltered(ON_DATE)).isEmpty();
+		assertThat(withoutWindow()).hasSize(1);
+
+		// the bounds are inclusive, so the first day of the rate's own range counts
+		assertThat(dateFiltered(ON_DATE.plusDays(10))).hasSize(1);
 	}
 
 	/**
@@ -180,8 +223,8 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void twoAdmissionConceptsForOneProgramBothComeBackAndAreTheOnesThatBecome409() {
-		repository.save(admission("Inscripción", null, null, PROGRAM));
-		repository.save(admission("Reinscripción 2026", null, null, PROGRAM));
+		repository.save(admission("Inscripción", null, null));
+		repository.save(admission("Reinscripción 2026", null, null));
 
 		// The count is deliberately not asserted to be 1: the repository's job is
 		// to report faithfully, and FichaAmountResolver is what refuses.
@@ -205,14 +248,30 @@ class PaymentConceptWindowQueryIT {
 				PROGRAM, onDate);
 	}
 
-	/** An ADMISSION concept with the tuition flag on — the flag no longer matters. */
-	private static PaymentConcept admission(String name, LocalDate from, LocalDate until, UUID... programIds) {
-		return concept(name, PaymentConceptType.ADMISSION, true, from, until, programIds);
+	/**
+	 * An ADMISSION concept with the tuition flag on, saved together with the
+	 * general rate that makes it apply to {@link #PROGRAM}. The flag is left on
+	 * deliberately in most tests: it must not change the answer.
+	 */
+	private PaymentConcept admission(String name, LocalDate from, LocalDate until) {
+		return pricedConcept(name, PaymentConceptType.ADMISSION, true, from, until);
 	}
 
-	private static PaymentConcept concept(String name, PaymentConceptType type, boolean isTuition, LocalDate from,
-			LocalDate until, UUID... programIds) {
-		return new PaymentConcept(name, "Descripcion", "Politicas", type, isTuition, false, 1, 2, true, from,
-				until, null, null, false, null, false, false, null, List.of(), List.of(programIds));
+	/**
+	 * Saves the concept and a general (neither program nor level) continuous
+	 * rate covering every date, which is the minimum for a concept to apply to
+	 * a program. Tests that care about scope use {@code rateFor} directly.
+	 */
+	private PaymentConcept pricedConcept(String name, PaymentConceptType type, boolean isTuition, LocalDate from,
+			LocalDate until) {
+		PaymentConcept concept = repository.save(new PaymentConcept(name, "Descripcion", "Politicas", type, isTuition,
+				false, 1, 2, true, from, until, null, null, false, null, false, false, null, List.of()));
+		rateFor(concept, null, null, LocalDate.of(2000, 1, 1));
+		return concept;
+	}
+
+	/** A continuous rate, as the ladder requires: {@code periodId} stays null. */
+	private void rateFor(PaymentConcept concept, UUID programId, AcademicLevel level, LocalDate validFrom) {
+		rates.save(new PaymentRate(concept.getId(), programId, level, new BigDecimal("500.00"), null, validFrom));
 	}
 }

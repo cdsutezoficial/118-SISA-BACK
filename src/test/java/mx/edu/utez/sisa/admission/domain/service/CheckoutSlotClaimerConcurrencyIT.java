@@ -19,9 +19,11 @@ import java.util.concurrent.TimeUnit;
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicProgramJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.PaymentConceptJpaRepository;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.PaymentRateJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.ProgramAdmissionConfigJpaRepository;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
@@ -108,6 +110,9 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 	@Autowired
 	private PaymentConceptJpaRepository paymentConceptJpaRepository;
+
+	@Autowired
+	private PaymentRateJpaRepository paymentRateJpaRepository;
 
 	@Autowired
 	private CandidateJpaRepository candidateJpaRepository;
@@ -218,11 +223,14 @@ class CheckoutSlotClaimerConcurrencyIT {
 		// "last place" scenario would have nothing to compete over. The type is
 		// ADMISSION because that is what the occupancy query filters on: an
 		// ENROLLMENT concept would be invisible to it and every count would read 0.
+		// The rate is what makes the concept apply to this program at all now.
 		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
 				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(1), TODAY.plusDays(5),
-				null, BigDecimal.valueOf(1578), false, null, false, false, null, List.of(), List.of(program.getId()));
+				null, BigDecimal.valueOf(1578), false, null, false, false, null, List.of());
 		concept.activate();
-		paymentConceptJpaRepository.save(concept);
+		concept = paymentConceptJpaRepository.save(concept);
+		paymentRateJpaRepository.save(new PaymentRate(concept.getId(), program.getId(), null,
+				BigDecimal.valueOf(1578), null, TODAY.minusDays(1)));
 
 		return config;
 	}

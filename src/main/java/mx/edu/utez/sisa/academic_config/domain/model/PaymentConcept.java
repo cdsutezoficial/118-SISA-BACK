@@ -124,11 +124,6 @@ public class PaymentConcept {
 	@Column(name = "linked_concept_id", nullable = false)
 	private List<UUID> linkedConceptIds = new ArrayList<>();
 
-	@ElementCollection
-	@CollectionTable(name = "payment_concept_program", joinColumns = @JoinColumn(name = "concept_id"))
-	@Column(name = "program_id", nullable = false)
-	private List<UUID> programIds = new ArrayList<>();
-
 	protected PaymentConcept() {
 		// JPA
 	}
@@ -144,14 +139,14 @@ public class PaymentConcept {
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 		this(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
 				requiresValidation, availableFrom, availableUntil, null, null, false, null, false, false, null,
-				List.of(), List.of());
+				List.of());
 	}
 
 	public PaymentConcept(String name, String description, String policies, PaymentConceptType type,
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
 			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 		this.name = name;
 		this.description = description;
 		this.policies = policies;
@@ -171,7 +166,6 @@ public class PaymentConcept {
 		this.isMulticoncept = isMulticoncept;
 		this.quotaLimit = quotaLimit;
 		this.linkedConceptIds = linkedConceptIds == null ? new ArrayList<>() : new ArrayList<>(linkedConceptIds);
-		this.programIds = programIds == null ? new ArrayList<>() : new ArrayList<>(programIds);
 		this.status = PaymentConceptStatus.ACTIVE;
 	}
 
@@ -186,8 +180,7 @@ public class PaymentConcept {
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 		updateDetails(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
 				requiresValidation, availableFrom, availableUntil, this.areaId, this.cost, this.isExternal,
-				this.costExternal, this.isAccumulable, this.isMulticoncept, this.quotaLimit, this.linkedConceptIds,
-				this.programIds);
+				this.costExternal, this.isAccumulable, this.isMulticoncept, this.quotaLimit, this.linkedConceptIds);
 	}
 
 	/**
@@ -200,7 +193,7 @@ public class PaymentConcept {
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
 			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 		this.name = name;
 		this.description = description;
 		this.policies = policies;
@@ -222,10 +215,6 @@ public class PaymentConcept {
 		this.linkedConceptIds.clear();
 		if (linkedConceptIds != null) {
 			this.linkedConceptIds.addAll(linkedConceptIds);
-		}
-		this.programIds.clear();
-		if (programIds != null) {
-			this.programIds.addAll(programIds);
 		}
 	}
 
@@ -329,10 +318,6 @@ public class PaymentConcept {
 
 	public List<UUID> getLinkedConceptIds() {
 		return linkedConceptIds;
-	}
-
-	public List<UUID> getProgramIds() {
-		return programIds;
 	}
 
 	@Override
