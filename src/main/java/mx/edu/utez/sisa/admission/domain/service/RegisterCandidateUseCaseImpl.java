@@ -59,7 +59,7 @@ import java.util.UUID;
  *
  * <p>The ficha amount is NOT static: it is resolved from the
  * {@code PaymentConcept} catalog (the program's {@code ACTIVE}
- * {@code ENROLLMENT} concept on the registration date) through
+ * {@code ADMISSION} concept on the registration date) through
  * {@link FichaAmountResolver}, which owns the strict rule (exactly one active
  * concept: zero means the ficha cannot be priced → 404
  * {@link FichaPaymentConceptNotFoundException}, more than one is ambiguous → 409

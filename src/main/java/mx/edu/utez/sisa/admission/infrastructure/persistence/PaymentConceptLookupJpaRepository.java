@@ -18,14 +18,14 @@ import java.util.UUID;
  * {@code :programId MEMBER OF c.programIds} targets the
  * {@code @ElementCollection} join table {@code payment_concept_program}.
  *
- * <p>{@code c.isTuition = true} narrows {@code ENROLLMENT} concepts to the
- * one that IS the admission ticket: a program may carry other active
- * {@code ENROLLMENT} concepts (campus fees, material, enrollment-only extras)
- * that must never be priced as the ficha. Without this predicate
+ * <p>{@code c.isTuition = true} narrows the {@code ADMISSION} concepts of a
+ * program to the one that IS the admission ticket: a program may carry other
+ * active tuition-flagged concepts (campus fees, material) that must never be
+ * priced as the ficha. Without this predicate
  * {@code FichaAmountResolver}'s "exactly one active concept" rule would raise
- * {@code 409 AmbiguousFichaPaymentConceptException} as soon as a second
- * enrollment concept existed. Seeded from {@code seed/payment_concepts.csv}
- * column {@code is_tuition}.
+ * {@code 409 AmbiguousFichaPaymentConceptException} as soon as a second such
+ * concept existed. Seeded from {@code seed/payment_concepts.csv} column
+ * {@code is_tuition}.
  */
 public interface PaymentConceptLookupJpaRepository extends JpaRepository<PaymentConcept, UUID> {
 

@@ -10,7 +10,7 @@ import java.util.UUID;
  * {@code GET /program-admission-configs/{id}/ficha-amount} endpoint.
  *
  * <p>Priced by {@code FichaAmountResolver} from the program's active
- * {@code ENROLLMENT} concept, the very same rule the registration command
+ * {@code ADMISSION} concept, the very same rule the registration command
  * persists on the ticket, so the previewed amount is always the charged one.
  */
 public interface GetFichaAmountUseCase {

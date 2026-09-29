@@ -59,7 +59,7 @@ class FichaAmountControllerTest {
 	@Test
 	void missingConceptIs409() throws Exception {
 		when(getFichaAmountUseCase.quote(CONFIG_ID)).thenThrow(new FichaPaymentConceptNotFoundException(
-				"No existe un concepto de ENROLLMENT activo para el programa: " + CONFIG_ID));
+				"No existe un concepto de ADMISIÓN activo para el programa: " + CONFIG_ID));
 
 		mockMvc.perform(get("/program-admission-configs/{id}/ficha-amount", CONFIG_ID))
 				.andExpect(status().isConflict());
@@ -68,7 +68,7 @@ class FichaAmountControllerTest {
 	@Test
 	void ambiguousConceptIs409() throws Exception {
 		when(getFichaAmountUseCase.quote(CONFIG_ID)).thenThrow(
-				new AmbiguousFichaPaymentConceptException("Existen varios conceptos de ENROLLMENT activos"));
+				new AmbiguousFichaPaymentConceptException("Existen varios conceptos de ADMISIÓN activos"));
 
 		mockMvc.perform(get("/program-admission-configs/{id}/ficha-amount", CONFIG_ID))
 				.andExpect(status().isConflict());

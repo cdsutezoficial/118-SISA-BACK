@@ -198,7 +198,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 		return admissionPaymentJpaRepository.countOccupiedByProgramId(programId,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
-				mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE, PaymentConceptType.ENROLLMENT,
+				mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
 				TODAY);
 	}
 
@@ -214,10 +214,12 @@ class CheckoutSlotClaimerConcurrencyIT {
 		programConfigJpaRepository.save(config);
 
 		// The EXISTS clause in the occupancy query only counts a claimed PENDING ficha
-		// while its tuition concept can still be paid, so without this row the
-		// "last place" scenario would have nothing to compete over.
+		// while its admission concept can still be paid, so without this row the
+		// "last place" scenario would have nothing to compete over. The type is
+		// ADMISSION because that is what the occupancy query filters on: an
+		// ENROLLMENT concept would be invisible to it and every count would read 0.
 		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
-				PaymentConceptType.ENROLLMENT, true, false, null, null, false, TODAY.minusDays(1), TODAY.plusDays(5),
+				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(1), TODAY.plusDays(5),
 				null, BigDecimal.valueOf(1578), false, null, false, false, null, List.of(), List.of(program.getId()));
 		concept.activate();
 		paymentConceptJpaRepository.save(concept);

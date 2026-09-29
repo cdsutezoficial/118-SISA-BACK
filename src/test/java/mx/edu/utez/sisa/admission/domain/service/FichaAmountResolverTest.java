@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 /**
- * The ficha price rule (Fase 11): exactly one ACTIVE {@code ENROLLMENT} concept
+ * The ficha price rule (Fase 11): exactly one ACTIVE {@code ADMISSION} concept
  * of the program, priced by {@code costExternal} when the concept is external
  * and {@code cost} otherwise. Zero and many are both hard failures — silently
  * picking a price would charge applicants an arbitrary amount.
