@@ -10,7 +10,7 @@
 #   docker compose --env-file .env.prod    up -d --build   # produccion
 #
 # El archivo que se pasa con --env-file cumple dos funciones:
-#   1. Resuelve los ${...} de este compose (red, puertos, recursos, BD).
+#   1. Resuelve los ${...} de este compose (puertos, recursos, BD).
 #   2. Se inyecta como env_file en el contenedor del API, de modo que Spring
 #      Boot recibe cada variable tal cual esta escrita ahi.
 #
@@ -38,7 +38,7 @@ services:
     volumes:
       - vol-db-sisa:/var/lib/mysql
     networks:
-      - sisa-net
+      - sisava-network
     environment:
       MYSQL_DATABASE: ${DB_NAME:?falta DB_NAME en el .env}
       # No son DB_USERNAME/DB_PASSWORD de la app: MySQL no deja crear un
@@ -79,7 +79,7 @@ services:
     ports:
       - "${API_BIND:?falta API_BIND en el .env}:${API_PORT:?falta API_PORT en el .env}:8080"
     networks:
-      - sisa-net
+      - sisava-network
     depends_on:
       db-sisa:
         condition: service_healthy
@@ -106,16 +106,11 @@ services:
           memory: 384M
     restart: unless-stopped
 
-# La red se declara en el .env del ambiente:
-#   local    → DOCKER_NETWORK=sisa-api-net     DOCKER_NETWORK_EXTERNAL=false
-#   testdti  → DOCKER_NETWORK=net-cds-test     DOCKER_NETWORK_EXTERNAL=true
-#   prod     → DOCKER_NETWORK=sisava-network   DOCKER_NETWORK_EXTERNAL=true
-# En testdti y prod la red ya existe porque el reverse proxy vive ahi, y el
-# compose del front debe apuntar a la MISMA.
+# Misma red externa que AccessUtez y el compose del front. El compose no la
+# crea: debe existir antes (en local: docker network create sisava-network).
 networks:
-  sisa-net:
-    name: ${DOCKER_NETWORK:?falta DOCKER_NETWORK en el .env}
-    external: ${DOCKER_NETWORK_EXTERNAL:?falta DOCKER_NETWORK_EXTERNAL en el .env}
+  sisava-network:
+    external: true
 
 volumes:
   # Con nombre explicito (y no vol-db-sisa) para que dos ambientes en la MISMA
