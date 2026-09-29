@@ -223,6 +223,120 @@ class AcademicPeriodTest {
 				.isInstanceOf(InvalidPeriodStatusTransitionException.class);
 	}
 
+	// --- auto-advance by date (daily scheduler job) ---
+
+	@Test
+	void advanceByDate_beforeAnyThreshold_leavesConfigurationUnchanged() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(ENROLLMENT_START.minusDays(1));
+
+		assertThat(changed).isFalse();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CONFIGURATION);
+	}
+
+	@Test
+	void advanceByDate_onEnrollmentStartDay_advancesToEnrollment() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(ENROLLMENT_START);
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ENROLLMENT);
+	}
+
+	@Test
+	void advanceByDate_betweenEnrollmentAndStart_advancesToEnrollment() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(ENROLLMENT_START.plusDays(7));
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ENROLLMENT);
+	}
+
+	@Test
+	void advanceByDate_onStartDateDay_advancesToActive() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(START);
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ACTIVE);
+	}
+
+	@Test
+	void advanceByDate_afterEndDate_advancesToClosed() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(END.plusDays(1));
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CLOSED);
+	}
+
+	@Test
+	void advanceByDate_catchesUpConfigurationStraightToActive_whenStartElapsed() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(START.plusDays(10));
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ACTIVE);
+	}
+
+	@Test
+	void advanceByDate_catchesUpConfigurationStraightToClosed_whenEndElapsed() {
+		AcademicPeriod period = newPeriod();
+
+		boolean changed = period.advanceByDate(END.plusDays(10));
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CLOSED);
+	}
+
+	@Test
+	void advanceByDate_neverMovesBackward_whenTodayIsBeforeAlreadysReachedStages() {
+		AcademicPeriod period = newPeriod();
+		period.changeStatus(PeriodStatus.ENROLLMENT);
+		period.changeStatus(PeriodStatus.ACTIVE);
+
+		boolean changed = period.advanceByDate(ENROLLMENT_START.minusDays(1));
+
+		assertThat(changed).isFalse();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ACTIVE);
+	}
+
+	@Test
+	void advanceByDate_closedIsTerminalAndIsLeftUntouched() {
+		AcademicPeriod period = newPeriod();
+		period.changeStatus(PeriodStatus.ENROLLMENT);
+		period.changeStatus(PeriodStatus.ACTIVE);
+		period.changeStatus(PeriodStatus.CLOSED);
+
+		boolean changed = period.advanceByDate(END.plusDays(30));
+
+		assertThat(changed).isFalse();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CLOSED);
+	}
+
+	@Test
+	void advanceByDate_successiveDailyRunsWalkTheFullLifecycle() {
+		AcademicPeriod period = newPeriod();
+
+		boolean first = period.advanceByDate(ENROLLMENT_START);
+		assertThat(first).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ENROLLMENT);
+
+		boolean second = period.advanceByDate(START);
+		assertThat(second).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ACTIVE);
+
+		boolean third = period.advanceByDate(END.plusDays(1));
+		assertThat(third).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CLOSED);
+	}
+
 	private static AcademicPeriod newPeriod() {
 		return new AcademicPeriod("Enero-Abril 2026", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, ENROLLMENT_START,
 				ENROLLMENT_END);

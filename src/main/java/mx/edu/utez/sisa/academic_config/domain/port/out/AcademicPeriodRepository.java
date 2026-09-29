@@ -27,6 +27,14 @@ public interface AcademicPeriodRepository {
 	Optional<AcademicPeriod> findById(UUID id);
 
 	/**
+	 * All rows, sorted by {@code year} ascending then {@code periodNumber}
+	 * ascending — backs the daily status auto-advance job
+	 * ({@code AdvanceAcademicPeriodStatusByDateUseCase}), which must consider
+	 * every period regardless of pagination.
+	 */
+	List<AcademicPeriod> findAll();
+
+	/**
 	 * Filterable, paginated query backing {@code ListAcademicPeriodsUseCase}.
 	 */
 	PeriodSearchPage search(PeriodSearchCriteria criteria);

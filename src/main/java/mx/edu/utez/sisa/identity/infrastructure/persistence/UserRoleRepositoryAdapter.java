@@ -2,7 +2,6 @@ package mx.edu.utez.sisa.identity.infrastructure.persistence;
 
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
-import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -33,8 +32,8 @@ public class UserRoleRepositoryAdapter implements UserRoleRepository {
 	}
 
 	@Override
-	public boolean existsByRoleType(RoleType roleType) {
-		return jpaRepository.existsByRoleType(roleType);
+	public boolean existsByRoleId(UUID roleId) {
+		return jpaRepository.existsByRoleId(roleId);
 	}
 
 	@Override

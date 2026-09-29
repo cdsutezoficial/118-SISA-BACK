@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.persistence;
 
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
@@ -47,19 +48,23 @@ class UserRepositoryAdapterSearchIT {
 	@Autowired
 	private UserRoleJpaRepository userRoleJpaRepository;
 
+	@Autowired
+	private RoleJpaRepository roleJpaRepository;
+
 	@Test
 	void roleTypeFilterDoesNotDuplicateUsersWithMultipleMatchingRoles() {
 		Person person = personJpaRepository.save(newPerson("Ana", "García", "López", "ana.garcia@utez.edu.mx"));
 		User user = userJpaRepository.save(new User(person.getId(), "ana.garcia@utez.edu.mx", "hash"));
 		UUID divisionA = UUID.randomUUID();
 		UUID divisionB = UUID.randomUUID();
+		UUID directorRoleId = roleId(RoleType.DIRECTOR_DIVISION);
 		// two UserRole rows of the SAME roleType (division-scoped, different
 		// divisions) — the exact shape that would break a naive JOIN
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, divisionA));
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, divisionB));
+		userRoleJpaRepository.save(new UserRole(user.getId(), directorRoleId, divisionA));
+		userRoleJpaRepository.save(new UserRole(user.getId(), directorRoleId, divisionB));
 
 		UserSearchPage page = adapter
-				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, null));
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION.name(), null, null, 0, 20, null));
 
 		assertThat(page.totalElements()).isEqualTo(1L);
 		assertThat(page.totalPages()).isEqualTo(1);
@@ -73,11 +78,12 @@ class UserRepositoryAdapterSearchIT {
 		User user = userJpaRepository.save(new User(person.getId(), "laura.ruiz@utez.edu.mx", "hash"));
 		UUID targetDivision = UUID.randomUUID();
 		UUID otherDivision = UUID.randomUUID();
+		UUID directorRoleId = roleId(RoleType.DIRECTOR_DIVISION);
 		// right roleType, but scoped to a DIFFERENT division than requested
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, otherDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), directorRoleId, otherDivision));
 
 		UserSearchPage page = adapter
-				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION.name(), null, null, 0, 20, targetDivision));
 
 		assertThat(page.totalElements()).isZero();
 		assertThat(page.content()).isEmpty();
@@ -88,10 +94,10 @@ class UserRepositoryAdapterSearchIT {
 		Person person = personJpaRepository.save(newPerson("Mario", "Sosa", null, "mario.sosa@utez.edu.mx"));
 		User user = userJpaRepository.save(new User(person.getId(), "mario.sosa@utez.edu.mx", "hash"));
 		UUID targetDivision = UUID.randomUUID();
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, targetDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), roleId(RoleType.DIRECTOR_DIVISION), targetDivision));
 
 		UserSearchPage page = adapter
-				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION.name(), null, null, 0, 20, targetDivision));
 
 		assertThat(page.totalElements()).isEqualTo(1L);
 		assertThat(page.content()).hasSize(1);
@@ -104,15 +110,16 @@ class UserRepositoryAdapterSearchIT {
 		User user = userJpaRepository.save(new User(person.getId(), "nora.vega@utez.edu.mx", "hash"));
 		UUID targetDivision = UUID.randomUUID();
 		UUID otherDivision = UUID.randomUUID();
+		UUID directorRoleId = roleId(RoleType.DIRECTOR_DIVISION);
 		// three UserRole rows: only the second one matches BOTH roleType and
 		// divisionId — the naive-JOIN failure mode would still duplicate the
 		// user's row per role, even though just one row satisfies the combined filter
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, otherDivision));
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DIRECTOR_DIVISION, targetDivision));
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DOCENTE, targetDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), directorRoleId, otherDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), directorRoleId, targetDivision));
+		userRoleJpaRepository.save(new UserRole(user.getId(), roleId(RoleType.DOCENTE), targetDivision));
 
 		UserSearchPage page = adapter
-				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION, null, null, 0, 20, targetDivision));
+				.search(new UserSearchCriteria(RoleType.DIRECTOR_DIVISION.name(), null, null, 0, 20, targetDivision));
 
 		assertThat(page.totalElements()).isEqualTo(1L);
 		assertThat(page.totalPages()).isEqualTo(1);
@@ -139,9 +146,9 @@ class UserRepositoryAdapterSearchIT {
 	void roleTypeFilterExcludesUsersWithoutAMatchingRole() {
 		Person person = personJpaRepository.save(newPerson("Juan", "Pérez", null, "juan.perez@utez.edu.mx"));
 		User user = userJpaRepository.save(new User(person.getId(), "juan.perez@utez.edu.mx", "hash"));
-		userRoleJpaRepository.save(new UserRole(user.getId(), RoleType.DOCENTE, null));
+		userRoleJpaRepository.save(new UserRole(user.getId(), roleId(RoleType.DOCENTE), null));
 
-		UserSearchPage page = adapter.search(new UserSearchCriteria(RoleType.ADMIN, null, null, 0, 20, null));
+		UserSearchPage page = adapter.search(new UserSearchCriteria(RoleType.ADMIN.name(), null, null, 0, 20, null));
 
 		assertThat(page.totalElements()).isZero();
 		assertThat(page.content()).isEmpty();
@@ -215,5 +222,10 @@ class UserRepositoryAdapterSearchIT {
 	private static Person newPerson(String firstName, String lastName1, String lastName2, String institutionalEmail) {
 		String curp = "CURP" + UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase();
 		return new Person(curp, firstName, lastName1, lastName2, institutionalEmail);
+	}
+
+	private UUID roleId(RoleType roleType) {
+		return roleJpaRepository.findByKey(roleType.name()).map(Role::getId)
+				.orElseGet(() -> roleJpaRepository.save(new Role(roleType.name(), roleType.name(), roleType.name())).getId());
 	}
 }

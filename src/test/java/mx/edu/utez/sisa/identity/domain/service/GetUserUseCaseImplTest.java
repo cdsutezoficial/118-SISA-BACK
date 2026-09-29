@@ -1,10 +1,12 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.User;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase.GetUserQuery;
 import mx.edu.utez.sisa.identity.domain.port.in.GetUserUseCase.UserDetailResult;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
@@ -35,6 +37,8 @@ class GetUserUseCaseImplTest {
 	private PersonRepository personRepository;
 	@Mock
 	private UserRoleRepository userRoleRepository;
+	@Mock
+	private RoleRepository roleRepository;
 
 	private GetUserUseCaseImpl useCase;
 
@@ -43,7 +47,7 @@ class GetUserUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new GetUserUseCaseImpl(userRepository, personRepository, userRoleRepository);
+		useCase = new GetUserUseCaseImpl(userRepository, personRepository, userRoleRepository, roleRepository);
 		adminCaller = new User(UUID.randomUUID(), "admin@utez.edu.mx", "hashed-admin-pw");
 		adminCaller.changePassword("hashed-admin-pw-2");
 		callerId = UUID.randomUUID();
@@ -94,10 +98,12 @@ class GetUserUseCaseImplTest {
 		when(personRepository.findById(personId)).thenReturn(Optional.of(person));
 
 		UUID divisionId = UUID.randomUUID();
-		UserRole role = new UserRole(targetId, RoleType.DIRECTOR_DIVISION, divisionId);
+		UserRole role = new UserRole(targetId, roleId(RoleType.DIRECTOR_DIVISION), divisionId);
 		UUID userRoleId = UUID.randomUUID();
 		ReflectionTestUtils.setField(role, "id", userRoleId);
 		when(userRoleRepository.findByUserId(targetId)).thenReturn(List.of(role));
+		when(roleRepository.findByIds(List.of(roleId(RoleType.DIRECTOR_DIVISION)))).thenReturn(
+				List.of(role(RoleType.DIRECTOR_DIVISION)));
 
 		UserDetailResult result = useCase.getUser(new GetUserQuery(callerId, targetId));
 
@@ -107,7 +113,7 @@ class GetUserUseCaseImplTest {
 		assertThat(result.username()).isEqualTo("target@utez.edu.mx");
 		assertThat(result.roles()).hasSize(1);
 		assertThat(result.roles().get(0).userRoleId()).isEqualTo(userRoleId);
-		assertThat(result.roles().get(0).roleType()).isEqualTo(RoleType.DIRECTOR_DIVISION);
+		assertThat(result.roles().get(0).roleKey()).isEqualTo(RoleType.DIRECTOR_DIVISION.name());
 		assertThat(result.roles().get(0).divisionId()).isEqualTo(divisionId);
 	}
 
@@ -122,10 +128,21 @@ class GetUserUseCaseImplTest {
 		when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
 		when(personRepository.findById(personId)).thenReturn(Optional.empty());
 		when(userRoleRepository.findByUserId(targetId)).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 
 		UserDetailResult result = useCase.getUser(new GetUserQuery(callerId, targetId));
 
 		assertThat(result.fullName()).isEmpty();
 		assertThat(result.roles()).isEmpty();
+	}
+
+	private static Role role(RoleType roleType) {
+		Role role = new Role(roleType.name(), roleType.name(), roleType.name());
+		ReflectionTestUtils.setField(role, "id", roleId(roleType));
+		return role;
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

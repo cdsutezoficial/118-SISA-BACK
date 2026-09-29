@@ -2,13 +2,10 @@ package mx.edu.utez.sisa.identity.domain.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -30,9 +27,11 @@ public class UserRole {
 	@Column(nullable = false)
 	private UUID userId;
 
-	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
-	private RoleType roleType;
+	@Column(name = "role_id", nullable = false)
+	private UUID roleId;
+
+	@Column(name = "role_type", insertable = false, updatable = false)
+	private String legacyRoleKey;
 
 	@Column
 	private UUID divisionId;
@@ -41,9 +40,9 @@ public class UserRole {
 		// JPA
 	}
 
-	public UserRole(UUID userId, RoleType roleType, UUID divisionId) {
+	public UserRole(UUID userId, UUID roleId, UUID divisionId) {
 		this.userId = userId;
-		this.roleType = roleType;
+		this.roleId = roleId;
 		this.divisionId = divisionId;
 	}
 
@@ -55,8 +54,12 @@ public class UserRole {
 		return userId;
 	}
 
-	public RoleType getRoleType() {
-		return roleType;
+	public UUID getRoleId() {
+		return roleId;
+	}
+
+	public String getLegacyRoleKey() {
+		return legacyRoleKey;
 	}
 
 	public UUID getDivisionId() {

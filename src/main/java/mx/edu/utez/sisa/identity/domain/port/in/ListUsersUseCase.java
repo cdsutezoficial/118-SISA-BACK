@@ -2,7 +2,6 @@ package mx.edu.utez.sisa.identity.domain.port.in;
 
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,17 +23,17 @@ public interface ListUsersUseCase {
 	/**
 	 * @param callerId the acting user, used only for the mustChangePassword guard (role authorization is
 	 *                 enforced by SecurityFilterConfig)
-	 * @param roleType optional — matches users having at least one {@link UserRole} with this type
+	 * @param roleKey  optional — matches users having at least one {@link UserRole} with this role key
 	 * @param status   optional — matches the user's current status
 	 * @param search     optional free-text match against {@code username} or the linked Person's full name
 	 * @param page       zero-based page index; negative values are normalized to 0
 	 * @param size       page size; normalized to a minimum of 1 and capped at {@link #MAX_PAGE_SIZE}
-	 * @param divisionId optional — narrows {@code roleType} to a {@link UserRole} scoped to this
+	 * @param divisionId optional — narrows {@code roleKey} to a {@link UserRole} scoped to this
 	 *                   division (e.g. "DIRECTOR_DIVISION users scoped to division Y" for the
 	 *                   Divisiones screen's director picker); only takes effect combined with
-	 *                   {@code roleType} — passed alone it has no effect
+	 *                   {@code roleKey} — passed alone it has no effect
 	 */
-	record ListUsersQuery(UUID callerId, RoleType roleType, UserStatus status, String search, int page, int size,
+	record ListUsersQuery(UUID callerId, String roleKey, UserStatus status, String search, int page, int size,
 			UUID divisionId) {
 
 		public static final int DEFAULT_PAGE_SIZE = 20;
@@ -49,6 +48,6 @@ public interface ListUsersUseCase {
 			UserStatus status, Instant lastLoginAt) {
 	}
 
-	record UserRoleSummary(RoleType roleType, UUID divisionId) {
+	record UserRoleSummary(UUID roleId, String roleKey, String roleName, UUID divisionId) {
 	}
 }

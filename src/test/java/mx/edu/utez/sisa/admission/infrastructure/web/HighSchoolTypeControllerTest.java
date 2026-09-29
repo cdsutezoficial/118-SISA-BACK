@@ -14,8 +14,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase.List
 import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase.HighSchoolTypeSummary;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase.UpdateHighSchoolTypeCommand;
+import mx.edu.utez.sisa.admission.infrastructure.persistence.HighSchoolTypeJpaRepository;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -71,7 +74,13 @@ class HighSchoolTypeControllerTest {
 	private ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase;
 
 	@MockitoBean
+	private HighSchoolTypeJpaRepository highSchoolTypeJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
@@ -207,6 +216,25 @@ class HighSchoolTypeControllerTest {
 		mockMvc.perform(patch("/high-school-types/" + typeId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(HighSchoolTypeStatus.ACTIVE))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listHighSchoolTypeOptionsReturnsOnlyActiveTypesLabeledByName() throws Exception {
+		UUID typeId = UUID.randomUUID();
+		HighSchoolTypeJpaRepository.HighSchoolTypeOptionProjection active = mock(
+				HighSchoolTypeJpaRepository.HighSchoolTypeOptionProjection.class);
+		when(active.getId()).thenReturn(typeId);
+		when(active.getName()).thenReturn("Bachillerato Tecnológico");
+		when(highSchoolTypeJpaRepository.findByStatusOrderByNameAsc(HighSchoolTypeStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/high-school-types/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(typeId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Bachillerato Tecnológico"))
+				.andExpect(jsonPath("$[0].code").isEmpty())
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(highSchoolTypeJpaRepository).findByStatusOrderByNameAsc(HighSchoolTypeStatus.ACTIVE);
 	}
 
 	private record CreateBody(String name) {

@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCa
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase.ProgramSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseCase.UpdateAcademicProgramCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicProgramJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicProgramListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicProgramListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicProgramResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeProgramStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateAcademicProgramRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicProgramRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -59,15 +62,19 @@ public class AcademicProgramController {
 
 	private final ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase;
 
+	private final AcademicProgramJpaRepository academicProgramJpaRepository;
+
 	public AcademicProgramController(CreateAcademicProgramUseCase createAcademicProgramUseCase,
 			UpdateAcademicProgramUseCase updateAcademicProgramUseCase,
 			ListAcademicProgramsUseCase listAcademicProgramsUseCase, GetAcademicProgramUseCase getAcademicProgramUseCase,
-			ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase) {
+			ChangeAcademicProgramStatusUseCase changeAcademicProgramStatusUseCase,
+			AcademicProgramJpaRepository academicProgramJpaRepository) {
 		this.createAcademicProgramUseCase = createAcademicProgramUseCase;
 		this.updateAcademicProgramUseCase = updateAcademicProgramUseCase;
 		this.listAcademicProgramsUseCase = listAcademicProgramsUseCase;
 		this.getAcademicProgramUseCase = getAcademicProgramUseCase;
 		this.changeAcademicProgramStatusUseCase = changeAcademicProgramStatusUseCase;
+		this.academicProgramJpaRepository = academicProgramJpaRepository;
 	}
 
 	@PostMapping
@@ -103,6 +110,29 @@ public class AcademicProgramController {
 		return ResponseEntity.ok(new AcademicProgramListResponse(
 				result.items().stream().map(AcademicProgramController::toItem).toList(), result.totalElements(),
 				result.totalPages(), result.page(), result.size()));
+	}
+
+	/**
+	 * Reference-catalog read (transversal design: "Roles y Permisos — patrón
+	 * reference"). Unlike {@code GET /programs}, this is a **minimal
+	 * projection**: {@code ACTIVE} programs only, bare JSON array of
+	 * {@code { id, label, code }} with no pagination, no management fields
+	 * (description, dgpCode, status). It exists so pickers ("Programa" en
+	 * {@code PlanForm}, {@code GruposForm}, {@code ConfiguracionAdmisionForm})
+	 * can fill selects without pulling the full paged list. Read-only; no
+	 * role filter here — it is deliberately the "reference" class
+	 * ({@code authenticated()}) in {@code SecurityFilterConfig}, NOT the
+	 * crippled-management projection. Optional {@code divisionId} cascades
+	 * the picker to one division.
+	 */
+	@GetMapping("/options")
+	public ResponseEntity<List<OptionResponse>> listProgramOptions(
+			@RequestParam(required = false) UUID divisionId) {
+		List<OptionResponse> items = (divisionId == null
+				? academicProgramJpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE)
+				: academicProgramJpaRepository.findByStatusAndDivisionIdOrderByNameAsc(ProgramStatus.ACTIVE, divisionId))
+				.stream().map(p -> new OptionResponse(p.getId(), p.getName(), p.getCode())).toList();
+		return ResponseEntity.ok(items);
 	}
 
 	@PatchMapping("/{id}/status")

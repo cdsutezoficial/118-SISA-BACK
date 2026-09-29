@@ -2,12 +2,16 @@ package mx.edu.utez.sisa.academic_config.infrastructure.persistence;
 
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
+import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,4 +49,72 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 			""")
 	Page<ProgramAdmissionConfig> search(@Param("status") ProgramAdmissionConfigStatus status,
 			@Param("programId") UUID programId, Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /program-admission-configs/options}
+	 * (plan: {@code docs/plans/sisa-candidate-ficha.md} — the public ficha
+	 * wizard's program picker). Returns only {@link ProgramAdmissionConfigStatus#OPEN}
+	 * AND {@code isOffered} configs, joined lazily against their
+	 * {@code AcademicProgram} (a bare {@code UUID} column, no JPA relation) so
+	 * the picker can label a config by program name + modality. Interface
+	 * projection keeps the read light (glide-light reads, same convention as
+	 * {@code ProgramOptionProjection}).
+	 *
+	 * <p>It also applies the two rules that decide whether a config is actually
+	 * sellable, so the picker cannot offer a career the applicant will be refused
+	 * for: {@code now} must be inside {@code opensAt}/{@code closesAt}, and the
+	 * config must have an unclaimed slot left.
+	 *
+	 * <p>Both boundaries are inclusive, matching
+	 * {@code RegisterCandidateUseCaseImpl}'s checks — the two have to agree or the
+	 * picker starts lying the moment the clock passes a boundary.
+	 *
+	 * <p><b>The occupancy subquery below is a second copy of the rule in
+	 * {@code AdmissionPaymentOccupancyQueries}, and it has to stay identical to
+	 * it.</b> JPQL cannot call into a Spring Data fragment from inside another
+	 * {@code @Query}, so the duplication is forced by the tool. It is not an
+	 * oversight: if this subquery counted only PAID fichas while the claim counted
+	 * claims as well, the picker would keep offering a career whose last slot was
+	 * already being paid for, and the applicant would be refused at the checkout —
+	 * the user-visible form of the overshoot this whole block exists to remove. It
+	 * is held in place by {@code ProgramAdmissionConfigOptionsQueryIT}, which runs
+	 * both definitions against the same data and asserts they return the same
+	 * set.
+	 */
+	@Query(value = """
+			SELECT c.id AS id, p.name AS programName, p.modality AS modality
+			FROM ProgramAdmissionConfig c
+			JOIN AcademicProgram p ON p.id = c.programId
+			WHERE c.status = mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus.OPEN
+			  AND c.isOffered = true
+			  AND :now BETWEEN c.opensAt AND c.closesAt
+			  AND (SELECT COUNT(pay)
+			         FROM Candidate cand
+			         JOIN AdmissionPayment pay ON pay.candidateId = cand.id
+			         WHERE cand.admissionConfigId = c.id
+			           AND (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID
+			                OR (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING
+			                    AND pay.checkoutClaimedAt IS NOT NULL
+			                    AND EXISTS (
+			                         SELECT cc FROM PaymentConcept cc
+			                         WHERE cc.status = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE
+			                           AND cc.type = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType.ADMISSION
+			                           AND cc.isTuition = true
+			                           AND c.programId MEMBER OF cc.programIds
+			                           AND (cc.availableUntil IS NULL OR cc.availableUntil >= :today)
+			                    )))
+			      ) < c.maxCandidates
+			ORDER BY p.name
+			""")
+	List<ProgramAdmissionConfigOptionProjection> findOpenOfferedOptions(@Param("now") Instant now,
+			@Param("today") LocalDate today);
+
+	/** Minimal projection for the public picker — {@code id}, program name (label) and modality. */
+	interface ProgramAdmissionConfigOptionProjection {
+		UUID getId();
+
+		String getProgramName();
+
+		ProgramModality getModality();
+	}
 }

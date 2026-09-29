@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentRateExc
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentRateDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,9 @@ class PaymentRateControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	@Test
 	void setRateReturns201WithBody() throws Exception {

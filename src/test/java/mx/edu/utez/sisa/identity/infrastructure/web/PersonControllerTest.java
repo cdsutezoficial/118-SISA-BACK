@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.ListPersonsUseCase.ListPersonsQu
 import mx.edu.utez.sisa.identity.domain.port.in.ListPersonsUseCase.ListPersonsResult;
 import mx.edu.utez.sisa.identity.domain.port.in.ListPersonsUseCase.PersonSummary;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
@@ -57,6 +58,9 @@ class PersonControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 

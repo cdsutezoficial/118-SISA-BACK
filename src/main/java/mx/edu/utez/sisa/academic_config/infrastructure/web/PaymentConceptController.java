@@ -82,7 +82,10 @@ public class PaymentConceptController {
 				.createPaymentConcept(new CreatePaymentConceptCommand(request.name(), request.description(),
 						request.policies(), request.type(), request.isTuition(), request.isStandalone(),
 						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
-						request.availableFrom(), request.availableUntil()));
+						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
+						request.isExternal(), request.costExternal(), request.isAccumulable(),
+						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds(),
+						request.programIds()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
 	}
 
@@ -93,7 +96,10 @@ public class PaymentConceptController {
 				.updatePaymentConcept(new UpdatePaymentConceptCommand(id, request.name(), request.description(),
 						request.policies(), request.type(), request.isTuition(), request.isStandalone(),
 						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
-						request.availableFrom(), request.availableUntil()));
+						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
+						request.isExternal(), request.costExternal(), request.isAccumulable(),
+						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds(),
+						request.programIds()));
 		return ResponseEntity.ok(toResponse(result));
 	}
 
@@ -138,7 +144,9 @@ public class PaymentConceptController {
 		return new PaymentConceptResponse(result.id(), result.name(), result.description(), result.policies(),
 				result.type(), result.isTuition(), result.isStandalone(), result.maxPerStudent(),
 				result.maxPerPeriod(), result.requiresValidation(), result.availableFrom(), result.availableUntil(),
-				result.status());
+				result.status(), result.areaId(), result.cost(), result.isExternal(), result.costExternal(),
+				result.isAccumulable(), result.isMulticoncept(), result.quotaLimit(), result.linkedConceptIds(),
+				result.programIds());
 	}
 
 	private static PaymentConceptListItemResponse toItem(PaymentConceptSummary summary) {

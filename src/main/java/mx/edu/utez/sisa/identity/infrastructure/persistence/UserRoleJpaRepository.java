@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.persistence;
 
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
-import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -14,7 +13,7 @@ public interface UserRoleJpaRepository extends JpaRepository<UserRole, UUID> {
 
 	List<UserRole> findByUserId(UUID userId);
 
-	boolean existsByRoleType(RoleType roleType);
+	boolean existsByRoleId(UUID roleId);
 
 	List<UserRole> findByUserIdIn(List<UUID> userIds);
 }

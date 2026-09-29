@@ -5,9 +5,16 @@ import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateInstitutionalEmailException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicatePermissionKeyException;
+import mx.edu.utez.sisa.identity.shared.exception.DuplicateRoleKeyException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
+import mx.edu.utez.sisa.identity.shared.exception.InvalidPasswordResetTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
+import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
+import mx.edu.utez.sisa.identity.shared.exception.PermissionNotFoundException;
+import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
+import mx.edu.utez.sisa.identity.shared.exception.RoleNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
@@ -15,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,7 +30,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
-import java.util.stream.Collectors;
 
 /**
  * Maps the 8 identity domain exceptions (plus bean validation failures) to
@@ -47,30 +54,42 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidCredentialsException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+		return build(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos.", request);
 	}
 
 	@ExceptionHandler(AccountLockedException.class)
 	public ResponseEntity<ErrorResponse> handleAccountLocked(AccountLockedException ex, HttpServletRequest request) {
-		return build(HttpStatus.LOCKED, ex.getMessage(), request);
+		return build(HttpStatus.LOCKED, "Tu cuenta está bloqueada. Solicita apoyo al administrador.", request);
 	}
 
 	@ExceptionHandler(MustChangePasswordException.class)
 	public ResponseEntity<ErrorResponse> handleMustChangePassword(MustChangePasswordException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+		return build(HttpStatus.FORBIDDEN, "Debes cambiar tu contraseña antes de continuar.", request);
 	}
 
 	@ExceptionHandler(InvalidRefreshTokenException.class)
 	public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+		return build(HttpStatus.UNAUTHORIZED, "Tu sesión no es válida o ha expirado. Inicia sesión nuevamente.", request);
+	}
+
+	/**
+	 * Password-reset flow (01-identidad.md — ResetPasswordUseCase): a token that
+	 * is unknown, already used, or expired maps to 400. The message varies by
+	 * case but this handler keeps the client-facing copy generic; the specific
+	 * failure lives in the exception message already chosen by the use case.
+	 */
+	@ExceptionHandler(InvalidPasswordResetTokenException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, "El enlace de restablecimiento no es válido o ha expirado.", request);
 	}
 
 	@ExceptionHandler(DivisionRuleViolationException.class)
 	public ResponseEntity<ErrorResponse> handleDivisionRuleViolation(DivisionRuleViolationException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Revisa la división académica seleccionada para este rol.", request);
 	}
 
 	/**
@@ -81,11 +100,11 @@ public class GlobalExceptionHandler {
 	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.1)
 	 * join the same group, same 409 conflict semantics.
 	 */
-	@ExceptionHandler({ mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException.class,
-			mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException.class,
-			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class })
+	@ExceptionHandler({ PersonAlreadyHasUserException.class, MissingInstitutionalEmailException.class,
+			DuplicateCurpException.class, DuplicateInstitutionalEmailException.class,
+			DuplicateRoleKeyException.class, DuplicatePermissionKeyException.class })
 	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+		return build(HttpStatus.CONFLICT, "Ya existe un registro con la información proporcionada.", request);
 	}
 
 	/**
@@ -94,25 +113,25 @@ public class GlobalExceptionHandler {
 	 * shares the 404 mapping with {@code UserNotFoundException} — both mean
 	 * "the referenced id does not resolve to what the caller expected".
 	 */
-	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class })
+	@ExceptionHandler({ UserNotFoundException.class, UserRoleNotFoundException.class, RoleNotFoundException.class,
+			PermissionNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleUserNotFound(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+		return build(HttpStatus.NOT_FOUND, "No se encontró el registro solicitado.", request);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex,
 			HttpServletRequest request) {
-		String message = ex.getBindingResult().getFieldErrors().stream()
-				.map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
-				.collect(Collectors.joining("; "));
-		return build(HttpStatus.BAD_REQUEST, message.isBlank() ? "Validation failed" : message, request);
+		String message = ex.getBindingResult().getFieldErrors().stream().map(error -> error.getDefaultMessage())
+				.filter(text -> text != null && !text.isBlank()).findFirst()
+				.orElse("Revisa los datos proporcionados.");
+		return build(HttpStatus.BAD_REQUEST, message, request);
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
 			HttpServletRequest request) {
-		String message = "%s: invalid value '%s'".formatted(ex.getName(), ex.getValue());
-		return build(HttpStatus.BAD_REQUEST, message, request);
+		return build(HttpStatus.BAD_REQUEST, "La solicitud contiene un dato con formato inválido.", request);
 	}
 
 	/**
@@ -127,7 +146,25 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(MissingServletRequestParameterException.class)
 	public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, "Falta información requerida para procesar la solicitud.", request);
+	}
+
+	/**
+	 * The request body could not be READ: absent on an endpoint whose
+	 * {@code @RequestBody} is required, or malformed/unparseable JSON.
+	 * Spring raises this before the controller method runs, so it is a
+	 * client-shape problem, not an application failure — without this handler
+	 * it fell through to {@link #handleUnexpected} and returned a misleading
+	 * 500. It matters now that
+	 * {@code POST /candidates/{id}/payments/confirm} REQUIRES a body: a
+	 * bodyless POST is a 400 ("falta el identificador del pedido"), not a
+	 * server error.
+	 */
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, "La solicitud no contiene un cuerpo válido o falta información requerida.",
+				request);
 	}
 
 	/**
@@ -138,12 +175,25 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
 		log.error("Unhandled exception on {}", request.getRequestURI(), ex);
-		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", request);
+		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error al procesar la solicitud. Intenta nuevamente más tarde.", request);
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
-		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), status.getReasonPhrase(), message,
+		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), statusLabel(status), message,
 				request.getRequestURI());
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private static String statusLabel(HttpStatus status) {
+		return switch (status) {
+			case BAD_REQUEST -> "Solicitud inválida";
+			case UNAUTHORIZED -> "No autorizado";
+			case FORBIDDEN -> "Acceso denegado";
+			case NOT_FOUND -> "No encontrado";
+			case CONFLICT -> "Conflicto";
+			case LOCKED -> "Cuenta bloqueada";
+			case INTERNAL_SERVER_ERROR -> "Error interno";
+			default -> "Error";
+		};
 	}
 }

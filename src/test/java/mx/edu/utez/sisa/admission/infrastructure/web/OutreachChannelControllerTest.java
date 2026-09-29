@@ -14,8 +14,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase.Lis
 import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase.OutreachChannelSummary;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase.UpdateOutreachChannelCommand;
+import mx.edu.utez.sisa.admission.infrastructure.persistence.OutreachChannelJpaRepository;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -71,7 +74,13 @@ class OutreachChannelControllerTest {
 	private ChangeOutreachChannelStatusUseCase changeOutreachChannelStatusUseCase;
 
 	@MockitoBean
+	private OutreachChannelJpaRepository outreachChannelJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
@@ -208,6 +217,25 @@ class OutreachChannelControllerTest {
 		mockMvc.perform(patch("/outreach-channels/" + channelId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(OutreachChannelStatus.ACTIVE))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listChannelOptionsReturnsOnlyActiveChannelsLabeledByName() throws Exception {
+		UUID channelId = UUID.randomUUID();
+		OutreachChannelJpaRepository.OutreachChannelOptionProjection active = mock(
+				OutreachChannelJpaRepository.OutreachChannelOptionProjection.class);
+		when(active.getId()).thenReturn(channelId);
+		when(active.getName()).thenReturn("Facebook");
+		when(outreachChannelJpaRepository.findByStatusOrderByNameAsc(OutreachChannelStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/outreach-channels/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(channelId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Facebook"))
+				.andExpect(jsonPath("$[0].code").isEmpty())
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(outreachChannelJpaRepository).findByStatusOrderByNameAsc(OutreachChannelStatus.ACTIVE);
 	}
 
 	private record CreateChannelBody(String name) {

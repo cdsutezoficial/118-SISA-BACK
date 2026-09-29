@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +40,12 @@ public class AcademicPeriodRepositoryAdapter implements AcademicPeriodRepository
 	@Override
 	public Optional<AcademicPeriod> findById(UUID id) {
 		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public List<AcademicPeriod> findAll() {
+		return jpaRepository.findAll(Sort.by(Sort.Direction.ASC, "year")
+				.and(Sort.by(Sort.Direction.ASC, "periodNumber")));
 	}
 
 	@Override

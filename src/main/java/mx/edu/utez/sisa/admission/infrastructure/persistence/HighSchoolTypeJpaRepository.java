@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -36,4 +37,23 @@ public interface HighSchoolTypeJpaRepository extends JpaRepository<HighSchoolTyp
 			""")
 	Page<HighSchoolType> search(@Param("status") HighSchoolTypeStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /high-school-types/options}
+	 * (transversal design: "Roles y Permisos — patrón reference"). Returns
+	 * only {@link HighSchoolTypeStatus#ACTIVE} types as a minimal
+	 * {@link HighSchoolTypeOptionProjection} — {@code id} and {@code name}
+	 * (the label), ordered by name. Mirrors
+	 * {@code OutreachChannelJpaRepository#findByStatusOrderByNameAsc}.
+	 */
+	List<HighSchoolTypeOptionProjection> findByStatusOrderByNameAsc(HighSchoolTypeStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface HighSchoolTypeOptionProjection {
+		UUID getId();
+
+		String getName();
+	}
 }

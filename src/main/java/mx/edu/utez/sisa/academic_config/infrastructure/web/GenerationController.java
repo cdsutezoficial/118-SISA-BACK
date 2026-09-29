@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase.Li
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase.ListGenerationsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase.UpdateGenerationCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.GenerationJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeGenerationStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateGenerationRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GenerationListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GenerationListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GenerationResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateGenerationRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -65,15 +68,19 @@ public class GenerationController {
 
 	private final ChangeGenerationStatusUseCase changeGenerationStatusUseCase;
 
+	private final GenerationJpaRepository generationJpaRepository;
+
 	public GenerationController(ListGenerationsUseCase listGenerationsUseCase,
 			CreateGenerationUseCase createGenerationUseCase, GetGenerationUseCase getGenerationUseCase,
 			UpdateGenerationUseCase updateGenerationUseCase,
-			ChangeGenerationStatusUseCase changeGenerationStatusUseCase) {
+			ChangeGenerationStatusUseCase changeGenerationStatusUseCase,
+			GenerationJpaRepository generationJpaRepository) {
 		this.listGenerationsUseCase = listGenerationsUseCase;
 		this.createGenerationUseCase = createGenerationUseCase;
 		this.getGenerationUseCase = getGenerationUseCase;
 		this.updateGenerationUseCase = updateGenerationUseCase;
 		this.changeGenerationStatusUseCase = changeGenerationStatusUseCase;
+		this.generationJpaRepository = generationJpaRepository;
 	}
 
 	@PostMapping
@@ -89,6 +96,14 @@ public class GenerationController {
 		GenerationResult result = updateGenerationUseCase.updateGeneration(
 				new UpdateGenerationCommand(id, request.planId(), request.startPeriodId(), request.number()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listGenerationOptions(@RequestParam(required = false) UUID programId) {
+		List<GenerationJpaRepository.GenerationOptionProjection> options = programId == null
+				? generationJpaRepository.findByStatusOrderByCodeAsc(GenerationStatus.ACTIVE)
+				: generationJpaRepository.findByProgramIdAndStatusOrderByCodeAsc(programId, GenerationStatus.ACTIVE);
+		return options.stream().map(g -> new OptionResponse(g.getId(), g.getCode(), null)).toList();
 	}
 
 	@GetMapping("/{id}")

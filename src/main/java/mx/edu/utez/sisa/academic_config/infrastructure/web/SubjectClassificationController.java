@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassification
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase.ListSubjectClassificationsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase.UpdateClassificationCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.SubjectClassificationJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeClassificationStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateSubjectClassificationRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.SubjectClassificationResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateSubjectClassificationRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -65,16 +68,20 @@ public class SubjectClassificationController {
 
 	private final ChangeSubjectClassificationStatusUseCase changeSubjectClassificationStatusUseCase;
 
+	private final SubjectClassificationJpaRepository subjectClassificationJpaRepository;
+
 	public SubjectClassificationController(ListSubjectClassificationsUseCase listSubjectClassificationsUseCase,
 			CreateSubjectClassificationUseCase createSubjectClassificationUseCase,
 			GetSubjectClassificationUseCase getSubjectClassificationUseCase,
 			UpdateSubjectClassificationUseCase updateSubjectClassificationUseCase,
-			ChangeSubjectClassificationStatusUseCase changeSubjectClassificationStatusUseCase) {
+			ChangeSubjectClassificationStatusUseCase changeSubjectClassificationStatusUseCase,
+			SubjectClassificationJpaRepository subjectClassificationJpaRepository) {
 		this.listSubjectClassificationsUseCase = listSubjectClassificationsUseCase;
 		this.createSubjectClassificationUseCase = createSubjectClassificationUseCase;
 		this.getSubjectClassificationUseCase = getSubjectClassificationUseCase;
 		this.updateSubjectClassificationUseCase = updateSubjectClassificationUseCase;
 		this.changeSubjectClassificationStatusUseCase = changeSubjectClassificationStatusUseCase;
+		this.subjectClassificationJpaRepository = subjectClassificationJpaRepository;
 	}
 
 	@PostMapping
@@ -91,6 +98,12 @@ public class SubjectClassificationController {
 		ClassificationResult result = updateSubjectClassificationUseCase
 				.updateClassification(new UpdateClassificationCommand(id, request.name(), request.code()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listClassificationOptions() {
+		return subjectClassificationJpaRepository.findByStatusOrderByNameAsc(ClassificationStatus.ACTIVE).stream()
+				.map(c -> new OptionResponse(c.getId(), c.getName(), c.getCode())).toList();
 	}
 
 	@GetMapping("/{id}")

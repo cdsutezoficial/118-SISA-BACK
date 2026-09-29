@@ -84,7 +84,7 @@ class RevokeRoleUseCaseImplTest {
 		UUID actualOwnerId = UUID.randomUUID();
 		UUID otherUserId = UUID.randomUUID();
 		UUID userRoleId = UUID.randomUUID();
-		UserRole userRole = new UserRole(actualOwnerId, RoleType.DOCENTE, null);
+		UserRole userRole = new UserRole(actualOwnerId, roleId(RoleType.DOCENTE), null);
 		ReflectionTestUtils.setField(userRole, "id", userRoleId);
 		when(userRoleRepository.findById(userRoleId)).thenReturn(Optional.of(userRole));
 
@@ -99,7 +99,7 @@ class RevokeRoleUseCaseImplTest {
 		when(userRepository.findById(callerId)).thenReturn(Optional.of(adminCaller));
 		UUID userId = UUID.randomUUID();
 		UUID userRoleId = UUID.randomUUID();
-		UserRole userRole = new UserRole(userId, RoleType.DOCENTE, null);
+		UserRole userRole = new UserRole(userId, roleId(RoleType.DOCENTE), null);
 		ReflectionTestUtils.setField(userRole, "id", userRoleId);
 		when(userRoleRepository.findById(userRoleId)).thenReturn(Optional.of(userRole));
 
@@ -107,5 +107,9 @@ class RevokeRoleUseCaseImplTest {
 				.doesNotThrowAnyException();
 
 		verify(userRoleRepository).delete(userRole);
+	}
+
+	private static UUID roleId(RoleType roleType) {
+		return UUID.nameUUIDFromBytes(("role-" + roleType.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 }

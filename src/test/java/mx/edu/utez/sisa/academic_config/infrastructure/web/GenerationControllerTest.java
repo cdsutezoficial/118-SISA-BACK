@@ -14,11 +14,13 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase.Li
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase.ListGenerationsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase.UpdateGenerationCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.GenerationJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -74,7 +77,13 @@ class GenerationControllerTest {
 	private ChangeGenerationStatusUseCase changeGenerationStatusUseCase;
 
 	@MockitoBean
+	private GenerationJpaRepository generationJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
@@ -272,6 +281,37 @@ class GenerationControllerTest {
 		mockMvc.perform(patch("/generations/" + generationId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(GenerationStatus.FINISHED))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listGenerationOptionsReturnsOnlyActiveGenerationsLabeledByCode() throws Exception {
+		UUID generationId = UUID.randomUUID();
+		GenerationJpaRepository.GenerationOptionProjection active = mock(
+				GenerationJpaRepository.GenerationOptionProjection.class);
+		when(active.getId()).thenReturn(generationId);
+		when(active.getCode()).thenReturn("2026-7");
+		when(generationJpaRepository.findByStatusOrderByCodeAsc(GenerationStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/generations/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(generationId.toString()))
+				.andExpect(jsonPath("$[0].label").value("2026-7"))
+				.andExpect(jsonPath("$[0].code").isEmpty())
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(generationJpaRepository).findByStatusOrderByCodeAsc(GenerationStatus.ACTIVE);
+	}
+
+	@Test
+	void listGenerationOptionsFiltersByProgram() throws Exception {
+		UUID programId = UUID.randomUUID();
+		when(generationJpaRepository.findByProgramIdAndStatusOrderByCodeAsc(programId, GenerationStatus.ACTIVE))
+				.thenReturn(List.of());
+
+		mockMvc.perform(get("/generations/options").param("programId", programId.toString()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+
+		verify(generationJpaRepository).findByProgramIdAndStatusOrderByCodeAsc(programId, GenerationStatus.ACTIVE);
 	}
 
 	private record CreateBody(UUID planId, UUID startPeriodId, int number) {

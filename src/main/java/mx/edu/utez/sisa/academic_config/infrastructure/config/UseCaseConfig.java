@@ -8,9 +8,11 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPlanStatusU
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicProgramStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGenerationStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ChangePaymentAreaStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangePaymentConceptStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeProgramAdmissionConfigStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeSubjectClassificationStatusUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.AdvanceAcademicPeriodStatusByDateUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetProgramAdmissionConfigUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentRatesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListProgramAdmissionConfigsUseCase;
@@ -23,14 +25,17 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentAreaUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPeriodUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetConfigurationStatisticsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetGroupUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.GetPaymentAreaUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetPaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase;
@@ -39,6 +44,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentAreasUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentConceptsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.RemoveGradeScaleUseCase;
@@ -52,16 +58,19 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicProgramUseC
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePaymentAreaUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectClassificationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.ConfigurationStatisticsRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GroupRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentAreaRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentConceptRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentRateRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PersonLookupPort;
@@ -71,6 +80,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.AddPlanLevelUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.AddSubjectToPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicDivisionStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPeriodStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.AdvanceAcademicPeriodStatusByDateUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicPlanStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeAcademicProgramStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeGenerationStatusUseCaseImpl;
@@ -83,14 +93,18 @@ import mx.edu.utez.sisa.academic_config.domain.service.CreateGenerationUseCaseIm
 import mx.edu.utez.sisa.academic_config.domain.service.CreateSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicDivisionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPeriodUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetConfigurationStatisticsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicPlanUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetAcademicProgramUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeGroupStatusUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ChangePaymentAreaStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangePaymentConceptStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateGroupUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreatePaymentAreaUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreatePaymentConceptUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetGenerationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetGroupUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.GetPaymentAreaUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetPaymentConceptUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListPaymentRatesUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeProgramAdmissionConfigStatusUseCaseImpl;
@@ -106,10 +120,12 @@ import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPlansUseCaseI
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicProgramsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListGenerationsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListGroupsUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ListPaymentAreasUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListPaymentConceptsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListSubjectClassificationsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateGenerationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateGroupUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.UpdatePaymentAreaUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdatePaymentConceptUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemoveGradeScaleUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.RemovePlanLevelUseCaseImpl;
@@ -319,6 +335,12 @@ public class UseCaseConfig {
 	}
 
 	@Bean
+	public GetConfigurationStatisticsUseCase getConfigurationStatisticsUseCase(
+			ConfigurationStatisticsRepository statisticsRepository, AcademicPeriodRepository periodRepository) {
+		return new GetConfigurationStatisticsUseCaseImpl(statisticsRepository, periodRepository);
+	}
+
+	@Bean
 	public GetAcademicPeriodUseCase getAcademicPeriodUseCase(AcademicPeriodRepository periodRepository) {
 		return new GetAcademicPeriodUseCaseImpl(periodRepository);
 	}
@@ -327,6 +349,12 @@ public class UseCaseConfig {
 	public ChangeAcademicPeriodStatusUseCase changeAcademicPeriodStatusUseCase(
 			AcademicPeriodRepository periodRepository) {
 		return new ChangeAcademicPeriodStatusUseCaseImpl(periodRepository);
+	}
+
+	@Bean
+	public AdvanceAcademicPeriodStatusByDateUseCase advanceAcademicPeriodStatusByDateUseCase(
+			AcademicPeriodRepository periodRepository) {
+		return new AdvanceAcademicPeriodStatusByDateUseCaseImpl(periodRepository);
 	}
 
 	@Bean
@@ -386,13 +414,17 @@ public class UseCaseConfig {
 	}
 
 	@Bean
-	public CreatePaymentConceptUseCase createPaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository) {
-		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository);
+	public CreatePaymentConceptUseCase createPaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
+			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
+		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
+				academicProgramRepository);
 	}
 
 	@Bean
-	public UpdatePaymentConceptUseCase updatePaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository) {
-		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository);
+	public UpdatePaymentConceptUseCase updatePaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
+			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
+		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
+				academicProgramRepository);
 	}
 
 	@Bean
@@ -409,6 +441,31 @@ public class UseCaseConfig {
 	public ChangePaymentConceptStatusUseCase changePaymentConceptStatusUseCase(
 			PaymentConceptRepository paymentConceptRepository) {
 		return new ChangePaymentConceptStatusUseCaseImpl(paymentConceptRepository);
+	}
+
+	@Bean
+	public CreatePaymentAreaUseCase createPaymentAreaUseCase(PaymentAreaRepository paymentAreaRepository) {
+		return new CreatePaymentAreaUseCaseImpl(paymentAreaRepository);
+	}
+
+	@Bean
+	public UpdatePaymentAreaUseCase updatePaymentAreaUseCase(PaymentAreaRepository paymentAreaRepository) {
+		return new UpdatePaymentAreaUseCaseImpl(paymentAreaRepository);
+	}
+
+	@Bean
+	public ListPaymentAreasUseCase listPaymentAreasUseCase(PaymentAreaRepository paymentAreaRepository) {
+		return new ListPaymentAreasUseCaseImpl(paymentAreaRepository);
+	}
+
+	@Bean
+	public GetPaymentAreaUseCase getPaymentAreaUseCase(PaymentAreaRepository paymentAreaRepository) {
+		return new GetPaymentAreaUseCaseImpl(paymentAreaRepository);
+	}
+
+	@Bean
+	public ChangePaymentAreaStatusUseCase changePaymentAreaStatusUseCase(PaymentAreaRepository paymentAreaRepository) {
+		return new ChangePaymentAreaStatusUseCaseImpl(paymentAreaRepository);
 	}
 
 	@Bean

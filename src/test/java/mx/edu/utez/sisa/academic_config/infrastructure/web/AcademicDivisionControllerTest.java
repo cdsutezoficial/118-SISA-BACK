@@ -14,11 +14,13 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseC
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseCase.ListAcademicDivisionsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicDivisionUseCase.UpdateAcademicDivisionCommand;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicDivisionJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.AcademicDivisionNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DirectorNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateDivisionNameException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -78,7 +81,13 @@ class AcademicDivisionControllerTest {
 	private GetAcademicDivisionUseCase getAcademicDivisionUseCase;
 
 	@MockitoBean
+	private AcademicDivisionJpaRepository academicDivisionJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 
@@ -259,6 +268,26 @@ class AcademicDivisionControllerTest {
 		mockMvc.perform(patch("/divisions/" + divisionId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(DivisionStatus.ACTIVE))))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listDivisionOptionsReturnsOnlyActiveDivisionsWithMinimalProjection() throws Exception {
+		UUID divisionId = UUID.randomUUID();
+		AcademicDivisionJpaRepository.DivisionOptionProjection active = mock(
+				AcademicDivisionJpaRepository.DivisionOptionProjection.class);
+		when(active.getId()).thenReturn(divisionId);
+		when(active.getName()).thenReturn("Ingeniería en Software");
+		when(active.getCode()).thenReturn("ISW");
+		when(academicDivisionJpaRepository.findByStatusOrderByNameAsc(DivisionStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/divisions/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(divisionId.toString()))
+				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
+				.andExpect(jsonPath("$[0].code").value("ISW"))
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(academicDivisionJpaRepository).findByStatusOrderByNameAsc(DivisionStatus.ACTIVE);
 	}
 
 	private record CreateDivisionBody(String name, String code, String description, UUID directorPersonId) {

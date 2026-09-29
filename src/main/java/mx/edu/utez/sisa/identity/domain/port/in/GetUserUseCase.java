@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.identity.domain.port.in;
 
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
-import mx.edu.utez.sisa.shared.model.RoleType;
 
 import java.time.Instant;
 import java.util.List;
@@ -33,6 +32,6 @@ public interface GetUserUseCase {
 			boolean mustChangePassword, Instant lastLoginAt, Instant createdAt, List<UserRoleDetail> roles) {
 	}
 
-	record UserRoleDetail(UUID userRoleId, RoleType roleType, UUID divisionId) {
+	record UserRoleDetail(UUID userRoleId, UUID roleId, String roleKey, String roleName, UUID divisionId) {
 	}
 }

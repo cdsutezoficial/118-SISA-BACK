@@ -31,6 +31,8 @@ class AuthenticationEntryPointTest {
 		mockMvc.perform(get("/users"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.error").value("No autorizado"))
+				.andExpect(jsonPath("$.message").value("Tu sesión no es válida o ha expirado. Inicia sesión nuevamente."))
 				.andExpect(jsonPath("$.path").value("/users"));
 	}
 

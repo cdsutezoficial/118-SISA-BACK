@@ -5,10 +5,18 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticateCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase.AuthenticationResult;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileQuery;
+import mx.edu.utez.sisa.identity.domain.port.in.GetCurrentProfileUseCase.CurrentProfileResult;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.RequestPasswordResetUseCase.RequestPasswordResetCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.ResetPasswordUseCase.ResetPasswordCommand;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -57,6 +66,15 @@ class AuthControllerTest {
 	@MockitoBean
 	private ChangePasswordUseCase changePasswordUseCase;
 
+	@MockitoBean
+	private GetCurrentProfileUseCase getCurrentProfileUseCase;
+
+	@MockitoBean
+	private RequestPasswordResetUseCase requestPasswordResetUseCase;
+
+	@MockitoBean
+	private ResetPasswordUseCase resetPasswordUseCase;
+
 	/**
 	 * {@code JwtAuthenticationFilter} is auto-detected as a Filter bean by the
 	 * {@code @WebMvcTest} slice (it's a {@code @Component}); it needs a
@@ -65,6 +83,9 @@ class AuthControllerTest {
 	 */
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	@AfterEach
 	void tearDown() {
@@ -136,6 +157,58 @@ class AuthControllerTest {
 				"old-pass", "new-pass")));
 	}
 
+	@Test
+	void meReturnsCallerProfileResolvedFromSecurityContext() throws Exception {
+		UUID callerId = UUID.randomUUID();
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+				callerId.toString(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+		when(getCurrentProfileUseCase.getCurrentProfile(new CurrentProfileQuery(callerId)))
+				.thenReturn(new CurrentProfileResult(callerId, "Administrador Sistema", "admin@utez.edu.mx",
+						"admin@utez.edu.mx"));
+
+		mockMvc.perform(get("/auth/me"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.userId").doesNotExist())
+				.andExpect(jsonPath("$.fullName").value("Administrador Sistema"))
+				.andExpect(jsonPath("$.username").value("admin@utez.edu.mx"))
+				.andExpect(jsonPath("$.email").value("admin@utez.edu.mx"));
+
+		verify(getCurrentProfileUseCase).getCurrentProfile(eq(new CurrentProfileQuery(callerId)));
+	}
+
+	@Test
+	void forgotPasswordDelegatesToRequestPasswordResetUseCaseAndReturns204() throws Exception {
+		mockMvc.perform(post("/auth/forgot-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ForgotPasswordBody("jane.doe@utez.edu.mx"))))
+				.andExpect(status().isNoContent());
+
+		verify(requestPasswordResetUseCase)
+				.request(eq(new RequestPasswordResetCommand("jane.doe@utez.edu.mx")));
+	}
+
+	@Test
+	void forgotPasswordWithBlankUsernameReturns400() throws Exception {
+		mockMvc.perform(post("/auth/forgot-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ForgotPasswordBody(""))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void resetPasswordDelegatesToResetPasswordUseCaseAndReturns204() throws Exception {
+		mockMvc.perform(post("/auth/reset-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ResetPasswordBody("token-123", "NewPass!1"))))
+				.andExpect(status().isNoContent());
+
+		verify(resetPasswordUseCase).reset(eq(new ResetPasswordCommand("token-123", "NewPass!1")));
+	}
+
+	@Test
+	void resetPasswordWithBlankFieldsReturns400() throws Exception {
+		mockMvc.perform(post("/auth/reset-password").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new ResetPasswordBody("", ""))))
+				.andExpect(status().isBadRequest());
+	}
+
 	private record LoginBody(String username, String password) {
 	}
 
@@ -143,5 +216,11 @@ class AuthControllerTest {
 	}
 
 	private record ChangePasswordBody(String currentPassword, String newPassword) {
+	}
+
+	private record ForgotPasswordBody(String username) {
+	}
+
+	private record ResetPasswordBody(String token, String newPassword) {
 	}
 }

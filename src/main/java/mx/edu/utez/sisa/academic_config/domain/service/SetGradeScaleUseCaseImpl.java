@@ -50,9 +50,8 @@ public class SetGradeScaleUseCaseImpl implements SetGradeScaleUseCase {
 		}
 		if (command.numericMin() == null || command.numericMax() == null
 				|| command.numericMin().compareTo(command.numericMax()) >= 0) {
-			throw new InvalidPlanDataException(
-					"numericMin must be less than numericMax: [" + command.numericMin() + ", " + command.numericMax()
-							+ "]");
+			throw new InvalidPlanDataException("La calificación mínima debe ser menor que la máxima: ["
+					+ command.numericMin() + ", " + command.numericMax() + "].");
 		}
 
 		plan.setGradeScale(command.classificationId(), command.numericMin(), command.numericMax(),

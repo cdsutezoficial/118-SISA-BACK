@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,4 +44,27 @@ public interface AcademicPeriodJpaRepository extends JpaRepository<AcademicPerio
 			""")
 	Page<AcademicPeriod> search(@Param("status") PeriodStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /periods/options} (transversal
+	 * design: "Roles y Permisos — patrón reference"). Returns only
+	 * {@link PeriodStatus#ACTIVE} periods as a minimal
+	 * {@link PeriodOptionProjection} — {@code id}, {@code name} (the label)
+	 * and {@code year} (doubling as the picker's secondary identifier),
+	 * ordered by year (descending) then name. Interface projection avoids
+	 * loading the full {@code AcademicPeriod} (no startDate/endDate,
+	 * enrollment windows, periodNumber/type).
+	 */
+	List<PeriodOptionProjection> findByStatusOrderByYearDescNameAsc(PeriodStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface PeriodOptionProjection {
+		UUID getId();
+
+		String getName();
+
+		int getYear();
+	}
 }

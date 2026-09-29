@@ -17,6 +17,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePaymentConceptUseCa
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,9 @@ class PaymentConceptControllerTest {
 
 	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	private UUID callerId;
 

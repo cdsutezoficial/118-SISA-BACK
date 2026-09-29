@@ -1,0 +1,34 @@
+Confirmación de pago — Ficha de Admisión UTEZ
+==============================================
+
+¡Pago de ficha confirmado!
+
+Tu registro de Aspirante quedó completado. Guarda esta pantalla
+o descarga tu comprobante.
+
+  Tu folio .................. {{folio}}
+  Monto pagado .............. ${{monto}} MXN
+
+Comprobante
+-----------
+  Folio de comprobante ...... {{recibo}}
+  Fecha de pago ............. {{fechaPago}}
+  Referencia de pago ........ {{referencia}}
+  Carrera ................... {{carrera}}
+
+Qué sigue
+---------
+  1. Hola {{nombre}}, guarda tu folio {{folio}}. Lo necesitarás en los
+     siguientes pasos del proceso de admisión.
+
+  2. Descarga tu comprobante en PDF desde el portal, con tu folio. Puedes
+     entrar cuando quieras.
+
+  3. Presenta este comprobante al ingresar al curso de inducción.
+
+--
+El PDF que descargas en el portal es una copia sin validez oficial; la
+ficha oficial es la que expide la Universidad.
+
+Universidad Tecnológica de la Zona de UTEZ
+SISA — Sistema Integral de Servicios Académicos

@@ -10,10 +10,11 @@ import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
@@ -21,12 +22,15 @@ import java.time.Instant;
 
 /**
  * Stateless security filter chain (design.md — Security filter chain): CSRF
- * disabled, {@code permitAll} on {@code /auth/login}, {@code /auth/refresh}
- * and {@code /h2-console/**} (dev), everything else requires authentication.
+ * disabled, {@code permitAll} on {@code /auth/login}, {@code /auth/refresh},
+ * {@code /auth/forgot-password} and {@code /auth/reset-password} (the latter
+ * pair public for the "forgot my password" flow — 01-identidad.md — since the
+ * user has no session when starting or completing a reset), everything else
+ * requires authentication.
  * {@code GET /users} (01-identidad.md — ListUsersUseCase) is matched
- * BEFORE the blanket {@code /users/**} rule and allows ADMIN or
- * SERVICIOS_ESCOLARES; every other {@code /users/**} path (create user,
- * assign role) stays ADMIN-only via the blanket rule. Matcher order matters:
+ * BEFORE the blanket {@code /users/**} rule and allows only ADMIN; every
+ * other {@code /users/**} path (create user, assign role) stays ADMIN-only
+ * via the blanket rule. Matcher order matters:
  * Spring Security evaluates {@code authorizeHttpRequests} rules in
  * declaration order and applies the first match, so the specific GET rule
  * must be declared first or it would never be reached.
@@ -79,13 +83,13 @@ import java.time.Instant;
  * {@code /persons} (identity, plan:
  * {@code docs/plans/2026-07-28-persons-and-user-management.md}) gets a GET
  * matcher ({@code /persons}, {@code /persons/**}) granting
- * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} (same pair as {@code GET /users})
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES}
  * and a POST matcher granting {@code ADMIN} only (same level as
  * {@code POST /users}). The existing {@code GET /users} matcher's pattern
  * list is extended to also cover {@code /users/**} so
  * {@code GET /users/{id}} (the new detail endpoint from the same plan)
- * shares the ADMIN/SERVICIOS_ESCOLARES pair instead of falling through to
- * the ADMIN-only blanket {@code /users/**} rule below it — the three other
+ * is served ADMIN-only, matching the blanket {@code /users/**} rule below
+ * it — the three other
  * new endpoints on that plan ({@code DELETE .../roles/{userRoleId}},
  * {@code PATCH .../unlock}, plus the existing {@code POST} endpoints) are
  * NOT GET, so they still fall through to the ADMIN-only blanket rule
@@ -117,6 +121,14 @@ import java.time.Instant;
  * There is no PUT/PATCH/DELETE on {@code PaymentRate} (no Update/Delete by
  * design — plan section 4, append-only history), so no matcher is added for
  * those verbs.
+ * {@code /payment-areas} (academic_config — companion catalog to
+ * {@code PaymentConcept}, plan: {@code docs/plans/2026-09-19-payment-areas.md})
+ * gets the identical GET/POST/PUT/PATCH four-matcher shape and the same
+ * {@code ADMIN}/{@code PERSONAL_FINANZAS} pair as {@code /payment-concepts}
+ * (same bounded-context co-location and same Finanzas ownership rationale).
+ * Its {@code GET /payment-areas/options} reference picker is
+ * {@code authenticated()} (same as {@code /divisions/options}) and is
+ * declared BEFORE the blanket {@code GET /payment-areas/**} rule.
  * {@code /program-admission-configs} (academic_config — tenth aggregate,
  * plan: {@code docs/plans/2026-07-28-program-admission-config.md}) gets the
  * identical GET/POST/PUT/PATCH four-matcher shape as every prior aggregate,
@@ -124,8 +136,19 @@ import java.time.Instant;
  * {@code PERSONAL_FINANZAS} — PO-confirmed 2026-07-28: unlike
  * {@code PaymentConcept}, there is no role in the 11-role catalog dedicated
  * to "admisión", so this aggregate follows the module's default pair even
- * though its future consumer is the Admisión module). Placed right after the
+ * though its future consumer is the Admisión module). Its GET matcher also
+ * grants {@code DIRECTOR_DIVISION} (read-only visibility of the Admisión
+ * module's configuration from the sidebar) — the mutating verbs stay
+ * ADMIN/SERVICIOS_ESCOLARES. Placed right after the
  * {@code /payment-concepts/.../rates} matcher.
+ * {@code GET /program-admission-configs/options} (same plan, new for the
+ * ficha de admisión — plan: {@code docs/plans/sisa-candidate-ficha.md}) is a
+ * public reference picker listing the currently-{@code OPEN} configs with
+ * their program name + modality, so the public registration wizard can map a
+ * program to its {@code admissionConfigId}. {@code permitAll()}, declared
+ * BEFORE the blanket {@code GET /program-admission-configs/**} rule (which
+ * still requires ADMIN/SERVICIOS_ESCOLARES/DIRECTOR_DIVISION for the
+ * management list).
  * {@code /outreach-channels} (eleventh matcher block, but the FIRST from the
  * NEW {@code admission} bounded context — plan:
  * {@code docs/plans/2026-07-28-outreach-channel.md} — rather than another
@@ -145,16 +168,41 @@ import java.time.Instant;
  * pair, placed right after the {@code /outreach-channels} matchers.
  * {@code /states} and {@code /municipalities} (shared-kernel INEGI reference
  * catalogs, same plan) are deliberately DIFFERENT from every matcher above:
- * a single GET matcher each, {@code .authenticated()} with NO role
- * restriction — these are read-only catalogs any authenticated user's form
- * may need to query (e.g. a future candidate registration screen), and the
- * domain doc gives no business reason to gate them by role. There is no
- * POST/PUT/PATCH matcher for either — both are closed, seed-once catalogs
- * with no write endpoints at all (see {@code StateController}/
- * {@code MunicipalityController}). Placed right after the
- * {@code /high-school-types} matchers.
+ * a single GET matcher each, {@code .permitAll()} with NO role/authentication
+ * restriction — these are closed, seed-once read-only catalogs the PUBLIC
+ * registration wizard (Screen 4's anonymous {@code /portal/registro} mount,
+ * same plan as {@code POST /candidates}) needs to resolve state/municipality
+ * names to {@code UUID} ids before posting the ficha, and the domain doc
+ * gives no business reason to hide them. There is no POST/PUT/PATCH matcher
+ * for either — both are closed, seed-once catalogs with no write endpoints
+ * at all (see {@code StateController}/{@code MunicipalityController}). Placed
+ * right after the {@code /high-school-types} matchers.
+ * {@code GET /outreach-channels/options} and
+ * {@code GET /high-school-types/options} (same plan/screen rationale as
+ * {@code /states}: the anonymous wizard resolves channel/school-type names to
+ * {@code UUID}) are likewise {@code .permitAll()}, declared BEFORE their
+ * adjacent ADMIN/SERVICIOS_ESCOLARES management matchers.
+ * {@code GET /program-admission-configs/{id}/ficha-amount} (Fase 11) joins them
+ * for the same reason: the wizard's review step previews the catalog-priced
+ * ficha amount before the ticket exists, so an applicant with no session must
+ * be able to read the quote.
+ * {@code POST /candidates} (the LAST matcher block — {@code admission}'s
+ * third aggregate/first real flow, the public "ficha de admisión" endpoint,
+ * plan: {@code docs/plans/sisa-candidate-ficha.md}) is the ONLY pre-authenticated
+ * POST in the app: {@code .permitAll()}, declared FIRST in the chain together
+ * with {@code /auth/login}/{@code /auth/refresh} for the same fundamental
+ * reason they are public — the applicant has no session when they submit their
+ * ficha from the public portal. Registration is the single intentionally
+ * anonymous write; every other {@code /candidates/**} verb (admin list/detail/
+ * transitions) will live under the {@code ADMIN}/{@code SERVICIOS_ESCOLARES}
+ * pair when implemented.
  * {@link JwtAuthenticationFilter} runs before
  * {@code UsernamePasswordAuthenticationFilter}.
+ * {@link PermissionFilter} (roles-permisos.md §3.1) runs after the JWT filter
+ * and before the coarse {@code AuthorizationFilter}: for registered routes it
+ * requires the permission key from the in-memory cache
+ * ({@link PermissionCache}, §3.2), relying on the coarse matchers in
+ * {@code authorizeHttpRequests} as the outer role layer.
  */
 @Configuration
 @EnableWebSecurity
@@ -162,13 +210,16 @@ public class SecurityFilterConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+	private final PermissionFilter permissionFilter;
+
 	private final CorsConfigurationSource corsConfigurationSource;
 
 	private final ObjectMapper objectMapper;
 
-	public SecurityFilterConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+	public SecurityFilterConfig(JwtAuthenticationFilter jwtAuthenticationFilter, PermissionFilter permissionFilter,
 			CorsConfigurationSource corsConfigurationSource, ObjectMapper objectMapper) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+		this.permissionFilter = permissionFilter;
 		this.corsConfigurationSource = corsConfigurationSource;
 		this.objectMapper = objectMapper;
 	}
@@ -178,13 +229,29 @@ public class SecurityFilterConfig {
 		http.csrf(AbstractHttpConfigurer::disable)
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
-				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
+				.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint())
+						.accessDeniedHandler(accessDeniedHandler()))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/auth/login", "/auth/refresh", "/h2-console/**").permitAll()
+						.requestMatchers(HttpMethod.POST, "/candidates", "/candidates/payment-access",
+								"/candidates/*/payments/confirm", "/candidates/*/payments/checkout")
+						.permitAll()
+						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
+						.requestMatchers("/auth/login", "/auth/refresh")
+						.permitAll()
+						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.POST, "/roles").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.PUT, "/roles/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.PATCH, "/roles/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.GET, "/permissions", "/permissions/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.POST, "/permissions").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.PUT, "/permissions/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.PATCH, "/permissions/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/users", "/users/**")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.hasRole("ADMIN")
 						.requestMatchers("/users/**").hasRole("ADMIN")
+						.requestMatchers(HttpMethod.GET, "/programs/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/divisions/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/plans/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/divisions", "/divisions/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/divisions").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
@@ -206,6 +273,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.DELETE, "/plans/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/subject-classifications/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/subject-classifications", "/subject-classifications/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/subject-classifications")
@@ -214,11 +282,15 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/subject-classifications/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/periods/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/periods", "/periods/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/periods").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.POST, "/periods/advance-by-date")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/periods/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/generations/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/generations", "/generations/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/generations").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
@@ -226,6 +298,8 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.PATCH, "/generations/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.GET, "/groups", "/groups/**")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/config-academica/statistics")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/groups").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/groups/**").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
@@ -243,14 +317,26 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.POST, "/payment-concepts/*/rates")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.GET, "/payment-areas/options").authenticated()
+						.requestMatchers(HttpMethod.GET, "/payment-areas", "/payment-areas/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/payment-areas")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PUT, "/payment-areas/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
+						.requestMatchers(HttpMethod.GET, "/program-admission-configs/*/ficha-amount").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers(HttpMethod.POST, "/program-admission-configs")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/program-admission-configs/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/outreach-channels/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/outreach-channels", "/outreach-channels/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/outreach-channels")
@@ -259,6 +345,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/outreach-channels/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/high-school-types/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/high-school-types", "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/high-school-types")
@@ -267,10 +354,11 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
-						.requestMatchers(HttpMethod.GET, "/states").authenticated()
-						.requestMatchers(HttpMethod.GET, "/municipalities").authenticated()
+						.requestMatchers(HttpMethod.GET, "/states").permitAll()
+						.requestMatchers(HttpMethod.GET, "/municipalities").permitAll()
 						.anyRequest().authenticated())
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(permissionFilter, AuthorizationFilter.class);
 		return http.build();
 	}
 
@@ -290,7 +378,18 @@ public class SecurityFilterConfig {
 			response.setStatus(HttpStatus.UNAUTHORIZED.value());
 			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 			ErrorResponse body = new ErrorResponse(Instant.now(), HttpStatus.UNAUTHORIZED.value(),
-					HttpStatus.UNAUTHORIZED.getReasonPhrase(), "Invalid or missing authentication token",
+					"No autorizado", "Tu sesión no es válida o ha expirado. Inicia sesión nuevamente.",
+					request.getRequestURI());
+			objectMapper.writeValue(response.getWriter(), body);
+		};
+	}
+
+	private AccessDeniedHandler accessDeniedHandler() {
+		return (request, response, accessDeniedException) -> {
+			response.setStatus(HttpStatus.FORBIDDEN.value());
+			response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+			ErrorResponse body = new ErrorResponse(Instant.now(), HttpStatus.FORBIDDEN.value(),
+					"Acceso denegado", "No tienes permiso para realizar esta acción.",
 					request.getRequestURI());
 			objectMapper.writeValue(response.getWriter(), body);
 		};

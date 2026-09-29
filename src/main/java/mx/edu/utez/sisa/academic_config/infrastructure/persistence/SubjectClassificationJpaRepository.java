@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,4 +48,27 @@ public interface SubjectClassificationJpaRepository extends JpaRepository<Subjec
 			""")
 	Page<SubjectClassification> search(@Param("status") ClassificationStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Reference-catalog read backing {@code GET /subject-classifications/options}
+	 * (transversal design: "Roles y Permisos — patrón reference"). Returns
+	 * only {@link ClassificationStatus#ACTIVE} classifications as a minimal
+	 * {@link ClassificationOptionProjection} — {@code id}, {@code name} (the
+	 * label), {@code code} — ordered by name. Interface projection avoids
+	 * loading the full {@code SubjectClassification} (this aggregate has no
+	 * other fields, but keeps the reference read uniform with the other
+	 * catalogs).
+	 */
+	List<ClassificationOptionProjection> findByStatusOrderByNameAsc(ClassificationStatus status);
+
+	/**
+	 * Minimal projection for reference pickers — maps to {@code OptionResponse}.
+	 */
+	interface ClassificationOptionProjection {
+		UUID getId();
+
+		String getName();
+
+		String getCode();
+	}
 }

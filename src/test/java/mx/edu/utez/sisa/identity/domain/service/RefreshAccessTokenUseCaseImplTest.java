@@ -1,11 +1,13 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.RefreshToken;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.RefreshAccessTokenUseCase.RefreshResult;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
@@ -41,6 +43,8 @@ class RefreshAccessTokenUseCaseImplTest {
 	private UserRoleRepository userRoleRepository;
 	@Mock
 	private AccessTokenIssuer accessTokenIssuer;
+	@Mock
+	private RoleRepository roleRepository;
 
 	private RefreshAccessTokenUseCaseImpl useCase;
 
@@ -50,7 +54,7 @@ class RefreshAccessTokenUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new RefreshAccessTokenUseCaseImpl(refreshTokenRepository, userRepository, userRoleRepository,
-				accessTokenIssuer);
+				roleRepository, accessTokenIssuer);
 		owner = new User(UUID.randomUUID(), "jane.doe@utez.edu.mx", "hashed-pw");
 		ownerId = UUID.randomUUID();
 		ReflectionTestUtils.setField(owner, "id", ownerId);
@@ -66,6 +70,7 @@ class RefreshAccessTokenUseCaseImplTest {
 		when(refreshTokenRepository.findByTokenHash(TokenHashing.sha256(RAW_TOKEN))).thenReturn(Optional.of(token));
 		when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
 		when(userRoleRepository.findByUserId(ownerId)).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 		when(accessTokenIssuer.issue(any(), anySet())).thenReturn("new-access-token");
 
 		RefreshResult result = useCase.refresh(new RefreshCommand(RAW_TOKEN));
@@ -120,6 +125,7 @@ class RefreshAccessTokenUseCaseImplTest {
 		when(refreshTokenRepository.findByTokenHash(TokenHashing.sha256(RAW_TOKEN))).thenReturn(Optional.of(token));
 		when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
 		when(userRoleRepository.findByUserId(ownerId)).thenReturn(List.of());
+		when(roleRepository.findByIds(List.of())).thenReturn(List.of());
 		when(accessTokenIssuer.issue(any(), anySet())).thenReturn("new-access-token");
 
 		RefreshResult result = useCase.refresh(new RefreshCommand(RAW_TOKEN));

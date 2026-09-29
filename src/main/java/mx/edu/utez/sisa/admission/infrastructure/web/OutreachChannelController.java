@@ -14,12 +14,14 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase.Lis
 import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase.OutreachChannelSummary;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase.UpdateOutreachChannelCommand;
+import mx.edu.utez.sisa.admission.infrastructure.persistence.OutreachChannelJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.ChangeOutreachChannelStatusRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CreateOutreachChannelRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.OutreachChannelListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.OutreachChannelListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.OutreachChannelResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.UpdateOutreachChannelRequest;
+import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -61,16 +64,20 @@ public class OutreachChannelController {
 
 	private final ChangeOutreachChannelStatusUseCase changeOutreachChannelStatusUseCase;
 
+	private final OutreachChannelJpaRepository outreachChannelJpaRepository;
+
 	public OutreachChannelController(ListOutreachChannelsUseCase listOutreachChannelsUseCase,
 			CreateOutreachChannelUseCase createOutreachChannelUseCase,
 			GetOutreachChannelUseCase getOutreachChannelUseCase,
 			UpdateOutreachChannelUseCase updateOutreachChannelUseCase,
-			ChangeOutreachChannelStatusUseCase changeOutreachChannelStatusUseCase) {
+			ChangeOutreachChannelStatusUseCase changeOutreachChannelStatusUseCase,
+			OutreachChannelJpaRepository outreachChannelJpaRepository) {
 		this.listOutreachChannelsUseCase = listOutreachChannelsUseCase;
 		this.createOutreachChannelUseCase = createOutreachChannelUseCase;
 		this.getOutreachChannelUseCase = getOutreachChannelUseCase;
 		this.updateOutreachChannelUseCase = updateOutreachChannelUseCase;
 		this.changeOutreachChannelStatusUseCase = changeOutreachChannelStatusUseCase;
+		this.outreachChannelJpaRepository = outreachChannelJpaRepository;
 	}
 
 	@PostMapping
@@ -87,6 +94,12 @@ public class OutreachChannelController {
 		OutreachChannelResult result = updateOutreachChannelUseCase
 				.updateChannel(new UpdateOutreachChannelCommand(id, request.name()));
 		return ResponseEntity.ok(toResponse(result));
+	}
+
+	@GetMapping("/options")
+	public List<OptionResponse> listChannelOptions() {
+		return outreachChannelJpaRepository.findByStatusOrderByNameAsc(OutreachChannelStatus.ACTIVE).stream()
+				.map(c -> new OptionResponse(c.getId(), c.getName(), null)).toList();
 	}
 
 	@GetMapping("/{id}")

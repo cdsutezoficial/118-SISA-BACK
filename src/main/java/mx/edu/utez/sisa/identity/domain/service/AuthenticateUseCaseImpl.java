@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.identity.domain.service;
 
 import mx.edu.utez.sisa.identity.domain.model.RefreshToken;
+import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
@@ -9,16 +10,20 @@ import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
-import mx.edu.utez.sisa.shared.model.RoleType;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -35,18 +40,20 @@ public class AuthenticateUseCaseImpl implements AuthenticateUseCase {
 	private final AccessTokenIssuer accessTokenIssuer;
 	private final RefreshTokenGenerator refreshTokenGenerator;
 	private final RefreshTokenRepository refreshTokenRepository;
+	private final RoleRepository roleRepository;
 	private final Duration refreshTokenTtl;
 
 	public AuthenticateUseCaseImpl(UserRepository userRepository, UserRoleRepository userRoleRepository,
 			PasswordHasher passwordHasher, AccessTokenIssuer accessTokenIssuer,
 			RefreshTokenGenerator refreshTokenGenerator, RefreshTokenRepository refreshTokenRepository,
-			Duration refreshTokenTtl) {
+			RoleRepository roleRepository, Duration refreshTokenTtl) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
 		this.passwordHasher = passwordHasher;
 		this.accessTokenIssuer = accessTokenIssuer;
 		this.refreshTokenGenerator = refreshTokenGenerator;
 		this.refreshTokenRepository = refreshTokenRepository;
+		this.roleRepository = roleRepository;
 		this.refreshTokenTtl = refreshTokenTtl;
 	}
 
@@ -67,20 +74,23 @@ public class AuthenticateUseCaseImpl implements AuthenticateUseCase {
 				.orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
 
 		if (user.getStatus() == UserStatus.LOCKED) {
-			throw new AccountLockedException("User account is locked: " + user.getId());
+			throw new AccountLockedException("Tu cuenta se encuentra bloqueada.");
 		}
 
 		if (!passwordHasher.matches(command.password(), user.getPasswordHash())) {
 			user.registerFailedLogin();
 			userRepository.save(user);
-			throw new InvalidCredentialsException("Invalid username or password");
+			throw new InvalidCredentialsException("El usuario o la contraseña no son correctos.");
 		}
 
 		user.recordSuccessfulLogin();
 		userRepository.save(user);
 
-		Set<RoleType> roles = userRoleRepository.findByUserId(user.getId()).stream().map(UserRole::getRoleType)
-				.collect(Collectors.toSet());
+		List<UserRole> userRoles = userRoleRepository.findByUserId(user.getId());
+		Map<UUID, Role> rolesById = roleRepository.findByIds(userRoles.stream().map(UserRole::getRoleId).distinct().toList())
+				.stream().collect(Collectors.toMap(Role::getId, Function.identity()));
+		Set<String> roles = userRoles.stream().map(UserRole::getRoleId).map(rolesById::get).filter(role -> role != null)
+				.map(Role::getKey).collect(Collectors.toSet());
 		String accessToken = accessTokenIssuer.issue(user.getId(), roles);
 
 		String refreshTokenValue = refreshTokenGenerator.generate();

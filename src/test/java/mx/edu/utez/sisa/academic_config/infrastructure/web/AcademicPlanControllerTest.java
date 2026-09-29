@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import mx.edu.utez.sisa.academic_config.domain.model.PlanStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.in.AddPlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.AddSubjectToPlanUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeAcademicPlanStatusUseCase;
@@ -18,11 +19,13 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGradeScaleUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePlanLevelUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicPlanJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -35,8 +38,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,7 +107,13 @@ class AcademicPlanControllerTest {
 	private RemoveGradeScaleUseCase removeGradeScaleUseCase;
 
 	@MockitoBean
+	private AcademicPlanJpaRepository academicPlanJpaRepository;
+
+	@MockitoBean
 	private JwtService jwtService;
+
+	@MockitoBean
+	private PermissionCache permissionCache;
 
 	@Test
 	void setGradeScaleReturns201WithBody() throws Exception {
@@ -236,6 +248,37 @@ class AcademicPlanControllerTest {
 
 		mockMvc.perform(delete("/plans/{id}/grade-scales/{scaleId}", planId, scaleId))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listPlanOptionsReturnsOnlyActivePlansLabeledByVersion() throws Exception {
+		UUID planId = UUID.randomUUID();
+		AcademicPlanJpaRepository.PlanOptionProjection active = mock(
+				AcademicPlanJpaRepository.PlanOptionProjection.class);
+		when(active.getId()).thenReturn(planId);
+		when(active.getVersion()).thenReturn("2024-2");
+		when(academicPlanJpaRepository.findByStatusOrderByVersionAsc(PlanStatus.ACTIVE))
+				.thenReturn(List.of(active));
+
+		mockMvc.perform(get("/plans/options")).andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(planId.toString()))
+				.andExpect(jsonPath("$[0].label").value("2024-2"))
+				.andExpect(jsonPath("$[0].code").isEmpty())
+				.andExpect(jsonPath("$[1]").doesNotExist());
+
+		verify(academicPlanJpaRepository).findByStatusOrderByVersionAsc(PlanStatus.ACTIVE);
+	}
+
+	@Test
+	void listPlanOptionsFiltersByProgram() throws Exception {
+		UUID programId = UUID.randomUUID();
+		when(academicPlanJpaRepository.findByProgramIdAndStatusOrderByVersionAsc(programId, PlanStatus.ACTIVE))
+				.thenReturn(List.of());
+
+		mockMvc.perform(get("/plans/options").param("programId", programId.toString()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+
+		verify(academicPlanJpaRepository).findByProgramIdAndStatusOrderByVersionAsc(programId, PlanStatus.ACTIVE);
 	}
 
 	private record SetGradeScaleBody(UUID classificationId, BigDecimal numericMin, BigDecimal numericMax,

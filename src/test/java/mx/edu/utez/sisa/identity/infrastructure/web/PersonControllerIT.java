@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -64,6 +65,9 @@ class PersonControllerIT {
 	@Autowired
 	private PasswordHasher passwordHasher;
 
+	@Autowired
+	private RoleRepository roleRepository;
+
 	@Test
 	void adminCanCreatePerson() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
@@ -80,7 +84,10 @@ class PersonControllerIT {
 
 		mockMvc.perform(post("/persons").header("Authorization", "Bearer " + token).contentType("application/json")
 				.content(objectMapper.writeValueAsString(newCreateBody("jane.doe2"))))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.status").value(403))
+				.andExpect(jsonPath("$.error").value("Acceso denegado"))
+				.andExpect(jsonPath("$.message").value("No tienes permiso para realizar esta acción."));
 	}
 
 	@Test
@@ -201,8 +208,13 @@ class PersonControllerIT {
 		User user = new User(person.getId(), email, passwordHasher.hash("Sup3rSecret!1"));
 		user.changePassword(passwordHasher.hash("Sup3rSecret!1"));
 		User saved = userRepository.save(user);
-		userRoleRepository.save(new UserRole(saved.getId(), role, null));
+		userRoleRepository.save(new UserRole(saved.getId(), resolveRoleId(role), null));
 		return jwtService.sign(saved.getId().toString(), Set.of(role.name()));
+	}
+
+	private UUID resolveRoleId(RoleType roleType) {
+		return roleRepository.findByKey(roleType.name()).map(mx.edu.utez.sisa.identity.domain.model.Role::getId)
+				.orElseThrow();
 	}
 
 	private record CreatePersonBody(String curp, String firstName, String lastName1, String lastName2,

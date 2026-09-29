@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Creates a {@code Person} for the manual internal-staff registration flow
  * (plan: {@code docs/plans/2026-07-28-persons-and-user-management.md} —
- * 4.1). Distinct from the {@code AdminSeedRunner}/test-fixture usage of
+ * 4.1). Distinct from the {@code TestAccountsSeedRunner}/test-fixture usage of
  * {@code PersonRepository#save} that originally motivated "Person creation
  * is out of scope" in design.md — this is now a real, ADMIN-facing use
  * case, following the caller-lookup/{@code assertCanOperate} shape already
@@ -37,11 +37,10 @@ public class CreatePersonUseCaseImpl implements CreatePersonUseCase {
 		caller.assertCanOperate();
 
 		if (personRepository.findByCurp(command.curp()).isPresent()) {
-			throw new DuplicateCurpException("A person with this curp already exists: " + command.curp());
+			throw new DuplicateCurpException("Ya existe una persona registrada con esa información.");
 		}
 		if (personRepository.findByInstitutionalEmail(command.institutionalEmail()).isPresent()) {
-			throw new DuplicateInstitutionalEmailException(
-					"A person with this institutionalEmail already exists: " + command.institutionalEmail());
+			throw new DuplicateInstitutionalEmailException("Ya existe una persona registrada con esa información.");
 		}
 
 		Person person = new Person(command.curp(), command.firstName(), command.lastName1(), command.lastName2(),
