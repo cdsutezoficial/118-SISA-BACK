@@ -96,13 +96,12 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 			                OR (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING
 			                    AND pay.checkoutClaimedAt IS NOT NULL
 			                    AND EXISTS (
-			                         SELECT cc FROM PaymentConcept cc
-			                         WHERE cc.status = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE
-			                           AND cc.type = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType.ADMISSION
-			                           AND cc.isTuition = true
-			                           AND c.programId MEMBER OF cc.programIds
-			                           AND (cc.availableUntil IS NULL OR cc.availableUntil >= :today)
-			                    )))
+				                         SELECT cc FROM PaymentConcept cc
+				                         WHERE cc.status = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE
+				                           AND cc.type = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType.ADMISSION
+				                           AND c.programId MEMBER OF cc.programIds
+				                           AND (cc.availableUntil IS NULL OR cc.availableUntil >= :today)
+				                    )))
 			      ) < c.maxCandidates
 			ORDER BY p.name
 			""")

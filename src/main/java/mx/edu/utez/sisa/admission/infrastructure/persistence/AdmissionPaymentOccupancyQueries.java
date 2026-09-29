@@ -47,12 +47,15 @@ interface AdmissionPaymentOccupancyQueries {
 	 * before Evo has been asked to take the money.
 	 *
 	 * <p>The {@code EXISTS} subquery is the expiry rule, and it is what keeps this
-	 * design free of scheduled cleanup. A claim only holds while the tuition
+	 * design free of scheduled cleanup. A claim only holds while the admission
 	 * concept can still be paid; once {@code available_until} has passed, a PENDING
 	 * ficha nobody paid for drops out of the count on its own, because the count is
 	 * a function of stored data rather than of a number someone has to decrement.
 	 * It mirrors {@code PaymentConceptLookupJpaRepository#findActiveTuitionForProgram}
-	 * so "still payable" means the same thing in both places.
+	 * so "still payable" means the same thing in both places — same type, same
+	 * program membership, same window, and likewise no {@code is_tuition}: a claim
+	 * held against an admission concept outlives it exactly when the concept does,
+	 * whether or not the catalog also calls it a cuota cuatrimestral.
 	 *
 	 * <p>Keyed by {@code programId} rather than by config because the window lives
 	 * on the concept, which is found per program. A config belongs to exactly one
@@ -72,7 +75,6 @@ interface AdmissionPaymentOccupancyQueries {
 			                SELECT c FROM PaymentConcept c
 			                WHERE c.status = :conceptStatus
 			                  AND c.type = :conceptType
-			                  AND c.isTuition = true
 			                  AND :programId MEMBER OF c.programIds
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))
@@ -112,7 +114,6 @@ interface AdmissionPaymentOccupancyQueries {
 			                SELECT c FROM PaymentConcept c
 			                WHERE c.status = :conceptStatus
 			                  AND c.type = :conceptType
-			                  AND c.isTuition = true
 			                  AND :programId MEMBER OF c.programIds
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))

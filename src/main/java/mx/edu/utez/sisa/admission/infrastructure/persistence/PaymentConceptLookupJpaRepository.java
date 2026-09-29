@@ -18,14 +18,22 @@ import java.util.UUID;
  * {@code :programId MEMBER OF c.programIds} targets the
  * {@code @ElementCollection} join table {@code payment_concept_program}.
  *
- * <p>{@code c.isTuition = true} narrows the {@code ADMISSION} concepts of a
- * program to the one that IS the admission ticket: a program may carry other
- * active tuition-flagged concepts (campus fees, material) that must never be
- * priced as the ficha. Without this predicate
- * {@code FichaAmountResolver}'s "exactly one active concept" rule would raise
- * {@code 409 AmbiguousFichaPaymentConceptException} as soon as a second such
- * concept existed. Seeded from {@code seed/payment_concepts.csv} column
- * {@code is_tuition}.
+ * <p>No {@code is_tuition} predicate, and its absence is the point.
+ * {@code isTuition} means "cuota cuatrimestral" — the kind of charge a student
+ * pays per term, and what becas and prórrogas read. It said nothing about
+ * whether a concept IS the admission ticket, and a catalog that had to light
+ * that flag to sell an admission ticket meant the flag was doing two jobs. The
+ * ficha is identified by {@code type = ADMISSION} plus the program plus the
+ * window; nothing else.
+ *
+ * <p>The practical consequence: two ACTIVE ADMISSION concepts applying to the
+ * same program used to be narrowed to one by the flag, and now both survive the
+ * query, so {@code FichaAmountResolver}'s "exactly one" rule raises
+ * {@code 409 ADMISSION_CONCEPT_AMBIGUOUS} instead of silently picking a fee. That
+ * is the correct answer — an admission ticket that could be two different
+ * concepts has no defensible price — but it is a behaviour change for a catalog
+ * that was carrying a second tuition-flagged admission concept, and such a
+ * catalog needs one of the two retired before this ships.
  */
 public interface PaymentConceptLookupJpaRepository extends JpaRepository<PaymentConcept, UUID> {
 
@@ -33,7 +41,6 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 			SELECT c FROM PaymentConcept c
 			WHERE c.status = :status
 			  AND c.type = :type
-			  AND c.isTuition = true
 			  AND :programId MEMBER OF c.programIds
 			  AND (c.availableFrom IS NULL OR c.availableFrom <= :onDate)
 			  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
@@ -57,7 +64,6 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 			SELECT c FROM PaymentConcept c
 			WHERE c.status = :status
 			  AND c.type = :type
-			  AND c.isTuition = true
 			  AND :programId MEMBER OF c.programIds
 			""")
 	List<PaymentConcept> findActiveTuitionForProgramIgnoringWindow(@Param("status") PaymentConceptStatus status,
