@@ -33,8 +33,10 @@ services:
     image: mysql:8.4
     container_name: db-sisa
     hostname: db-sisa
+    # Sin IP, como las demas bases del servidor: se publica en todas las
+    # interfaces para poder entrar con un cliente MySQL (DataGrip, DBeaver).
     ports:
-      - "${DB_BIND:?falta DB_BIND en el .env}:${DB_PORT:?falta DB_PORT en el .env}:3306"
+      - "${DB_PORT:?falta DB_PORT en el .env}:3306"
     volumes:
       - vol-db-sisa:/var/lib/mysql
     networks:
