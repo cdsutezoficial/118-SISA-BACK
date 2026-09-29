@@ -13,18 +13,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * The ficha price rule (Fase 11): exactly one ACTIVE {@code ADMISSION} concept
- * of the program, priced by {@code costExternal} when the concept is external
- * and {@code cost} otherwise. Zero and many are both hard failures — silently
- * picking a price would charge applicants an arbitrary amount.
+ * of the program, and then the rate of THAT concept that prices this program on
+ * this date. The amount is never a field of the concept — the catalog's answer
+ * lives in the rates, so a concept with no matching rate is a configuration
+ * gap, not a price of zero.
  *
  * <p>The second half of this class is about telling the two empty results apart.
  * A concept outside its availability window and a concept that does not exist
@@ -36,6 +41,8 @@ import static org.mockito.Mockito.when;
 class FichaAmountResolverTest {
 
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
+
+	private static final UUID CONCEPT_ID = UUID.randomUUID();
 
 	private static final LocalDate ON_DATE = LocalDate.of(2026, 9, 25);
 
@@ -50,14 +57,20 @@ class FichaAmountResolverTest {
 	}
 
 	private static PaymentConceptQueryPort.FichaConcept concept(LocalDate from, LocalDate until) {
-		return new PaymentConceptQueryPort.FichaConcept("Inscripción", new BigDecimal("1578.00"), null, false, from,
-				until);
+		return new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, "Inscripción", from, until);
+	}
+
+	/** A concept that exists, is sellable, and has a rate that prices it. */
+	private void givenPricedConcept() {
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
+				.thenReturn(List.of(concept(null, null)));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.of(new BigDecimal("1578.00")));
 	}
 
 	@Test
-	void resolvesTheInternalConceptCost() {
-		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
-				.thenReturn(List.of(concept(null, null)));
+	void pricesTheFichaFromTheConceptsRate() {
+		givenPricedConcept();
 
 		FichaAmountResolver.FichaAmount amount = resolver.resolve(PROGRAM_ID, ON_DATE);
 
@@ -66,14 +79,56 @@ class FichaAmountResolverTest {
 	}
 
 	@Test
-	void externalConceptIsPricedWithItsExternalCost() {
+	void theRateIsLookedUpForTheResolvedConceptAndThisProgramAndDate() {
+		// The three arguments are what make the amount mean anything. Asking for
+		// the concept only would be a catalog-wide minimum, not a price; asking
+		// for the program only would ignore which concept is being charged.
+		givenPricedConcept();
+
+		resolver.resolve(PROGRAM_ID, ON_DATE);
+
+		verify(paymentConceptQueryPort).findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE);
+	}
+
+	@Test
+	void aConceptWithNoRateForThisProgramIs409AndNeverFallsBack() {
+		// The whole point of the change: the concept is there and sellable, and it
+		// still cannot be priced. Returning the concept's own cost here would be
+		// exactly the silent fallback that was removed.
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
-				.thenReturn(List.of(new PaymentConceptQueryPort.FichaConcept("Inscripción",
-						new BigDecimal("1578.00"), new BigDecimal("1450.00"), true, null, null)));
+				.thenReturn(List.of(concept(null, null)));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.empty());
 
-		FichaAmountResolver.FichaAmount amount = resolver.resolve(PROGRAM_ID, ON_DATE);
+		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
+				.hasMessageContaining("no tiene una tarifa configurada para esta carrera");
+	}
 
-		assertThat(amount.amount()).isEqualByComparingTo("1450.00");
+	@Test
+	void theMissingRateMessageNamesTheConceptSoStaffCanFindIt() {
+		// Two failures, same code, different audience: the applicant can only act
+		// on "contacta a la universidad", but whoever fixes the catalog needs to
+		// know WHICH concept lost its price.
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
+				.thenReturn(List.of(concept(null, null)));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+				.hasMessageContaining("Inscripción");
+	}
+
+	@Test
+	void theMissingRateMessageNeverLeaksInternalIds() {
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
+				.thenReturn(List.of(concept(null, null)));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+				.hasMessageNotContaining(PROGRAM_ID.toString())
+				.hasMessageNotContaining(CONCEPT_ID.toString());
 	}
 
 	@Test
@@ -89,10 +144,8 @@ class FichaAmountResolverTest {
 	@Test
 	void moreThanOneActiveConceptIs409() {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of(
-				new PaymentConceptQueryPort.FichaConcept("Inscripción", new BigDecimal("1578.00"), null, false, null,
-						null),
-				new PaymentConceptQueryPort.FichaConcept("Reinscripción", new BigDecimal("1200.00"), null, false,
-						null, null)));
+				new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, "Inscripción", null, null),
+				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), "Reinscripción", null, null)));
 
 		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
 				.isInstanceOf(AmbiguousFichaPaymentConceptException.class)
@@ -152,6 +205,38 @@ class FichaAmountResolverTest {
 				.thenReturn(List.of(concept(LocalDate.of(2020, 1, 1), null)));
 
 		assertThatCode(() -> resolver.requirePayableOn(PROGRAM_ID, ON_DATE)).doesNotThrowAnyException();
+	}
+
+	@Test
+	void requirePayableOnDoesNotNeedARate() {
+		// The amount is frozen on the ticket at registration. A rate deleted or
+		// edited between registration and payment must not be able to decide
+		// whether an already-issued ticket can be paid. Nothing is stubbed for the
+		// rate lookup: if the method called it, Mockito would hand back null and
+		// the verify() below would fail on its own.
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE))
+				.thenReturn(List.of(concept(null, null)));
+
+		assertThatCode(() -> resolver.requirePayableOn(PROGRAM_ID, ON_DATE)).doesNotThrowAnyException();
+
+		verify(paymentConceptQueryPort, never()).findActiveRateAmountFor(any(), any(), any());
+	}
+
+	@Test
+	void paymentClosesOnReportsTheCatalogsOwnClosingDate() {
+		LocalDate until = LocalDate.of(2026, 9, 30);
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
+				.thenReturn(List.of(concept(null, until)));
+
+		assertThat(resolver.paymentClosesOn(PROGRAM_ID)).isEqualTo(until);
+	}
+
+	@Test
+	void paymentClosesOnIsNullWhenNoEndDateIsConfigured() {
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
+				.thenReturn(List.of(concept(null, null)));
+
+		assertThat(resolver.paymentClosesOn(PROGRAM_ID)).isNull();
 	}
 
 	@Test

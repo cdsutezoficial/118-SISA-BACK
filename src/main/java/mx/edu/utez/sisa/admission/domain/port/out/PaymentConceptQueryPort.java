@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.domain.port.out;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -40,9 +41,32 @@ public interface PaymentConceptQueryPort {
 	List<FichaConcept> findActiveEnrollmentForProgram(UUID programId);
 
 	/**
-	 * Minimal pricing projection the admission flow needs. The amount charged
-	 * is {@code costExternal} when the concept is external, {@code cost}
-	 * otherwise.
+	 * The amount a program is charged for one concept on a date, resolved from
+	 * the concept's own {@code payment_rate} history.
+	 *
+	 * <p>Precedence, most specific first: the rate bound to the program, then the
+	 * one bound to the program's level, then the one bound to neither. This is
+	 * the whole reason a concept no longer carries a price of its own: the
+	 * catalog's answer to "what does this cost" lives in the rates, and a
+	 * concept that prices a program without ever having had a rate for it has no
+	 * answer — which is what {@link Optional#empty()} reports.
+	 *
+	 * <p>Empty is NOT a fallback signal. The caller must fail, because a ficha
+	 * priced from anywhere else — the concept's cost, a hardcoded amount, a
+	 * neighbouring program's rate — would charge an applicant a number nobody
+	 * configured for them.
+	 */
+	Optional<BigDecimal> findActiveRateAmountFor(UUID conceptId, UUID programId, LocalDate onDate);
+
+	/**
+	 * Minimal projection the admission flow needs: which concept it is and when it
+	 * may be sold.
+	 *
+	 * <p>The amount is deliberately NOT here. It is not a property of the
+	 * concept — it is whatever rate applies to this program on this date, so it
+	 * would be meaningless without both, and a caller reading a bare
+	 * {@code amount} off a concept would be reading a price nobody set. Ask
+	 * {@link #findActiveRateAmountFor} for the money.
 	 *
 	 * <p>{@code availableFrom}/{@code availableUntil} are the raw catalog
 	 * boundaries, {@code null} meaning "open on that side". They are carried
@@ -50,7 +74,6 @@ public interface PaymentConceptQueryPort {
 	 * missed; a message that only said "not available" would leave the applicant
 	 * with nothing to act on.
 	 */
-	record FichaConcept(String name, BigDecimal cost, BigDecimal costExternal, boolean isExternal,
-			LocalDate availableFrom, LocalDate availableUntil) {
+	record FichaConcept(UUID id, String name, LocalDate availableFrom, LocalDate availableUntil) {
 	}
 }

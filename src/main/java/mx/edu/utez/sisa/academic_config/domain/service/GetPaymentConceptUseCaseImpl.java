@@ -12,8 +12,8 @@ import java.util.UUID;
 /**
  * Fetches a single {@code PaymentConcept} by id, 404 if missing — same
  * pattern as {@code GetSubjectClassificationUseCaseImpl}. Read-only
- * transactional so the {@code linkedConceptIds}/{@code programIds} element
- * collections can be materialized into the result (extension plan §4).
+ * transactional so the {@code linkedConceptIds} element collection can be
+ * materialized into the result (extension plan §4).
  */
 public class GetPaymentConceptUseCaseImpl implements GetPaymentConceptUseCase {
 

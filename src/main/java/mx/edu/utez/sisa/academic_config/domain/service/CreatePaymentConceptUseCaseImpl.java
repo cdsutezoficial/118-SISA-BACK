@@ -28,13 +28,19 @@ import java.util.UUID;
  * <p>
  * The extension fields ({@code areaId}, {@code cost}, {@code costExternal},
  * {@code isExternal}, {@code isAccumulable}, {@code isMulticoncept},
- * {@code quotaLimit}, {@code linkedConceptIds}, {@code programIds}) are
- * validated here (plan {@code 2026-09-19-payment-concept-extension.md} §3):
- * scalar rules raise {@link InvalidPaymentConceptDataException} and cross-
- * aggregate references ({@code PaymentArea}, {@code AcademicProgram},
- * {@code PaymentConcept}) raise {@link PaymentConceptReferenceNotFoundException}
- * — same precedent as {@code CreateAcademicProgramUseCaseImpl} validating
- * {@code divisionId} against {@code AcademicDivision}.
+ * {@code quotaLimit}, {@code linkedConceptIds}) are validated here (plan
+ * {@code 2026-09-19-payment-concept-extension.md} §3): scalar rules raise
+ * {@link InvalidPaymentConceptDataException} and cross-aggregate references
+ * ({@code PaymentArea}, {@code PaymentConcept}) raise
+ * {@link PaymentConceptReferenceNotFoundException} — same precedent as
+ * {@code CreateAcademicProgramUseCaseImpl} validating {@code divisionId}
+ * against {@code AcademicDivision}.
+ *
+ * <p>There is deliberately no {@code programIds}: which programs a concept
+ * charges for is stated by its rates, so a concept's scope is the single set of
+ * rows the pricing query already reads rather than a second list that has to be
+ * kept in agreement with it. That is also why this class no longer needs an
+ * {@link AcademicProgramRepository}.
  */
 public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseCase {
 
@@ -42,13 +48,10 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 
 	private final PaymentAreaRepository paymentAreaRepository;
 
-	private final AcademicProgramRepository academicProgramRepository;
-
 	public CreatePaymentConceptUseCaseImpl(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
+			PaymentAreaRepository paymentAreaRepository) {
 		this.paymentConceptRepository = paymentConceptRepository;
 		this.paymentAreaRepository = paymentAreaRepository;
-		this.academicProgramRepository = academicProgramRepository;
 	}
 
 	@Override
@@ -56,15 +59,15 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 	public PaymentConceptResult createPaymentConcept(CreatePaymentConceptCommand command) {
 		validate(command.maxPerStudent(), command.maxPerPeriod(), command.availableFrom(), command.availableUntil(),
 				command.cost(), command.isExternal(), command.costExternal(), command.quotaLimit());
-		validateReferences(command.areaId(), command.programIds(), command.linkedConceptIds(), null,
-				paymentAreaRepository, academicProgramRepository, paymentConceptRepository);
+		validateReferences(command.areaId(), command.linkedConceptIds(), null, paymentAreaRepository,
+				paymentConceptRepository);
 
 		PaymentConcept concept = new PaymentConcept(command.name(), command.description(), command.policies(),
 				command.type(), command.isTuition(), command.isStandalone(), command.maxPerStudent(),
 				command.maxPerPeriod(), command.requiresValidation(), command.availableFrom(),
 				command.availableUntil(), command.areaId(), command.cost(), command.isExternal(),
 				command.costExternal(), command.isAccumulable(), command.isMulticoncept(), command.quotaLimit(),
-				command.linkedConceptIds(), command.programIds());
+				command.linkedConceptIds());
 		PaymentConcept saved = paymentConceptRepository.save(concept);
 
 		return toResult(saved);
@@ -110,19 +113,10 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 	 * not exist yet) and the concept's own id on Update (a concept cannot
 	 * link to itself).
 	 */
-	static void validateReferences(UUID areaId, List<UUID> programIds, List<UUID> linkedConceptIds, UUID selfId,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository,
-			PaymentConceptRepository paymentConceptRepository) {
+	static void validateReferences(UUID areaId, List<UUID> linkedConceptIds, UUID selfId,
+			PaymentAreaRepository paymentAreaRepository, PaymentConceptRepository paymentConceptRepository) {
 		if (areaId != null && paymentAreaRepository.findById(areaId).isEmpty()) {
 			throw new PaymentConceptReferenceNotFoundException("Payment area not found: " + areaId);
-		}
-		validateIds(programIds, "programIds");
-		if (programIds != null) {
-			for (UUID programId : programIds) {
-				if (academicProgramRepository.findById(programId).isEmpty()) {
-					throw new PaymentConceptReferenceNotFoundException("Academic program not found: " + programId);
-				}
-			}
 		}
 		validateIds(linkedConceptIds, "linkedConceptIds");
 		if (linkedConceptIds != null) {
@@ -160,7 +154,6 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 				concept.getMaxPerStudent(), concept.getMaxPerPeriod(), concept.isRequiresValidation(),
 				concept.getAvailableFrom(), concept.getAvailableUntil(), concept.getStatus(), concept.getAreaId(),
 				concept.getCost(), concept.isExternal(), concept.getCostExternal(), concept.isAccumulable(),
-				concept.isMulticoncept(), concept.getQuotaLimit(), List.copyOf(concept.getLinkedConceptIds()),
-				List.copyOf(concept.getProgramIds()));
+				concept.isMulticoncept(), concept.getQuotaLimit(), List.copyOf(concept.getLinkedConceptIds()));
 	}
 }

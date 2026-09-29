@@ -23,7 +23,7 @@ public interface UpdatePaymentConceptUseCase {
 			PaymentConceptType type, boolean isTuition, boolean isStandalone, Integer maxPerStudent,
 			Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
 			UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 
 		/**
 		 * Convenience constructor for the original 12 fields, kept so the
@@ -34,7 +34,7 @@ public interface UpdatePaymentConceptUseCase {
 				Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 			this(paymentConceptId, name, description, policies, type, isTuition, isStandalone, maxPerStudent,
 					maxPerPeriod, requiresValidation, availableFrom, availableUntil, null, null, false, null, false,
-					false, null, List.of(), List.of());
+					false, null, List.of());
 		}
 	}
 }

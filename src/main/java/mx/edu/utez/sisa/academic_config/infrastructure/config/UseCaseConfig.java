@@ -415,16 +415,14 @@ public class UseCaseConfig {
 
 	@Bean
 	public CreatePaymentConceptUseCase createPaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
-		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
-				academicProgramRepository);
+			PaymentAreaRepository paymentAreaRepository) {
+		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository);
 	}
 
 	@Bean
 	public UpdatePaymentConceptUseCase updatePaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
-		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
-				academicProgramRepository);
+			PaymentAreaRepository paymentAreaRepository) {
+		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository);
 	}
 
 	@Bean

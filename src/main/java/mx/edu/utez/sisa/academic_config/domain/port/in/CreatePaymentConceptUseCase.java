@@ -33,7 +33,7 @@ public interface CreatePaymentConceptUseCase {
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
 			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 
 		/**
 		 * Convenience constructor for the original 11 fields, kept so the
@@ -44,7 +44,7 @@ public interface CreatePaymentConceptUseCase {
 				boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 			this(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
 					requiresValidation, availableFrom, availableUntil, null, null, false, null, false, false, null,
-					List.of(), List.of());
+					List.of());
 		}
 	}
 
@@ -52,8 +52,7 @@ public interface CreatePaymentConceptUseCase {
 			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
 			PaymentConceptStatus status, UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal,
-			boolean isAccumulable, boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds,
-			List<UUID> programIds) {
+			boolean isAccumulable, boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
 
 		/**
 		 * Convenience constructor for the original 13 fields (extension plan
@@ -65,7 +64,7 @@ public interface CreatePaymentConceptUseCase {
 				PaymentConceptStatus status) {
 			this(id, name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
 					requiresValidation, availableFrom, availableUntil, status, null, null, false, null, false, false,
-					null, List.of(), List.of());
+					null, List.of());
 		}
 	}
 }

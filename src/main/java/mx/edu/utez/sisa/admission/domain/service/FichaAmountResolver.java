@@ -13,31 +13,37 @@ import java.util.UUID;
 
 /**
  * Single source of truth for the admission-ficha price (Fase 11): the amount is
- * the cost of the chosen program's {@code ACTIVE} {@code ADMISSION} payment
- * concept on the given date — never a static config value, never a
- * client-supplied number.
+ * the {@code payment_rate} of the chosen program's {@code ACTIVE}
+ * {@code ADMISSION} payment concept on the given date — never a static config
+ * value, never a client-supplied number, and never a price carried on the
+ * concept itself.
  *
  * <p>Plain domain component (no framework annotations) so both the registration
  * flow ({@code RegisterCandidateUseCaseImpl}, which persists the amount on the
  * ticket) and the public quote endpoint that feeds the registration wizard's
  * review step ({@code GetFichaAmountUseCaseImpl}) apply the very same rule.
  *
- * <p>Resolution is STRICT — exactly one active admission concept must exist:
- * zero → {@link FichaPaymentConceptNotFoundException}, more than one →
- * {@link AmbiguousFichaPaymentConceptException} (both projected as {@code 409
- * Conflict}: the requested program exists, it just cannot be priced as things
- * stand). Silently picking one of several would price an admission ticket
- * arbitrarily, so both cases fail loud.
+ * <p>Resolution is STRICT in two steps, and both fail loud. First, EXACTLY ONE
+ * active admission concept must exist: zero →
+ * {@link FichaPaymentConceptNotFoundException}, more than one →
+ * {@link AmbiguousFichaPaymentConceptException}. Then that concept must have a
+ * rate that prices this program on this date: none is also
+ * {@link FichaPaymentConceptNotFoundException}. Silently picking one of several
+ * concepts, or falling back to some other amount, would price an admission
+ * ticket arbitrarily.
  *
- * <p>An empty result is further disambiguated by re-querying without the
+ * <p>An empty first step is further disambiguated by re-querying without the
  * concept's availability window, so "the period is over" is reported as
  * {@link PaymentConceptExpiredException} with the date, and only a genuinely
  * absent concept produces {@code FichaPaymentConceptNotFoundException}.
  *
- * <p>Two entry points, one rule: {@link #resolve} prices the ficha at
- * registration, {@link #requirePayableOn} re-checks the window when the payment
- * is actually attempted. They share the resolution above so the two can never
- * disagree about whether a concept is sellable.
+ * <p>Two entry points share the first step: {@link #resolve} prices the ficha
+ * at registration, {@link #requirePayableOn} re-checks the window when the
+ * payment is actually attempted. Only {@code resolve} consults the rates, by
+ * design — the amount charged is frozen on the ticket at registration, so a
+ * rate edited between registration and payment must not be able to change what
+ * an already-issued ticket costs. The second step therefore never turns into a
+ * payment-time failure.
  */
 public class FichaAmountResolver {
 
@@ -56,8 +62,28 @@ public class FichaAmountResolver {
 	 */
 	public FichaAmount resolve(UUID programId, LocalDate onDate) {
 		PaymentConceptQueryPort.FichaConcept concept = requireSingleActiveConcept(programId, onDate);
-		BigDecimal amount = concept.isExternal() ? concept.costExternal() : concept.cost();
+		BigDecimal amount = paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
+				.orElseThrow(() -> describeMissingRate(concept.name()));
 		return new FichaAmount(amount, concept.name());
+	}
+
+	/**
+	 * The concept exists and may be sold, but nothing in its rate history prices
+	 * this program on this date.
+	 *
+	 * <p>Same {@link FichaPaymentConceptNotFoundException} as an absent concept,
+	 * and therefore the same {@code 409 ADMISSION_CONCEPT_NOT_FOUND}, because for
+	 * the applicant and for the front the two are the same situation: the
+	 * university never configured what this admission costs. The front branches
+	 * on the code, not on the message, so splitting them would only add a code
+	 * the applicant cannot act on differently. The messages do differ, though,
+	 * because the staff who has to fix it can: one names a concept that does
+	 * not exist, the other names the one that is missing its price.
+	 */
+	private static RuntimeException describeMissingRate(String conceptName) {
+		return new FichaPaymentConceptNotFoundException(
+				"El concepto de pago \"" + conceptName
+						+ "\" no tiene una tarifa configurada para esta carrera. Contacta a la universidad.");
 	}
 
 	/**
@@ -70,12 +96,13 @@ public class FichaAmountResolver {
 	 * payable for as long as the applicant keeps clicking "Pagar en línea", long
 	 * after Conceptos de Pago says the period is over.
 	 *
-	 * <p>Deliberately returns nothing and re-prices nothing. The amount charged
-	 * is frozen on {@code admission_payment.amount} at registration, and stays
-	 * frozen: re-reading the catalog cost here would let a mid-period price edit
-	 * change what an already-issued ticket costs, and would let a cost edit
-	 * between registration and payment decide whether the payment goes through
-	 * at all.
+	 * <p>Deliberately returns nothing and re-prices nothing, and deliberately
+	 * does not look for a rate. The amount charged is frozen on
+	 * {@code admission_payment.amount} at registration and stays frozen:
+	 * re-reading the catalog here would let a mid-period price edit change what
+	 * an already-issued ticket costs, and would let a cost edit between
+	 * registration and payment decide whether the payment goes through at all.
+	 * A concept that still exists and is still sellable is enough.
 	 */
 	public void requirePayableOn(UUID programId, LocalDate onDate) {
 		requireSingleActiveConcept(programId, onDate);
@@ -187,8 +214,8 @@ public class FichaAmountResolver {
 	}
 
 	/**
-	 * @param amount     what the applicant must pay ({@code costExternal} for an
-	 *                   external concept, {@code cost} otherwise)
+	 * @param amount     what the applicant must pay, resolved from the concept's
+	 *                   rate for this program on this date
 	 * @param conceptName the catalog concept's name, shown to the applicant
 	 */
 	public record FichaAmount(BigDecimal amount, String conceptName) {

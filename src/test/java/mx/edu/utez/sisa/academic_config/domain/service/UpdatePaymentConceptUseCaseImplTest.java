@@ -5,7 +5,6 @@ import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.PaymentConceptResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdatePaymentConceptUseCase.UpdatePaymentConceptCommand;
-import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentAreaRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentConceptRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
@@ -38,9 +37,6 @@ class UpdatePaymentConceptUseCaseImplTest {
 	@Mock
 	private PaymentAreaRepository paymentAreaRepository;
 
-	@Mock
-	private AcademicProgramRepository academicProgramRepository;
-
 	private UpdatePaymentConceptUseCaseImpl useCase;
 
 	private PaymentConcept concept;
@@ -48,8 +44,7 @@ class UpdatePaymentConceptUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
-				academicProgramRepository);
+		useCase = new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository);
 		concept = new PaymentConcept("Inscripcion", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true,
 				false, 1, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 		conceptId = UUID.randomUUID();
@@ -116,7 +111,7 @@ class UpdatePaymentConceptUseCaseImplTest {
 		when(paymentConceptRepository.findById(conceptId)).thenReturn(Optional.of(concept));
 		UpdatePaymentConceptCommand command = new UpdatePaymentConceptCommand(conceptId, "Inscripcion", "Descripcion",
 				"Politicas", PaymentConceptType.ENROLLMENT, true, false, 1, 2, true, null, null, null, null, false,
-				null, false, false, null, List.of(conceptId), List.of());
+				null, false, false, null, List.of(conceptId));
 
 		assertThatThrownBy(() -> useCase.updatePaymentConcept(command))
 				.isInstanceOf(InvalidPaymentConceptDataException.class);
