@@ -38,7 +38,7 @@ services:
     volumes:
       - vol-db-sisa:/var/lib/mysql
     networks:
-      - sisava-network
+      - net-cds-test
     environment:
       MYSQL_DATABASE: ${DB_NAME:?falta DB_NAME en el .env}
       # No son DB_USERNAME/DB_PASSWORD de la app: MySQL no deja crear un
@@ -79,7 +79,7 @@ services:
     ports:
       - "${API_BIND:?falta API_BIND en el .env}:${API_PORT:?falta API_PORT en el .env}:8080"
     networks:
-      - sisava-network
+      - net-cds-test
     depends_on:
       db-sisa:
         condition: service_healthy
@@ -107,9 +107,9 @@ services:
     restart: unless-stopped
 
 # Misma red externa que AccessUtez y el compose del front. El compose no la
-# crea: debe existir antes (en local: docker network create sisava-network).
+# crea: debe existir antes (en local: docker network create net-cds-test).
 networks:
-  sisava-network:
+  net-cds-test:
     external: true
 
 volumes:
