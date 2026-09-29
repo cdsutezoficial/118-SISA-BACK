@@ -67,7 +67,12 @@ public class PermissionFilter extends OncePerRequestFilter {
 			return;
 		}
 
-		Optional<String> requiredPermission = PermissionRegistry.resolve(request.getMethod(), request.getRequestURI());
+		// PermissionRegistry holds app-relative routes; getRequestURI() carries the
+		// servlet context path, which would make every route unregistered.
+		String contextPath = request.getContextPath();
+		String path = contextPath == null ? request.getRequestURI()
+				: request.getRequestURI().substring(contextPath.length());
+		Optional<String> requiredPermission = PermissionRegistry.resolve(request.getMethod(), path);
 		if (requiredPermission.isEmpty()) {
 			filterChain.doFilter(request, response);
 			return;

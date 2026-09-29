@@ -51,6 +51,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -215,6 +216,11 @@ public class UseCaseConfig {
 	 * {@link EvoConfig#returnUrl()}. The scheme+host always come from the
 	 * configured return URL, so the allowlist is the only thing a caller can
 	 * influence and it cannot leave our origin.
+	 *
+	 * <p>The returned path replaces the whole path of the return URL, so when the
+	 * front is served under a base path (e.g. {@code /SGA} behind the reverse
+	 * proxy) the allowlist entries are prefixed with it, taken from the path of
+	 * {@code frontend-base-url}, and the front sends the full browser path.
 	 */
 	@Bean
 	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
@@ -222,13 +228,29 @@ public class UseCaseConfig {
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			Clock clock, CheckoutSlotClaimer checkoutSlotClaimer,
-			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths) {
+			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths,
+			@Value("${sisa.security.password-reset.frontend-base-url:}") String frontendBaseUrl) {
+		String frontendBasePath = frontendBasePath(frontendBaseUrl);
 		Set<String> allowlist = Arrays.stream(allowedReturnPaths.split(",")).map(String::trim)
-				.filter(path -> !path.isEmpty()).collect(Collectors.toUnmodifiableSet());
+				.filter(path -> !path.isEmpty()).map(path -> frontendBasePath + path)
+				.collect(Collectors.toUnmodifiableSet());
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
 				fichaAmountResolver, clock, checkoutSlotClaimer);
+	}
+
+	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */
+	static String frontendBasePath(String frontendBaseUrl) {
+		if (frontendBaseUrl == null || frontendBaseUrl.isBlank()) {
+			return "";
+		}
+		try {
+			String path = URI.create(frontendBaseUrl.trim()).getPath();
+			return path == null ? "" : path.replaceAll("/+$", "");
+		} catch (IllegalArgumentException ex) {
+			return "";
+		}
 	}
 
 	@Bean
