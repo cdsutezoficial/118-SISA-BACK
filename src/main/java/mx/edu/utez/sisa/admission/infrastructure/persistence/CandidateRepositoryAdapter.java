@@ -1,9 +1,11 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,5 +40,10 @@ public class CandidateRepositoryAdapter implements CandidateRepository {
 	@Override
 	public Optional<Candidate> findByFolio(String folio) {
 		return jpaRepository.findByFolio(folio);
+	}
+
+	@Override
+	public List<Candidate> findAllByStatus(CandidateStatus status) {
+		return jpaRepository.findAllByStatus(status);
 	}
 }

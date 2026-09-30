@@ -1,7 +1,9 @@
 package mx.edu.utez.sisa.admission.domain.port.out;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,4 +38,13 @@ public interface CandidateRepository {
 	 * this match is exact against the stored folio.
 	 */
 	Optional<Candidate> findByFolio(String folio);
+
+	/**
+	 * Every candidate in the given status, backing the daily ficha-expiry sweep
+	 * ({@code ExpireStaleFichaPaymentsUseCase}) — it loads the {@code REGISTERED}
+	 * fichas and expires the ones past their payment window. Not scoped by
+	 * config or period on purpose: a ficha expires on its own private clock,
+	 * regardless of where the admission process stands.
+	 */
+	List<Candidate> findAllByStatus(CandidateStatus status);
 }

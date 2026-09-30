@@ -4,6 +4,47 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El plazo de 10 días de la ficha: estado, cálculo y barrido
+
+Commit: pendiente.
+
+### Por qué
+
+El negocio reinstala la regla que se había derogado: una ficha tiene **10 días
+desde su registro** para pagarse, y si no se paga en esos 10 días **no cuenta
+como válida** y libera el CURP. El estado "no pagó" es propio del **candidato**,
+no de la ficha de pago (que ni siquiera existe hasta que hay un intento de
+cobro), y no puede ser `REJECTED`: ese estado ya significa "no pasó la
+evaluación académica" dentro del ciclo `REGISTERED → PAID → EXAM_TAKEN →
+ACCEPTED|REJECTED → ENROLLED`.
+
+### Qué cambió
+
+- `application.properties`: vuelve `sisa.admission.payment.deadline-days=${SISA_PAGO_DIAS:10}`,
+  y el comentario que afirmaba que la propiedad ya no existía se sustituye por
+  uno que describe la ventana (día 0 = registro, cierre 23:59:59 del día N).
+- `CandidateStatus.PAYMENT_EXPIRED`, alcanzable **solo** desde `REGISTERED`.
+- `Candidate`: `registeredOn(zone)` (día 0, leído en la zona de admisión — un
+  registro a las 23:00 locales no rueda al día siguiente),
+  `paymentDeadline(zone, days)` (derivado, **sin columna nueva**) y
+  `markPaymentExpired()` (idempotente; nunca toca una ficha `PAID`).
+- `CandidateRepository.findAllByStatus` (+ adaptador y JPA).
+- Nuevo `ExpireStaleFichaPaymentsUseCase` (+ `Impl`) y el job diario
+  `VENCEN_FICHAS` (00:10), siguiendo el patrón de
+  `AdvanceAcademicPeriodStatusJob`. Usa el `Clock` de admisión, así que compara
+  **por fecha calendario**, no `Instant` contra `Instant`.
+- Wiring en `admission/infrastructure/config/UseCaseConfig`.
+
+### Tests
+
+`CandidateTest` (día 0, zona de admisión vs conversión UTC, expiración
+idempotente, una ficha `PAID` no expira) y
+`ExpireStaleFichaPaymentsUseCaseImplTest` (vence pasado el plazo, el día límite
+**sí** se puede pagar, solo se guarda lo que cambió). Suite completa en verde,
+0 fallos.
+
+---
+
 ## [2026-09-30] El cupo del checkout se contaba por carrera, no por proceso
 
 Commit: pendiente.

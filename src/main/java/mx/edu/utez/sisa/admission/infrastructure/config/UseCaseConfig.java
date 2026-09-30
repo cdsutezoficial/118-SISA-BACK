@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
@@ -32,6 +33,7 @@ import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseC
 import mx.edu.utez.sisa.admission.domain.service.CheckoutSlotClaimer;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ExpireStaleFichaPaymentsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
@@ -203,6 +205,18 @@ public class UseCaseConfig {
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase) {
 		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, confirmAdmissionPaymentUseCase);
+	}
+
+	/**
+	 * Daily sweep (VENCEN_FICHAS) that expires unpaid fichas so their CURP is
+	 * released again. The days come from {@code SISA_PAGO_DIAS} (default 10) and
+	 * the clock is the admission clock, so the deadline is a calendar date in the
+	 * same zone the rest of the flow reads (§1.9, §3.8).
+	 */
+	@Bean
+	public ExpireStaleFichaPaymentsUseCase expireStaleFichaPaymentsUseCase(CandidateRepository candidateRepository,
+			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays) {
+		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, clock, deadlineDays);
 	}
 
 	@Bean
