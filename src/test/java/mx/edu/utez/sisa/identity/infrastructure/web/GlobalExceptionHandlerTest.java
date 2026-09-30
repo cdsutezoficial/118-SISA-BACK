@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
@@ -184,5 +185,34 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().message()).doesNotContain("npe at line 42", "internal state XYZ");
+	}
+
+	/**
+	 * A NOT NULL / length / CHECK constraint rejected the write. Spring defers the
+	 * INSERT to commit time, so this used to arrive at {@code handleUnexpected} and
+	 * answer 500 — the server's fault framing for what is a client-side problem.
+	 */
+	@Test
+	void dataIntegrityViolationMapsTo400Not500() {
+		ResponseEntity<ErrorResponse> response = handler.handleDataIntegrityViolation(
+				new DataIntegrityViolationException("could not execute statement"), request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(response.getBody()).isNotNull();
+	}
+
+	/**
+	 * The exception text carries the table and column name. Echoing it back hands
+	 * the caller a piece of the schema, so the message is deliberately generic.
+	 */
+	@Test
+	void dataIntegrityViolationMessageLeaksNoSchema() {
+		ResponseEntity<ErrorResponse> response = handler.handleDataIntegrityViolation(
+				new DataIntegrityViolationException(
+						"could not execute statement [Column 'school_city' cannot be null]"),
+				request);
+
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).doesNotContain("school_city", "Column", "person_high_school_background");
 	}
 }
