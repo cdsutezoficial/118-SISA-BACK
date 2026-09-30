@@ -121,8 +121,7 @@ class GlobalExceptionHandlerTest {
 	@DisplayName("the retry message does not accuse her data of being duplicated")
 	void duplicateKeyMessageDoesNotTellHerToReviewHerData() {
 		ResponseEntity<ErrorResponse> response = handler.handleDuplicateKey(
-				new DuplicateKeyException("Duplicate entry 'ADM-2026-000006' for key 'candidate.uk_candidate_folio'"),
-				request);
+				new DuplicateKeyException("Duplicate entry 'ADM-2026-000006' for key 'UK_3f8a2b1c9d0e'"), request);
 
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().message())
@@ -132,15 +131,19 @@ class GlobalExceptionHandlerTest {
 	/**
 	 * The message must not leak the constraint. The exception text carries the
 	 * table and column name, which is schema the caller has no business seeing.
+	 *
+	 * <p>The key name here is deliberately Hibernate's generated form, not a name
+	 * we chose: the schema is rebuilt per environment, so there is no stable
+	 * constraint name to lean on. That is also why the handler separates folio from
+	 * CURP by code rather than by parsing this string.
 	 */
 	@Test
 	@DisplayName("the duplicate message does not echo the index or column name")
 	void duplicateKeyMessageLeaksNoSchema() {
 		ResponseEntity<ErrorResponse> response = handler.handleDuplicateKey(
-				new DuplicateKeyException("Duplicate entry 'ADM-2026-000006' for key 'candidate.uk_candidate_folio'"),
-				request);
+				new DuplicateKeyException("Duplicate entry 'ADM-2026-000006' for key 'UK_3f8a2b1c9d0e'"), request);
 
 		assertThat(response.getBody()).isNotNull();
-		assertThat(response.getBody().message()).doesNotContain("candidate", "folio", "uk_candidate_folio");
+		assertThat(response.getBody().message()).doesNotContain("candidate", "folio", "UK_3f8a2b1c9d0e");
 	}
 }
