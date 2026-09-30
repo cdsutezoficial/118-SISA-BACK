@@ -42,8 +42,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * have quietly failed:
  * <ol>
  * <li><b>The lock is taken before the count is read</b>, and the count asks about
- * the program's occupancy rather than one config's payments. Getting the order
- * wrong reintroduces the race the lock exists to close.</li>
+ * the admission config's occupancy rather than the whole program's payments.
+ * Getting the order wrong reintroduces the race the lock exists to close; keying
+ * the count by program let a full old cycle close a new one.</li>
  * <li><b>The candidate's own claim is excluded from the count.</b> Without it, a
  * candidate retrying a checkout is refused for a slot they already hold, which
  * only shows up on the last place of a full career — the worst possible moment to
@@ -74,8 +75,6 @@ class CheckoutSlotClaimerTest {
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
 
-	private static final UUID PROGRAM_ID = UUID.randomUUID();
-
 	@Mock
 	private AdmissionQuotaPort admissionQuotaPort;
 
@@ -99,9 +98,9 @@ class CheckoutSlotClaimerTest {
 		lenient().when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
 				.thenReturn(Optional.of(payment()));
 		lenient().when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
-				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES, PROGRAM_ID));
+				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES));
 		lenient().when(admissionPaymentRepository
-				.countOccupiedByProgramIdExcludingCandidate(any(), any(), any())).thenReturn(0L);
+				.countOccupiedByConfigIdExcludingCandidate(any(), any(), any())).thenReturn(0L);
 	}
 
 	private static Candidate candidate() {
@@ -133,26 +132,27 @@ class CheckoutSlotClaimerTest {
 		InOrder inOrder = inOrder(admissionQuotaPort, admissionPaymentRepository);
 		inOrder.verify(admissionQuotaPort).lockQuota(ADMISSION_CONFIG_ID);
 		inOrder.verify(admissionPaymentRepository)
-				.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY);
+				.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY);
 	}
 
 	/**
-	 * The count is scoped to the program and to today, because the claim expires
-	 * against the tuition concept's window and a config is only one period of one
-	 * program's sales.
+	 * The count is scoped to the candidate's own admission config and to today,
+	 * because the claim expires against the tuition concept's window and a program
+	 * sold in two periods has two independent quotas.
 	 */
 	@Test
-	void theCountIsScopedToTheProgramAndToToday() {
+	void theCountIsScopedToTheConfigAndToToday() {
 		claimer.claim(CANDIDATE_ID);
 
-		verify(admissionPaymentRepository).countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY);
-		verify(admissionPaymentRepository, never()).countOccupiedByProgramId(any(), any());
+		verify(admissionPaymentRepository).countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID,
+				TODAY);
+		verify(admissionPaymentRepository, never()).countOccupiedByConfigId(any(), any());
 	}
 
 	/** Off by one, the classic: fifteen sold means the sixteenth is refused. */
 	@Test
 	void aFullQuotaIsRefused() {
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
 		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
@@ -178,8 +178,8 @@ class CheckoutSlotClaimerTest {
 	@Test
 	void theFullQuotaMessageIsPinned() {
 		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
-				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES, PROGRAM_ID));
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(MAX_CANDIDATES));
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
 		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
@@ -189,7 +189,7 @@ class CheckoutSlotClaimerTest {
 /** One place left must still be claimable, or the last place could never sell. */
 	@Test
 	void theLastFreeSlotIsClaimable() {
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES - 1);
 
 		claimer.claim(CANDIDATE_ID);
@@ -204,7 +204,7 @@ class CheckoutSlotClaimerTest {
 	 */
 	@Test
 	void aRefusedClaimWritesNothing() {
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
 		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
@@ -220,7 +220,7 @@ class CheckoutSlotClaimerTest {
 	 */
 	@Test
 	void aRetryIsCountedAsRoomBesideItsOwnClaimNotAgainstIt() {
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES - 1);
 
 		claimer.claim(CANDIDATE_ID);
@@ -248,7 +248,7 @@ class CheckoutSlotClaimerTest {
 
 		verify(admissionQuotaPort, never()).lockQuota(any());
 		verify(admissionPaymentRepository, never())
-				.countOccupiedByProgramIdExcludingCandidate(any(), any(), any());
+				.countOccupiedByConfigIdExcludingCandidate(any(), any(), any());
 	}
 
 	@Test

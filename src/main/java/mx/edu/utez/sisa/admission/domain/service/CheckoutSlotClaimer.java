@@ -101,8 +101,8 @@ public class CheckoutSlotClaimer {
 
 		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
 
-		long occupiedByOthers = admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(
-				quota.programId(), candidateId, LocalDate.now(clock));
+		long occupiedByOthers = admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(
+				candidate.getAdmissionConfigId(), candidateId, LocalDate.now(clock));
 
 		if (occupiedByOthers >= quota.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());

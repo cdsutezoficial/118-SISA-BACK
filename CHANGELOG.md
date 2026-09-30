@@ -4,6 +4,52 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El cupo del checkout se contaba por carrera, no por proceso
+
+Commit: pendiente.
+
+### Por qué
+
+Había dos definiciones de "lugar ocupado" y no coincidían: el catálogo que
+ofrece las carreras contaba por `admissionConfigId`, y el checkout que aparta el
+lugar contaba por `programId`. Como la admisión de nuevo ingreso es anual, una
+carrera con cupo lleno en el ciclo 2026-1 y cupo libre en el 2027-1 se
+**ofrecía** en el formulario y se **rechazaba** al pagar, porque las fichas del
+ciclo viejo seguían sumando en el conteo del nuevo. El cupo es del proceso
+(carrera + período), no de la carrera.
+
+### Qué cambió
+
+- `AdmissionPaymentOccupancyQueries`: los dos conteos (y su variante
+  `ExcludingCandidate`) pasan a `WHERE cand.admissionConfigId = :admissionConfigId`.
+  La escalera de tarifas que vive dentro del `EXISTS` **sigue leyendo
+  `cfg.programId`**: el **precio** es por programa, el **cupo** es por proceso, y
+  confundir los dos ejes era justamente el bug.
+- Renombrados `countOccupiedByProgramId` / `…ExcludingCandidate` a
+  `countOccupiedByConfigId` / `…ExcludingCandidate` en el puerto, el adaptador y
+  los llamadores.
+- `CheckoutSlotClaimer` usa `candidate.getAdmissionConfigId()` en vez del
+  `programId` del cuota-estado.
+- `AdmissionQuotaPort.QuotaState` pierde `programId` (era un vestigio sin uso).
+- `ProgramAdmissionConfigJpaRepository`: su subconsulta ya contaba por config; el
+  Javadoc ahora deja escrito que las dos definiciones son idénticas y por qué el
+  `EXISTS` de precio se queda.
+
+### Tests
+
+`ProgramAdmissionConfigOptionsQueryIT`: nuevo `aFullOldCycleDoesNotBlockTheSame
+ProgramsNewCycle` (ciclo viejo lleno + ciclo nuevo libre, **mismo programa**),
+reescrito `countsOnlyTheFichasOfTheConfigBeingOffered` con dos ciclos del mismo
+programa, y ampliado `dropdownAndClaimerAgreeOnWhatOccupiesASlot` para que la
+equivalencia catálogo↔checkout se pruebe sobre datos que la pongan a prueba. Los
+casos viejos usaban un programa por config, que es el único escenario donde
+contar por config y por programa da lo mismo (la equivalencia era vacía).
+`CheckoutSlotClaimerTest` / `CheckoutSlotClaimerConcurrencyIT` /
+`RegisterCandidateUseCaseImplTest` actualizados a la nueva firma. Suite de
+unidad: **1054**, 0 fallos; los 2 IT tocados, en verde.
+
+---
+
 ## [2026-09-30] Una carrera por el folio se reportaba como "candidato duplicado"
 
 Commit: pendiente.

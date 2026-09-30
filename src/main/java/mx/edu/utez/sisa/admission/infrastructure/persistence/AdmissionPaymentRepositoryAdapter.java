@@ -40,22 +40,23 @@ public class AdmissionPaymentRepositoryAdapter implements AdmissionPaymentReposi
 	}
 
 	/**
-	 * Both occupancy counts are scoped by "the program has an ADMISSION concept
-	 * that can be paid today": the seat is only taken against a concept the
-	 * candidate can actually buy, so a program whose admission window has closed
-	 * or that has no admission concept yet does not report as full. A concept
-	 * created as ENROLLMENT does not count here \u2014 it is a semester quota, not
-	 * an admission fee.
+	 * Both occupancy counts are scoped by "this config's program has an ADMISSION
+	 * concept that can be paid today": the seat is only taken against a concept the
+	 * candidate can actually buy, so a program whose admission window has closed or
+	 * that has no admission concept yet does not report as full. A concept created
+	 * as ENROLLMENT does not count here — it is a semester quota, not an admission
+	 * fee.
 	 */
 	@Override
-	public long countOccupiedByProgramId(UUID programId, LocalDate onDate) {
-		return jpaRepository.countOccupiedByProgramId(programId, AdmissionPaymentStatus.PAID,
+	public long countOccupiedByConfigId(UUID admissionConfigId, LocalDate onDate) {
+		return jpaRepository.countOccupiedByConfigId(admissionConfigId, AdmissionPaymentStatus.PAID,
 				AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION, onDate);
 	}
 
 	@Override
-	public long countOccupiedByProgramIdExcludingCandidate(UUID programId, UUID candidateId, LocalDate onDate) {
-		return jpaRepository.countOccupiedByProgramIdExcludingCandidate(programId, candidateId,
+	public long countOccupiedByConfigIdExcludingCandidate(UUID admissionConfigId, UUID candidateId,
+			LocalDate onDate) {
+		return jpaRepository.countOccupiedByConfigIdExcludingCandidate(admissionConfigId, candidateId,
 				AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE,
 				PaymentConceptType.ADMISSION, onDate);
 	}

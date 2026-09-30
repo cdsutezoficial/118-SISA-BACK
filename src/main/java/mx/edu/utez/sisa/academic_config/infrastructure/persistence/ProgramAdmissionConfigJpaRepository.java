@@ -76,10 +76,17 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 	 * oversight: if this subquery counted only PAID fichas while the claim counted
 	 * claims as well, the picker would keep offering a career whose last slot was
 	 * already being paid for, and the applicant would be refused at the checkout —
-	 * the user-visible form of the overshoot this whole block exists to remove. It
-	 * is held in place by {@code ProgramAdmissionConfigOptionsQueryIT}, which runs
-	 * both definitions against the same data and asserts they return the same
-	 * set.
+	 * the user-visible form of the overshoot this whole block exists to remove.
+	 *
+	 * <p>Both copies key the quota by {@code cand.admissionConfigId = c.id} and both
+	 * read the price ladder per program ({@code c.programId}), because the ladder is
+	 * defined per program and the quota is defined per config. They disagreed once:
+	 * this one counted per config while {@code AdmissionPaymentOccupancyQueries}
+	 * counted per program, so a program whose old cycle was full had its new cycle
+	 * offered here and refused at checkout. {@code ProgramAdmissionConfigOptionsQueryIT}
+	 * holds the two definitions against the same data, on data that actually
+	 * separates "per config" from "per program" — one cycle per program would pass
+	 * either way.
 	 */
 	@Query(value = """
 			SELECT c.id AS id, p.name AS programName, p.modality AS modality

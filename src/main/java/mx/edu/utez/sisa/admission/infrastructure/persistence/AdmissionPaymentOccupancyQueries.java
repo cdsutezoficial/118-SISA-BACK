@@ -33,11 +33,17 @@ import org.springframework.data.repository.query.Param;
  * caller that forgot to branch would get a plausible number instead of an error.
  * Here both variants are named for what they do, so the compiler-visible
  * difference is the argument list.
+ *
+ * <p>Both are keyed by {@code admissionConfigId}, which is what the catalog's
+ * {@code findOpenOfferedOptions} subquery has always counted. Before this was fixed
+ * these two counted by {@code programId} while the catalog counted by config, and
+ * the two answers only ever agreed for programs sold in a single period — see
+ * {@code ProgramAdmissionConfigOptionsQueryIT}.
  */
 interface AdmissionPaymentOccupancyQueries {
 
 	/**
-	 * Occupied slots across a program's whole quota, counted the way the quota is
+	 * Occupied slots of one admission config's quota, counted the way the quota is
 	 * enforced: a ficha that PAID, or a PENDING ficha that already claimed its
 	 * slot at checkout.
 	 *
@@ -57,17 +63,27 @@ interface AdmissionPaymentOccupancyQueries {
 	 * held against an admission concept outlives it exactly when the concept does,
 	 * whether or not the catalog also calls it a cuota cuatrimestral.
 	 *
-	 * <p>Keyed by {@code programId} rather than by config because the window lives
-	 * on the concept, which is found per program. A config belongs to exactly one
-	 * program, so the quota a staff member edits and the one enforced here remain
-	 * the same number.
+	 * <p><b>Keyed by config, not by program</b> — this was the drift that let the
+	 * picker and the checkout disagree. Counting {@code cfg.programId} summed the
+	 * fichas of every period the program had ever been sold in, so a program whose
+	 * 2026-1 cycle was full blocked its own 2027-1 cycle at checkout while the
+	 * picker, which counts per config, happily offered it. See
+	 * {@code ProgramAdmissionConfigOptionsQueryIT#aFullOldCycleDoesNotBlockTheSame
+	 * ProgramsNewCycle}.
+	 *
+	 * <p>The config's own {@code programId} is still read inside the {@code EXISTS}
+	 * — the price ladder is defined per program, not per config, so "is there still
+	 * a payable admission price for this" is a program-level question. Keying the
+	 * <em>quota</em> by config does not make the <em>pricing</em> per config, and
+	 * the subquery keeps reading it the way
+	 * {@code ProgramAdmissionConfigJpaRepository#findOpenOfferedOptions} does.
 	 */
 	@Query("""
 			SELECT COUNT(pay)
 			FROM AdmissionPayment pay
 			JOIN Candidate cand ON cand.id = pay.candidateId
 			JOIN ProgramAdmissionConfig cfg ON cfg.id = cand.admissionConfigId
-			WHERE cfg.programId = :programId
+			WHERE cand.admissionConfigId = :admissionConfigId
 			  AND (pay.paymentStatus = :paid
 			       OR (pay.paymentStatus = :pending
 			           AND pay.checkoutClaimedAt IS NOT NULL
@@ -81,15 +97,15 @@ interface AdmissionPaymentOccupancyQueries {
 			                        AND r.periodId IS NULL
 			                        AND r.validFrom <= :onDate
 			                        AND (r.validTo IS NULL OR r.validTo >= :onDate)
-			                        AND (r.programId = :programId
+			                        AND (r.programId = cfg.programId
 			                             OR (r.programId IS NULL AND r.level = (
-			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
+			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = cfg.programId))
 			                             OR (r.programId IS NULL AND r.level IS NULL))
 			                      )
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))
 			""")
-	long countOccupiedByProgramId(@Param("programId") UUID programId,
+	long countOccupiedByConfigId(@Param("admissionConfigId") UUID admissionConfigId,
 			@Param("paid") AdmissionPaymentStatus paid, @Param("pending") AdmissionPaymentStatus pending,
 			@Param("conceptStatus") PaymentConceptStatus conceptStatus,
 			@Param("conceptType") PaymentConceptType conceptType, @Param("onDate") LocalDate onDate);
@@ -115,7 +131,7 @@ interface AdmissionPaymentOccupancyQueries {
 			FROM AdmissionPayment pay
 			JOIN Candidate cand ON cand.id = pay.candidateId
 			JOIN ProgramAdmissionConfig cfg ON cfg.id = cand.admissionConfigId
-			WHERE cfg.programId = :programId
+			WHERE cand.admissionConfigId = :admissionConfigId
 			  AND pay.candidateId <> :candidateId
 			  AND (pay.paymentStatus = :paid
 			       OR (pay.paymentStatus = :pending
@@ -130,15 +146,15 @@ interface AdmissionPaymentOccupancyQueries {
 			                        AND r.periodId IS NULL
 			                        AND r.validFrom <= :onDate
 			                        AND (r.validTo IS NULL OR r.validTo >= :onDate)
-			                        AND (r.programId = :programId
+			                        AND (r.programId = cfg.programId
 			                             OR (r.programId IS NULL AND r.level = (
-			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
+			                                  SELECT p.level FROM AcademicProgram p WHERE p.id = cfg.programId))
 			                             OR (r.programId IS NULL AND r.level IS NULL))
 			                      )
 			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			           )))
 			""")
-	long countOccupiedByProgramIdExcludingCandidate(@Param("programId") UUID programId,
+	long countOccupiedByConfigIdExcludingCandidate(@Param("admissionConfigId") UUID admissionConfigId,
 			@Param("candidateId") UUID candidateId, @Param("paid") AdmissionPaymentStatus paid,
 			@Param("pending") AdmissionPaymentStatus pending,
 			@Param("conceptStatus") PaymentConceptStatus conceptStatus,

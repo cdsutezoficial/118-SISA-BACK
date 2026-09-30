@@ -164,13 +164,38 @@ class ProgramAdmissionConfigOptionsQueryIT {
 
 	@Test
 	void countsOnlyTheFichasOfTheConfigBeingOffered() {
-		// A full career must not close a different one: the subquery is joined on
-		// cand.admissionConfigId = c.id, and this is what proves the join is real.
-		ProgramAdmissionConfig full = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
-		ProgramAdmissionConfig other = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
+		// A full cycle must not close a different cycle — and the two cycles have to
+		// belong to the SAME program for this to prove anything. With two separate
+		// programs the subquery would return the same answer whether it joined on
+		// cand.admissionConfigId = c.id or on c.programId, so the join was never
+		// actually under test. This is the shape that caught the drift.
+		UUID programId = saveProgram("Ingeniería en Software").getId();
+		ProgramAdmissionConfig full = saveConfigForProgram(programId, true, MAX_CANDIDATES, OPENS_AT, CLOSES_AT,
+				UUID.randomUUID());
+		ProgramAdmissionConfig other = saveConfigForProgram(programId, true, MAX_CANDIDATES, OPENS_AT, CLOSES_AT,
+				UUID.randomUUID());
 		savePaidFichas(full.getId(), MAX_CANDIDATES);
 
 		assertThat(idsOf(options())).containsExactly(other.getId());
+	}
+
+	@Test
+	void aFullOldCycleDoesNotBlockTheSameProgramsNewCycle() {
+		// The exact production bug of §2.1: Ingeniería 2026-1 sold out and closed,
+		// Ingeniería 2027-1 opened with a fresh quota. Counting by program summed the
+		// old cycle's fichas into the new cycle's count, so the picker offered 2027-1
+		// (it counts per config) and the checkout refused it (it counted per program).
+		// Both cycles are still inside their window here on purpose — a closed old
+		// cycle would drop out of the picker for a different reason and the assertion
+		// would pass without the fix.
+		UUID programId = saveProgram("Ingeniería en Software").getId();
+		ProgramAdmissionConfig oldCycle = saveConfigForProgram(programId, true, MAX_CANDIDATES, OPENS_AT, CLOSES_AT,
+				UUID.randomUUID());
+		ProgramAdmissionConfig newCycle = saveConfigForProgram(programId, true, MAX_CANDIDATES, OPENS_AT, CLOSES_AT,
+				UUID.randomUUID());
+		savePaidFichas(oldCycle.getId(), MAX_CANDIDATES);
+
+		assertThat(idsOf(options())).containsExactly(newCycle.getId());
 	}
 
 	@Test
@@ -221,6 +246,11 @@ class ProgramAdmissionConfigOptionsQueryIT {
 		// alike. The user-visible cost of a drift is a career offered in the picker
 		// and then refused at the last step, so this walks a set of occupancy states
 		// and requires both sides to reach the same verdict on every one.
+		//
+		// The last two entries are the important ones: they are two cycles of the SAME
+		// program, which is the only arrangement where "by config" and "by program"
+		// give different answers. Without them this test passed even against the buggy
+		// per-program count, because every other config here lives in its own program.
 		List<ProgramAdmissionConfig> configs = new java.util.ArrayList<>();
 
 		ProgramAdmissionConfig empty = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
@@ -242,8 +272,19 @@ class ProgramAdmissionConfigOptionsQueryIT {
 		saveClaimedFichas(lapsed.getId(), MAX_CANDIDATES);
 		configs.add(lapsed);
 
+		UUID sharedProgramId = saveProgram("Ingeniería en Software").getId();
+		ProgramAdmissionConfig oldCycle = saveConfigForProgram(sharedProgramId, true, MAX_CANDIDATES, OPENS_AT,
+				CLOSES_AT, UUID.randomUUID());
+		saveTuitionConceptFor(oldCycle, TODAY.plusDays(5));
+		saveClaimedFichas(oldCycle.getId(), MAX_CANDIDATES);
+		configs.add(oldCycle);
+
+		ProgramAdmissionConfig newCycle = saveConfigForProgram(sharedProgramId, true, MAX_CANDIDATES, OPENS_AT,
+				CLOSES_AT, UUID.randomUUID());
+		configs.add(newCycle);
+
 		for (ProgramAdmissionConfig config : configs) {
-			long occupiedByClaimer = admissionPaymentJpaRepository.countOccupiedByProgramId(config.getProgramId(),
+			long occupiedByClaimer = admissionPaymentJpaRepository.countOccupiedByConfigId(config.getId(),
 					AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE,
 					PaymentConceptType.ADMISSION, TODAY);
 			boolean roomForAnother = occupiedByClaimer < config.getMaxCandidates();
@@ -284,15 +325,36 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	 * <p>{@code offerName} carries a random suffix because {@code academic_program}
 	 * has a unique key on {@code (offer_name, modality)} and several of these
 	 * tests deliberately create more than one program at once.
+	 *
+	 * <p>This creates a <b>fresh program and a fresh period</b> every call, which is
+	 * the reason the per-config-vs-per-program bug hid for so long: with each config
+	 * in its own program, counting by config and counting by program return the same
+	 * number. Tests that need to tell the two apart must use
+	 * {@link #saveProgram(String)} once and {@link #saveConfigForProgram} twice.
 	 */
 	private ProgramAdmissionConfig saveConfig(boolean offered, int maxCandidates, Instant opensAt, Instant closesAt,
 			String programName) {
+		AcademicProgram program = saveProgram(programName);
+		return saveConfigForProgram(program.getId(), offered, maxCandidates, opensAt, closesAt, UUID.randomUUID());
+	}
+
+	private AcademicProgram saveProgram(String programName) {
 		AcademicProgram program = new AcademicProgram(UUID.randomUUID(), programName,
 				programName + " " + UUID.randomUUID(), "code-" + UUID.randomUUID(), AcademicLevel.INGENIERIA,
 				ProgramModality.PRESENCIAL, null, null, null);
-		academicProgramJpaRepository.save(program);
-		ProgramAdmissionConfig config = new ProgramAdmissionConfig(program.getId(), UUID.randomUUID(), UUID.randomUUID(),
-				offered, maxCandidates, opensAt, closesAt);
+		return academicProgramJpaRepository.save(program);
+	}
+
+	/**
+	 * A config for an already-persisted program, optionally in a period other than
+	 * the one a sibling config uses. This is what makes "two cycles of the same
+	 * program" expressible — the exact shape the catalog and the checkout used to
+	 * disagree about.
+	 */
+	private ProgramAdmissionConfig saveConfigForProgram(UUID programId, boolean offered, int maxCandidates,
+			Instant opensAt, Instant closesAt, UUID periodId) {
+		ProgramAdmissionConfig config = new ProgramAdmissionConfig(programId, periodId, UUID.randomUUID(), offered,
+				maxCandidates, opensAt, closesAt);
 		return jpaRepository.save(config);
 	}
 

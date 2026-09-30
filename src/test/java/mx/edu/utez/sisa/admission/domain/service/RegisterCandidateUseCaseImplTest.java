@@ -311,8 +311,8 @@ class RegisterCandidateUseCaseImplTest {
 		useCase.register(command());
 
 		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
-		verify(admissionPaymentRepository, never()).countOccupiedByProgramId(any(), any());
-		verify(admissionPaymentRepository, never()).countOccupiedByProgramIdExcludingCandidate(any(), any(), any());
+		verify(admissionPaymentRepository, never()).countOccupiedByConfigId(any(), any());
+		verify(admissionPaymentRepository, never()).countOccupiedByConfigIdExcludingCandidate(any(), any(), any());
 	}
 
 	/**

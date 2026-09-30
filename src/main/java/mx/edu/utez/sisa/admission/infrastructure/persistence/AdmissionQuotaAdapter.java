@@ -31,6 +31,6 @@ public class AdmissionQuotaAdapter implements AdmissionQuotaPort {
 		var config = configJpaRepository.findByIdForUpdate(admissionConfigId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"Program admission config not found: " + admissionConfigId));
-		return new QuotaState(config.getMaxCandidates(), config.getProgramId());
+		return new QuotaState(config.getMaxCandidates());
 	}
 }

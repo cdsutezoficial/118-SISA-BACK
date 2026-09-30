@@ -63,7 +63,7 @@ import org.springframework.transaction.annotation.Transactional;
  * this feature exists to prevent. A pass here means the second thread's count saw
  * the first thread's committed row.</li>
  * <li><b>The same candidate twice → both succeed.</b> The self-exclusion in
- * {@code countOccupiedByProgramIdExcludingCandidate} is a correctness requirement,
+ * {@code countOccupiedByConfigIdExcludingCandidate} is a correctness requirement,
  * not an optimisation, and it is the kind of thing that passes in a unit test with
  * an argument captor while being wrong in the query.</li>
  * </ol>
@@ -130,7 +130,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 		assertThat(claimFailures(outcomes)).as("with one place left, exactly one candidate is refused").hasSize(1);
 		assertThat(claimSuccesses(outcomes)).as("the other candidate is not refused").hasSize(1);
-		assertThat(claimedCount(config.getProgramId()))
+		assertThat(claimedCount(config.getId()))
 				.as("the quota of 1 holds: the loser's transaction left nothing behind")
 				.isEqualTo(1);
 	}
@@ -199,8 +199,8 @@ class CheckoutSlotClaimerConcurrencyIT {
 	 * Reads the occupancy straight from the database rather than from the claimer's
 	 * port, so a claim that was written and then rolled back cannot hide here.
 	 */
-	private long claimedCount(UUID programId) {
-		return admissionPaymentJpaRepository.countOccupiedByProgramId(programId,
+	private long claimedCount(UUID admissionConfigId) {
+		return admissionPaymentJpaRepository.countOccupiedByConfigId(admissionConfigId,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
 				mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
