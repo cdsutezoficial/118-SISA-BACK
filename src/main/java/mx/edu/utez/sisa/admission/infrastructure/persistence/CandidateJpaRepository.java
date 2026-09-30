@@ -37,4 +37,11 @@ public interface CandidateJpaRepository extends JpaRepository<Candidate, UUID> {
 	 * and expires the ones whose private payment window has passed.
 	 */
 	List<Candidate> findAllByStatus(CandidateStatus status);
+
+	/**
+	 * Derived query backing the CURP re-registration lock: registration reads a
+	 * person's fichas and blocks only when one of them is still alive (a
+	 * {@code PAID} ficha, or a {@code REGISTERED} one inside its payment window).
+	 */
+	List<Candidate> findAllByPersonId(UUID personId);
 }

@@ -46,4 +46,9 @@ public class CandidateRepositoryAdapter implements CandidateRepository {
 	public List<Candidate> findAllByStatus(CandidateStatus status) {
 		return jpaRepository.findAllByStatus(status);
 	}
+
+	@Override
+	public List<Candidate> findAllByPersonId(UUID personId) {
+		return jpaRepository.findAllByPersonId(personId);
+	}
 }

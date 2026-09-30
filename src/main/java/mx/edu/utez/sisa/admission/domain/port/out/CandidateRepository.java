@@ -47,4 +47,12 @@ public interface CandidateRepository {
 	 * regardless of where the admission process stands.
 	 */
 	List<Candidate> findAllByStatus(CandidateStatus status);
+
+	/**
+	 * Every ficha ever registered for a person, whatever its status. Backs the
+	 * CURP re-registration lock (§1.10): the lock is on the <em>ficha</em>, not
+	 * on the person, so registration reads the person's fichas and decides on
+	 * their statuses instead of refusing on the person's mere existence.
+	 */
+	List<Candidate> findAllByPersonId(UUID personId);
 }

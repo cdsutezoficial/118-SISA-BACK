@@ -4,6 +4,44 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El candado del CURP pasa a ser la ficha viva
+
+Commit: pendiente.
+
+### Por qué
+
+`RegisterCandidateUseCaseImpl` bloqueaba el registro con solo que existiera un
+`Person` con ese CURP (`findByCurp`). Eso le colgaba el CURP para siempre a
+quien registró una ficha y nunca la pagó: la ficha murió, pero la persona no
+podía volver a intentarlo. §1.10: **el CURP no bloquea a la persona, bloquea la
+ficha**. Una persona puede registrar su CURP varias veces, pero solo puede tener
+una ficha viva a la vez.
+
+### Qué cambió
+
+- `CandidateRepository.findAllByPersonId` (+ adaptador y JPA).
+- `RegisterCandidateUseCaseImpl`: el pre-chequeo pasa a
+  `validateCurpHasNoLiveFicha`, que lee las fichas de la persona y bloquea solo
+  si alguna está **viva**. Viva = `PAID` en adelante, o `REGISTERED` dentro de su
+  plazo. `PAYMENT_EXPIRED` y `REGISTERED` ya vencida (en el hueco entre el
+  vencimiento y el barrido de las 00:10) **liberan** el CURP.
+- El cálculo de "vencida" reusa `Candidate.paymentDeadline` con el **mismo**
+  `deadline-days` que el barrido (nuevo parámetro del constructor), para que el
+  candado y el barrido no puedan separarse por configuración.
+- Dos mensajes según el caso (ficha vigente / ficha ya en el proceso), ambos bajo
+  el mismo `409 ADMISSION_CANDIDATE_ALREADY_EXISTS`.
+- Cambio de comportamiento buscado: un `Person` sin ninguna ficha (fila de
+  personal, o creada por otro módulo) ya no bloquea el registro.
+- Wiring en `admission/infrastructure/config/UseCaseConfig`.
+
+### Tests
+
+`RegisterCandidateUseCaseImplTest`: rechaza con ficha viva (registrada dentro de
+plazo) y con ficha pagada; permite con ficha `PAYMENT_EXPIRED` y con
+`REGISTERED` ya fuera de plazo. Suite completa en verde, 0 fallos.
+
+---
+
 ## [2026-09-30] El plazo de 10 días de la ficha: estado, cálculo y barrido
 
 Commit: pendiente.

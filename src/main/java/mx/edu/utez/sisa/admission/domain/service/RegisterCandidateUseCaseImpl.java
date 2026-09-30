@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales;
@@ -39,7 +40,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -116,12 +119,21 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 */
 	private final Clock clock;
 
+	/**
+	 * Payment-window length in days (§1.9). This is the <em>same</em> value the
+	 * daily expiry sweep reads, so the lock's notion of "this old ficha is still
+	 * alive" cannot drift from the sweep's notion of "this ficha expired" by a
+	 * configuration change applied to only one of them.
+	 */
+	private final int fichaDeadlineDays;
+
 	public RegisterCandidateUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock) {
+			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock,
+			int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -131,6 +143,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.registrationDate = registrationDate;
 		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 	}
 
 	@Override
@@ -182,10 +195,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	}
 
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
-		if (candidatePersonRepository.findByCurp(command.datosGenerales().curp()).isPresent()) {
-			throw new CandidateAlreadyExistsException(
-					"Ya existe una persona registrada con el CURP: " + command.datosGenerales().curp());
-		}
+		validateCurpHasNoLiveFicha(command.datosGenerales().curp());
 
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(command.seleccionCarrera().admissionConfigId())
@@ -211,6 +221,48 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		}
 
 		return config;
+	}
+
+	/**
+	 * The CURP lock is on the <em>ficha</em>, not on the person (§1.10): a person
+	 * may have registered before and come back, so the mere existence of a
+	 * {@code Person} with this CURP proves nothing. What blocks a new registration
+	 * is a <em>live</em> ficha:
+	 *
+	 * <ul>
+	 * <li>{@code PAYMENT_EXPIRED} — the ficha lapsed without payment, the person is
+	 * free again;</li>
+	 * <li>{@code REGISTERED} past its payment window — the same fact stated by the
+	 * clock, before the daily sweep has had a chance to write it down. Reading the
+	 * date here keeps the lock correct in the gap between the deadline and the
+	 * next 00:10 run;</li>
+	 * <li>anything else ({@code PAID}, {@code EXAM_TAKEN}, …) — the person is
+	 * already inside the process and blocks for good.</li>
+	 * </ul>
+	 *
+	 * <p>A person with no fichas at all (a staff {@code Person} row, or a person
+	 * created by another module) is therefore free to register; that is the
+	 * intended change, and the reason the old {@code findByCurp().isPresent()}
+	 * guard is gone.
+	 */
+	private void validateCurpHasNoLiveFicha(String curp) {
+		Optional<Person> person = candidatePersonRepository.findByCurp(curp);
+		if (person.isEmpty()) {
+			return;
+		}
+		LocalDate today = LocalDate.now(clock);
+		for (Candidate previous : candidateRepository.findAllByPersonId(person.get().getId())) {
+			if (previous.getStatus() == CandidateStatus.PAYMENT_EXPIRED) {
+				continue;
+			}
+			if (previous.getStatus() == CandidateStatus.REGISTERED
+					&& today.isAfter(previous.paymentDeadline(clock.getZone(), fichaDeadlineDays))) {
+				continue;
+			}
+			throw new CandidateAlreadyExistsException(previous.getStatus() == CandidateStatus.REGISTERED
+					? "Este CURP ya tiene una ficha vigente. Podrás registrarte de nuevo si esa ficha vence sin pago."
+					: "Este CURP ya tiene una ficha en el proceso de admisión. No es posible registrar una nueva.");
+		}
 	}
 
 	/**

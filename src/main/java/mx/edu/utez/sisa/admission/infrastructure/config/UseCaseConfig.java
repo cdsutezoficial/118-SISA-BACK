@@ -170,10 +170,10 @@ public class UseCaseConfig {
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			Clock clock) {
+			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), clock);
+				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), clock, fichaDeadlineDays);
 	}
 
 	/**
