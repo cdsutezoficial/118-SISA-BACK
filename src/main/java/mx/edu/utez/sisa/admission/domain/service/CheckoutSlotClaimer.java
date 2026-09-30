@@ -105,8 +105,7 @@ public class CheckoutSlotClaimer {
 				quota.programId(), candidateId, LocalDate.now(clock));
 
 		if (occupiedByOthers >= quota.maxCandidates()) {
-			throw new ProgramAdmissionConfigCapacityReachedException(
-					quotaReachedMessage(quota.maxCandidates()));
+			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
 		}
 
 		AdmissionPayment payment = requirePendingPayment(candidateId);
@@ -161,14 +160,25 @@ public class CheckoutSlotClaimer {
 	 * The only sentence a candidate ever reads for a full career, so it is built in
 	 * one place and pinned by a test.
 	 *
-	 * <p>It does not say what is filling the quota on purpose. The count includes
-	 * in-progress checkouts, so claiming they were beaten by "paid" registrations
-	 * would be wrong whenever the last slot is still settling — and it would turn a
-	 * working rule into a race they lost. It also promises no retry, because there is
-	 * no waiting list to join: the quota is a cap, not a queue.
+	 * <p>It says neither what is filling the quota nor how big the quota is. The first
+	 * because the count includes in-progress checkouts, so claiming they were beaten by
+	 * "paid" registrations would be wrong whenever the last slot is still settling —
+	 * and it would turn a working rule into a race they lost. The second because a
+	 * number invites the only follow-up question the system cannot answer: "so when
+	 * does a place free up?" There is no waiting list to join — the quota is a cap, not
+	 * a queue — so any figure next to it reads as a position in a line that does not
+	 * exist. The cap is staff's business, and it moves when they edit
+	 * {@code maxCandidates}.
+	 *
+	 * <p>It promises no retry either, for the same reason. Nothing schedules a
+	 * release, so "try again later" would be a promise the code cannot keep.
+	 *
+	 * <p>No parameter: the sentence used to end in "de N fichas" and needed a
+	 * singular/plural branch for a career capped at one. With the number gone that
+	 * branch had nothing left to switch on, and the method is no longer a function of
+	 * the quota at all.
 	 */
-	private static String quotaReachedMessage(int maxCandidates) {
-		String units = maxCandidates == 1 ? "ficha" : "fichas";
-		return "Esta carrera alcanzó su cupo de " + maxCandidates + " " + units + ".";
+	private static String quotaReachedMessage() {
+		return "El cupo de esta carrera se agotó.";
 	}
 }
