@@ -156,22 +156,24 @@ class CheckoutSlotClaimerTest {
 				.thenReturn((long) MAX_CANDIDATES);
 
 		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
-				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
-				.hasMessageContaining(String.valueOf(MAX_CANDIDATES));
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
 	}
 
 	/**
 	 * The sentence a candidate reads when a career is full, matched in full rather
 	 * than by substring.
 	 *
-	 * <p>This is the whole sentence on purpose. It shipped as "La carrera alcanzo su
-	 * cupo de 1 fichas pagadas", which was wrong twice: a grammar slip, and a claim
-	 * that the quota was taken by people who paid. The count includes checkouts still
-	 * in flight, so that version told candidates they had lost to paying applicants
-	 * when the last place might have been sitting unsettled. It also said nothing
-	 * about waiting, which is correct — there is no queue, the quota is a cap — and
-	 * anything that adds a "try again later" would be promising a release that
-	 * nothing in the system schedules.
+	 * <p>This is the whole sentence on purpose, and it names no number. It shipped as
+	 * "La carrera alcanzo su cupo de 1 fichas pagadas", which was wrong three ways: a
+	 * grammar slip, a claim that the quota was taken by people who paid, and a figure
+	 * that invites "when does a place free up?" — a question with no answer, because
+	 * the quota is a cap and there is no queue. The count includes checkouts still in
+	 * flight, so the "paid" wording also told candidates they had lost to paying
+	 * applicants when the last place might have been sitting unsettled.
+	 *
+	 * <p>Matched in full so that reintroducing the count breaks the build: the number
+	 * is a deliberate omission, not an oversight, and the test is where that is
+	 * recorded.
 	 */
 	@Test
 	void theFullQuotaMessageIsPinned() {
@@ -181,22 +183,10 @@ class CheckoutSlotClaimerTest {
 				.thenReturn((long) MAX_CANDIDATES);
 
 		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
-				.hasMessage("Esta carrera alcanzó su cupo de 15 fichas.");
+				.hasMessage("El cupo de esta carrera se agotó.");
 	}
 
-	/** A career capped at one sells "1 ficha". The plural is what shipped. */
-	@Test
-	void theFullQuotaMessageIsSingularForASinglePlace() {
-		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
-				.thenReturn(new AdmissionQuotaPort.QuotaState(1, PROGRAM_ID));
-		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))
-				.thenReturn(1L);
-
-		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
-				.hasMessage("Esta carrera alcanzó su cupo de 1 ficha.");
-	}
-
-	/** One place left must still be claimable, or the last place could never sell. */
+/** One place left must still be claimable, or the last place could never sell. */
 	@Test
 	void theLastFreeSlotIsClaimable() {
 		when(admissionPaymentRepository.countOccupiedByProgramIdExcludingCandidate(PROGRAM_ID, CANDIDATE_ID, TODAY))

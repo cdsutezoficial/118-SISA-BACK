@@ -20,6 +20,7 @@ import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -164,6 +165,32 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, "La solicitud no contiene un cuerpo válido o falta información requerida.",
+				request);
+	}
+
+	/**
+	 * A database constraint rejected a write: NOT NULL, length, FK, CHECK. Spring
+	 * defers the INSERT/UPDATE to commit time, so this surfaces from the flush,
+	 * long after the controller returned — which means it used to reach
+	 * {@link #handleUnexpected} and answer 500 "intenta más tarde" for what is a
+	 * client-shape problem ("no pasa la validación de la base"). Same rationale
+	 * as {@link #handleUnreadableBody}.
+	 *
+	 * <p>The message is deliberately generic: the exception text carries table and
+	 * column names, and echoing those back leaks the schema to the caller. The
+	 * root cause is logged instead.
+	 *
+	 * <p>Not a substitute for validating the request. {@code RegisterCandidateRequest}
+	 * had 16 nested {@code @NotBlank} annotations that never ran because the root
+	 * record lacked {@code @Valid}; that is fixed at the DTO. This handler is the
+	 * net for whatever a new writer forgets, not the primary mechanism.
+	 */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex,
+			HttpServletRequest request) {
+		log.warn("Database constraint violated on {}", request.getRequestURI(), ex);
+		return build(HttpStatus.BAD_REQUEST,
+				"Los datos enviados no cumplen las reglas de información del sistema. Revisa el formulario e inténtalo de nuevo.",
 				request);
 	}
 

@@ -503,12 +503,12 @@ class InitiateFichaPaymentUseCaseImplTest {
 	void aFullQuotaIsRefusedBeforeEvoIsCalled() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
-		doThrow(new ProgramAdmissionConfigCapacityReachedException("La carrera alcanzó su cupo de 15 fichas pagadas."))
+		doThrow(new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó."))
 				.when(checkoutSlotClaimer).claim(CANDIDATE_ID);
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
-				.hasMessageContaining("cupo de 15 fichas");
+				.hasMessage("El cupo de esta carrera se agotó.");
 
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
 		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any(), any());

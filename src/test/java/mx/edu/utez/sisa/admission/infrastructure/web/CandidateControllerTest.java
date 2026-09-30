@@ -30,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -347,4 +348,156 @@ class CandidateControllerTest {
 				.andExpect(status().isBadRequest());
 		verify(accessFichaPaymentUseCase, never()).access(any(), any());
 	}
+
+	// ── registro (validación anidada del DTO) ──
+
+	/**
+	 * The root record of {@code RegisterCandidateRequest} annotated its 7 nested
+	 * records with {@code @NotNull} but not {@code @Valid}, so Bean Validation
+	 * never descended into them (JSR-380 §5.7.1) and all 16 nested
+	 * {@code @NotBlank}/{@code @NotNull} were dead code. Six of those fields feed
+	 * NOT NULL columns, so omitting one reached the DB and came back as a 500 at
+	 * flush time instead of a 400.
+	 *
+	 * <p>These tests pin the cascade: each case blanks exactly one nested field and
+	 * asserts the 400 plus the field's own Spanish message. They must never reach
+	 * the use case.
+	 */
+	@Test
+	void registerRejectsABlankCurp() throws Exception {
+		assertNestedFieldRejected("curp", "GOCD050101HDFRNS04", "La CURP es obligatoria.");
+	}
+
+	@Test
+	void registerRejectsBlankNames() throws Exception {
+		assertNestedFieldRejected("nombres", "Juan", "Los nombres son obligatorios.");
+	}
+
+	@Test
+	void registerRejectsABlankStreet() throws Exception {
+		assertNestedFieldRejected("calle", "Avenida Juarez", "La calle es obligatoria.");
+	}
+
+	@Test
+	void registerRejectsABlankExteriorNumber() throws Exception {
+		assertNestedFieldRejected("numeroExterior", "1", "El número exterior es obligatorio.");
+	}
+
+	@Test
+	void registerRejectsABlankPostalCode() throws Exception {
+		assertNestedFieldRejected("codigoPostal", "68000", "El código postal es obligatorio.");
+	}
+
+	@Test
+	void registerRejectsABlankEmail() throws Exception {
+		assertNestedFieldRejected("personalEmail", "juan.perez@example.com",
+				"El correo electrónico es obligatorio.");
+	}
+
+	@Test
+	void registerRejectsABlankSchoolName() throws Exception {
+		assertNestedFieldRejected("nombrePreparatoria", "Colegio Nacional",
+				"El nombre de la preparatoria es obligatorio.");
+	}
+
+	@Test
+	void registerRejectsAMissingCareer() throws Exception {
+		mockMvc.perform(post("/candidates").contentType(MediaType.APPLICATION_JSON)
+				.content(VALID_REGISTRATION.replace("\"" + CFG_ID + "\"", "null")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("La carrera es obligatoria."));
+		verify(registerCandidateUseCase, never()).register(any());
+	}
+
+	@Test
+	void registerRejectsAMissingHouseholdIncome() throws Exception {
+		mockMvc.perform(post("/candidates").contentType(MediaType.APPLICATION_JSON)
+				.content(VALID_REGISTRATION.replaceAll("\"ingresoMensualFamiliar\"\\s*:\\s*12000",
+						"\"ingresoMensualFamiliar\": null")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("El ingreso mensual familiar es obligatorio."));
+		verify(registerCandidateUseCase, never()).register(any());
+	}
+
+	/**
+	 * {@code ciudadPreparatoria} is the one nested field with no annotation at
+	 * all, and {@code school_city} is NOT NULL. It is NOT rejected here on
+	 * purpose: a Mexican high school legitimately has no capturable city (the
+	 * wizard only renders that input when the school was abroad), so
+	 * {@code HighSchoolBackground} normalizes {@code null} to {@code ""} rather
+	 * than turning a valid registration into a 400.
+	 */
+	@Test
+	void registerAcceptsAMissingSchoolCity() throws Exception {
+		// Reaching the use case proves validation let it through. The mock returns
+		// null so the controller NPEs, and that 500 is irrelevant — what matters is
+		// that this is NOT a 400 and NOT a validation failure.
+		mockMvc.perform(post("/candidates").contentType(MediaType.APPLICATION_JSON)
+				.content(VALID_REGISTRATION.replace("\"ciudadPreparatoria\":\"Puebla\"",
+						"\"ciudadPreparatoria\":null")))
+				.andExpect(status().is5xxServerError());
+		verify(registerCandidateUseCase).register(any());
+	}
+
+	/**
+	 * Only the status is asserted here: with six sections absent the handler
+	 * reports {@code getFieldErrors().findFirst()} and Hibernate Validator does
+	 * not order field errors, so pinning which message wins would be flaky.
+	 * The per-field messages are pinned by the tests above, one violation each.
+	 */
+	@Test
+	void registerRejectsAMissingSection() throws Exception {
+		mockMvc.perform(post("/candidates").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"datosGenerales\":{},\"llaveMxVerified\":false}"))
+				.andExpect(status().isBadRequest());
+		verify(registerCandidateUseCase, never()).register(any());
+	}
+
+	/**
+	 * Blanks exactly one field of the valid payload and asserts the 400 plus that
+	 * field's own message — which only happens if the {@code @Valid} cascade is
+	 * intact.
+	 *
+	 * <p>Matched with a regex rather than a literal so the spacing in the payload
+	 * block does not matter; {@code assertNotEquals} is the guard against a
+	 * pattern that silently matches nothing and turns this into a false pass.
+	 */
+	private void assertNestedFieldRejected(String key, String value, String expectedMessage) throws Exception {
+		String body = VALID_REGISTRATION.replaceAll("\"" + key + "\"\\s*:\\s*\"" + Pattern.quote(value) + "\"",
+				"\"" + key + "\": \"\"");
+		org.junit.jupiter.api.Assertions.assertNotEquals(VALID_REGISTRATION, body,
+				"el payload base no contenia el campo a reemplazar: " + key);
+		mockMvc.perform(post("/candidates").contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value(expectedMessage));
+		verify(registerCandidateUseCase, never()).register(any());
+	}
+
+	private static final String CFG_ID = "11111111-1111-1111-1111-111111111111";
+
+	private static final String GEO_ID = "22222222-2222-2222-2222-222222222222";
+
+	private static final String VALID_REGISTRATION = """
+			{
+			  "datosGenerales": {
+			    "curp": "GOCD050101HDFRNS04", "nombres": "Juan", "apellidoPaterno": "Perez",
+			    "apellidoMaterno": "Gomez", "fechaNacimiento": "01/01/2005", "sexo": "Femenino",
+			    "nacionalidad": "Mexicana", "estadoCivil": "Soltero/a", "tieneHijos": false
+			  },
+			  "domicilio": {
+			    "calle": "Avenida Juarez", "numeroExterior": "1", "codigoPostal": "68000",
+			    "stateId": "%s", "municipalityId": "%s"
+			  },
+			  "contacto": { "personalEmail": "juan.perez@example.com" },
+			  "informacionComplementaria": {},
+			  "ingresos": { "ingresoMensualFamiliar": 12000, "trabaja": false },
+			  "seleccionCarrera": { "admissionConfigId": "%s", "isFirstChoice": true },
+			  "antecedentesEscolares": {
+			    "nombrePreparatoria": "Colegio Nacional", "estudioBachilleratoEnMexico": true,
+			    "promedio": 9.0, "cct": "17DCT0001A", "cctConfirmacion": "17DCT0001A",
+			    "ciudadPreparatoria": "Puebla"
+			  },
+			  "llaveMxVerified": true
+			}
+			""".formatted(GEO_ID, GEO_ID, CFG_ID);
 }

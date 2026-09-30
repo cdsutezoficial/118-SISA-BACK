@@ -86,7 +86,14 @@ public class HighSchoolBackground {
 			boolean studiedInMexico, UUID schoolStateId, UUID schoolMunicipalityId, String cct, Boolean cctConfirmed,
 			String foreignCountry, String schoolForeignState, String academicArea, String studyPeriod) {
 		this.schoolName = schoolName;
-		this.schoolCity = schoolCity;
+		// school_city is NOT NULL. Domestic applicants never get asked for a city
+		// (CandidatoRegistro.tsx renders the city input only when the high school
+		// was abroad, since a Mexican school's location comes from the state and
+		// municipality catalogs), so the registration wizard sends an empty string
+		// for them. Normalizing here keeps a direct API caller that omits the field
+		// from blowing up at flush time with a DataIntegrityViolationException that
+		// would surface as a 500.
+		this.schoolCity = schoolCity == null ? "" : schoolCity;
 		this.schoolTypeId = schoolTypeId;
 		this.gpa = gpa;
 		this.studiedInMexico = studiedInMexico;
@@ -125,7 +132,7 @@ public class HighSchoolBackground {
 	}
 
 	public void setSchoolCity(String schoolCity) {
-		this.schoolCity = schoolCity;
+		this.schoolCity = schoolCity == null ? "" : schoolCity;
 	}
 
 	public UUID getSchoolTypeId() {

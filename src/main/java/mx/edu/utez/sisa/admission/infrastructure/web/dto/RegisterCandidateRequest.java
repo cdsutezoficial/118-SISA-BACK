@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.infrastructure.web.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -56,13 +57,13 @@ import java.util.UUID;
  * {@code HighSchoolType}.
  */
 public record RegisterCandidateRequest(
-		@NotNull DatosGenerales datosGenerales,
-		@NotNull Domicilio domicilio,
-		@NotNull Contacto contacto,
-		@NotNull InformacionComplementaria informacionComplementaria,
-		@NotNull Ingresos ingresos,
-		@NotNull SeleccionCarrera seleccionCarrera,
-		@NotNull AntecedentesEscolares antecedentesEscolares,
+		@NotNull(message = "Este bloque de datos es obligatorio.") @Valid DatosGenerales datosGenerales,
+		@NotNull(message = "El domicilio es obligatorio.") @Valid Domicilio domicilio,
+		@NotNull(message = "El contacto es obligatorio.") @Valid Contacto contacto,
+		@NotNull(message = "La información complementaria es obligatoria.") @Valid InformacionComplementaria informacionComplementaria,
+		@NotNull(message = "Los ingresos son obligatorios.") @Valid Ingresos ingresos,
+		@NotNull(message = "La selección de carrera es obligatoria.") @Valid SeleccionCarrera seleccionCarrera,
+		@NotNull(message = "Los antecedentes escolares son obligatorios.") @Valid AntecedentesEscolares antecedentesEscolares,
 		boolean llaveMxVerified) {
 
 	/**
@@ -71,20 +72,35 @@ public record RegisterCandidateRequest(
 	 * reference the shared INEGI catalogs; foreign-birth applicants send
 	 * {@code paisNacimiento}/{@code ciudadNacimiento} instead.
 	 */
-	public record DatosGenerales(@NotBlank String curp, @NotBlank String nombres, @NotBlank String apellidoPaterno,
-			String apellidoMaterno, @NotBlank String fechaNacimiento, @NotBlank String sexo,
-			@NotBlank String nacionalidad, UUID birthStateId, UUID birthMunicipalityId, String paisNacimiento,
-			String ciudadNacimiento, @NotBlank String estadoCivil, String lenguaNatal, boolean tieneHijos) {
+	public record DatosGenerales(
+			@NotBlank(message = "La CURP es obligatoria.") String curp,
+			@NotBlank(message = "Los nombres son obligatorios.") String nombres,
+			@NotBlank(message = "El apellido paterno es obligatorio.") String apellidoPaterno,
+			String apellidoMaterno,
+			@NotBlank(message = "La fecha de nacimiento es obligatoria.") String fechaNacimiento,
+			@NotBlank(message = "El sexo es obligatorio.") String sexo,
+			@NotBlank(message = "La nacionalidad es obligatoria.") String nacionalidad,
+			UUID birthStateId, UUID birthMunicipalityId, String paisNacimiento,
+			String ciudadNacimiento,
+			@NotBlank(message = "El estado civil es obligatorio.") String estadoCivil,
+			String lenguaNatal, boolean tieneHijos) {
 	}
 
 	/** Paso 1 — "Domicilio Actual" (Mexicana branch, mirroring {@code Address} mexican fields). */
-	public record Domicilio(@NotBlank String calle, @NotBlank String numeroExterior, String numeroInterior,
-			String colonia, String localidad, @NotBlank String codigoPostal, @NotNull UUID stateId,
-			@NotNull UUID municipalityId) {
+	public record Domicilio(
+			@NotBlank(message = "La calle es obligatoria.") String calle,
+			@NotBlank(message = "El número exterior es obligatorio.") String numeroExterior,
+			String numeroInterior,
+			String colonia, String localidad,
+			@NotBlank(message = "El código postal es obligatorio.") String codigoPostal,
+			@NotNull(message = "El estado es obligatorio.") UUID stateId,
+			@NotNull(message = "El municipio es obligatorio.") UUID municipalityId) {
 	}
 
 	/** Paso 1 — "Contacto". {@code personalEmail} feeds {@code Person.personalEmail}. */
-	public record Contacto(@NotBlank String personalEmail, String telefonoCasa, String celular) {
+	public record Contacto(
+			@NotBlank(message = "El correo electrónico es obligatorio.") String personalEmail,
+			String telefonoCasa, String celular) {
 	}
 
 	/** Paso 2 — "Información Complementaria" ({@code HealthProfile} + {@code DiversityProfile}, flattened). */
@@ -96,7 +112,9 @@ public record RegisterCandidateRequest(
 	}
 
 	/** Paso 2 — "Ingresos" ({@code monthlyFamilyIncome} on {@code Person} + {@code EmploymentInfo}). */
-	public record Ingresos(@NotNull BigDecimal ingresoMensualFamiliar, boolean trabaja, String tipoTrabajo,
+	public record Ingresos(
+			@NotNull(message = "El ingreso mensual familiar es obligatorio.") BigDecimal ingresoMensualFamiliar,
+			boolean trabaja, String tipoTrabajo,
 			String telefonoTrabajo, BigDecimal ingresoMensual, String nombreEmpresa, String puesto, String horaInicio,
 			String horaFin) {
 	}
@@ -108,11 +126,15 @@ public record RegisterCandidateRequest(
 	 * referenced by {@code UUID}, see class javadoc. {@code modalidad} is
 	 * intentionally absent.
 	 */
-	public record SeleccionCarrera(@NotNull UUID admissionConfigId, UUID outreachChannelId, boolean isFirstChoice) {
+	public record SeleccionCarrera(
+			@NotNull(message = "La carrera es obligatoria.") UUID admissionConfigId,
+			UUID outreachChannelId, boolean isFirstChoice) {
 	}
 
 	/** Paso 3 — "Antecedentes Escolares" ({@code HighSchoolBackground}). */
-	public record AntecedentesEscolares(@NotBlank String nombrePreparatoria, UUID schoolTypeId,
+	public record AntecedentesEscolares(
+			@NotBlank(message = "El nombre de la preparatoria es obligatorio.") String nombrePreparatoria,
+			UUID schoolTypeId,
 			boolean estudioBachilleratoEnMexico, UUID schoolStateId, UUID schoolMunicipalityId, String paisPreparatoria,
 			String ciudadPreparatoria, BigDecimal promedio, String cct, String cctConfirmacion) {
 	}
