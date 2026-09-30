@@ -44,7 +44,19 @@ public class Candidate {
 	@Column(name = "admission_config_id", nullable = false)
 	private UUID admissionConfigId;
 
-	@Column(nullable = false)
+	/**
+	 * The applicant's ficha number, and the key she comes back with
+	 * ("vuelve a pagar mi ficha" pairs it with the last 3 CURP characters), so a
+	 * duplicate here is worse than a wasted row: two applicants would be looking
+	 * up the same ficha.
+	 *
+	 * <p>{@code generateFolio()} derives it as {@code count(prefix) + 1}, which is
+	 * read-then-write with no lock — two concurrent registrations can compute the
+	 * same number. This index is what makes that collision visible as a
+	 * {@code DuplicateKeyException} instead of silent corruption. See the migration
+	 * script for applying it outside {@code ddl-auto=update} environments.
+	 */
+	@Column(nullable = false, unique = true)
 	private String folio;
 
 	@Enumerated(EnumType.STRING)

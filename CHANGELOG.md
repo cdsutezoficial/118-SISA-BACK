@@ -4,6 +4,177 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] Una carrera por el folio se reportaba como "candidato duplicado"
+
+Commit: pendiente.
+
+### Por qué
+
+Al agregar el índice único sobre `candidate.folio` (ver la entrada siguiente),
+la colisión dejó de ser corrupción silenciosa y pasó a ser un `409`. Pero el
+handler mapeaba **toda** violación de índice único a `ADMISSION_CANDIDATE_ALREADY_EXISTS`
+con el mensaje:
+
+> Ya existe un registro con esos datos. Revisa tu información e inténtalo de nuevo.
+
+Eso es falso. `generateFolio()` es `count(prefix) + 1` (`RegisterCandidateUseCaseImpl:344-348`),
+un read-then-write sin lock: dos registros simultáneos calculan el mismo número y
+**el perdedor** choca con el índice. No hay datos duplicados, no se guardó nada —
+la transacción entera se revierte, incluido el `INSERT person` de la línea 141 — y
+la Aspirante no tiene nada que revisar.
+
+### Qué cambió
+
+- Nuevo código estable `ADMISSION_REGISTRATION_CONFLICT`, distinto de
+  `ADMISSION_CANDIDATE_ALREADY_EXISTS`: el primero es transitorio y se resuelve
+  siempre reintentando; el segundo es un hecho sobre la Aspirante y nunca se
+  resuelve así.
+- `DuplicateKeyException` ahora responde con un mensaje de reintento honesto y
+  sin accusationar los datos.
+- El front distingue el código nuevo explícitamente, en lugar de dejarse caer por
+  el branch genérico de 409 por casualidad.
+
+### Por qué el reintento manual siempre funciona
+
+InnoDB solo reporta conflicto de índice único contra filas **commiteadas**. Si a
+la Aspirante le llegó la colisión, el ganador ya commiteó, así que el `count` de
+su segundo intento ya avanzó y sí obtiene el folio libre. El wizard nunca navegó
+(`setFolio` no se alcanzó), así que los 4 pasos siguen intactos y el botón
+"Finalizar registro" vuelve a estar habilitado.
+
+La rareraza es la carrera por CURP: el pre-chequeo (`RegisterCandidateUseCaseImpl:185`)
+también es read-then-write, así que su perdedor puede caer aquí en vez de recibir
+`CandidateAlreadyExistsException`. Se autocorrige: para entonces la otra ya
+commiteó, y el reintento sí lo detecta con el mensaje correcto de CURP.
+
+### Tests
+
+3 en `admission.infrastructure.web.GlobalExceptionHandlerTest`: el código nuevo
+es reintentable y distinto del de duplicado, el mensaje no acusa los datos, y no
+filtra el nombre del índice. Suite completa: **1042**, 0 fallos.
+
+---
+
+## [2026-09-30] La validación anidada de `POST /candidates` no se ejecutaba
+
+Commit: pendiente.
+
+### Por qué
+
+`RegisterCandidateRequest` anotaba sus 7 records anidados con `@NotNull` pero
+**sin `@Valid`**, y ni siquiera importaba `jakarta.validation.Valid`. Sin
+`@Valid`, Hibernate Validator no desciende al objeto anidado (JSR-380 §5.7.1), así
+que las **16 anotaciones** `@NotBlank`/`@NotNull` de los records hijos eran
+**código muerto**.
+
+Seis de esos campos caen en columnas `NOT NULL` reales (`person.curp`,
+`person.first_name`, `person.last_name1`, `person_address.street`,
+`person_address.exterior_number`, `person_address.postal_code`), así que omitirlos
+dejaba que el `null` llegara hasta la base. El `INSERT` se difiere al commit, MySQL
+lo rechaza, y el `DataIntegrityViolationException` caía en el catch-all de
+`identity/GlobalExceptionHandler` — un **500 "intenta más tarde"** para lo que es un
+problema de datos del cliente.
+
+Lo que lo escondía: `school_city` (vía `ciudadPreparatoria`) era el único campo sin
+anotación, y por eso fue el único que se notó. Los otros seis tienen el `@NotBlank`
+puesto, así que leer el DTO da la impresión de que están validados.
+
+### Qué cambió
+
+- `@Valid` en los 7 componentes del record raíz, e `import jakarta.validation.Valid`.
+- Las 16 anotaciones anidadas (y los 7 `@NotNull` de la raíz) llevan ahora
+  `message` en español. **No hay bundle de locale en el repo**, así que sin
+  `message` el 400 salía como `"must not be blank"` en inglés; se sigue la
+  convención ya usada en `FichaPaymentAccessRequest` y `CreateRoleRequest`.
+- `HighSchoolBackground` normaliza `schoolCity` a `""`. **No se rechaza con 400**:
+  una escuela en México legítimamente no tiene ciudad capturable (el wizard solo
+  pinta ese input cuando el bachillerato fue en el extranjero), y así lo confirman
+  las 5 filas existentes.
+- `identity.GlobalExceptionHandler`: `DataIntegrityViolationException` → `400`, como
+  red para cualquier constraint no previsto. El mensaje es genérico a propósito: el
+  texto de la excepción trae tabla y columna, y filtrarlas expone el esquema.
+- `admission.GlobalExceptionHandler`: `DuplicateKeyException` → `409` con
+  `ADMISSION_CANDIDATE_ALREADY_EXISTS`. Esto cierra una carrera real: el
+  pre-chequeo `findByCurp` es read-then-write sin lock, así que dos registros
+  simultáneos con el mismo CURP pasaban ambos el chequeo y el segundo terminaba en
+  500 en vez del 409 que el código ya preveía.
+- `Candidate.folio` pasa a `@Column(unique = true)`. `generateFolio()` usa
+  `count(prefix) + 1`, también read-then-write, y sin el índice dos registros
+  simultáneos sacaban el mismo folio **en silencio** — la peor falla posible,
+  porque el folio es la llave con la que el Aspirante vuelve a pagar.
+
+### Notas
+
+- El índice se aplicó y verificó en `sisa` (cero folios duplicados en 5 candidatos).
+  Para los demás ambientes está `sql/2026-09-30-candidate-folio-unique.sql`, porque
+  `ddl-auto=update` solo lo crea en desarrollo.
+- **Sin cambios en FRONT**: el wizard ya gatea con validación de cliente, así que
+  los 16 campos siempre llegan poblados y ningún registro legítimo se rompe.
+- Sin commit.
+
+---
+
+## [2026-09-30] El rechazo por cupo ya no publica el tamaño del cupo
+
+Commit: pendiente.
+
+### Por qué
+
+El único mensaje que un Aspirante lee cuando su carrera se llenó era
+`"Esta carrera alcanzó su cupo de N fichas."`. El número se quita: no hay
+lugar, y es el Aspirante tiene que poder entender **por qué** su pago no se
+puede iniciar.
+
+Un número al lado de un tope invita la única pregunta que el sistema no puede
+contestar — *"¿entonces cuándo se libera un lugar?"* — porque el cupo es un
+tope y **no hay cola**: nadie programa una liberación, así que "intenta más
+tan pronto" sería una promesa que el código no puede cumplir. Antes de este
+cambio el texto ya prometía explícitamente que un lugar se liberaba si quien
+lo tomó dejaba vencer su ventana, lo cual describía una lista de espera
+inexistente.
+
+La redacción anterior tampoco decía **qué** llenó el cupo, y eso se conserva:
+el conteo incluye checkouts en vuelo, así que afirmar que le ganaste a quienes
+ya pagaron sería falso cada vez que el último lugar sigue moviéndose.
+
+### Nuevo texto
+
+```
+El cupo de esta carrera se agotó.
+```
+
+### Impacto en API
+
+Ninguno en el contrato: `409` y el código `ADMISSION_QUOTA_REACHED` quedan
+igual, y `message` sigue siendo la frase del backend en texto plano. Lo que
+cambia es `message`. El front lo muestra textual y su propio componente
+(`PagoNoDisponibleNotice`) está escrito para eso: *"Si el backend se equivoca
+en el texto, el arreglo es en el backend, no aquí."*
+
+Un integrador que comparara el mensaje contra un patrón con el número verá
+cambiar la cadena. Es intencional.
+
+### Archivos modificados
+
+- `CheckoutSlotClaimer`: `quotaReachedMessage()` deja de recibir `maxCandidates`.
+  El mensaje ya no es función del cupo, y con él se va la rama de
+  singular/plural que solo existía para imprimir `"1 ficha"` contra
+  `"N fichas"`. **`QuotaState.maxCandidates()` no cambia**: sigue siendo lo que
+  la comparación de la línea anterior evalúa.
+- `CheckoutSlotClaimerTest`: el mensaje se pinea completo, para que reintroducir
+  el número rompa la compilación del test. Se elimina
+  `theFullQuotaMessageIsSingularForASinglePlace`, que ya no tiene variante
+  gramatical que verificar.
+- `InitiateFichaPaymentUseCaseImplTest` y `GlobalExceptionHandlerTest`
+  (admisión): fixtures que traían el texto viejo inventado.
+
+### Pruebas
+
+`mvn test`: **1026 en verde** (eran 1027; la diferencia es el test del
+singular que se eliminó).
+
+---
+
 ## [2026-09-28] El tipo ADMISSION: la ficha deja de pedir prestado ENROLLMENT
 
 Commit: `19ead19`.
