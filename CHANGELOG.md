@@ -6,7 +6,7 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ## [2026-09-30] El barrido nocturno: lo que el navegador no resolvió, lo responde el banco
 
-Commit: pendiente.
+Commit: `e9f0725`.
 
 ### Qué se agrega
 
