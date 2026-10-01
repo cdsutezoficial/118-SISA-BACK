@@ -177,6 +177,34 @@ class CandidateFichaPdfServiceTest {
 	}
 
 	/**
+	 * A ficha nobody has started paying for has no order, and the row has to go with
+	 * it.
+	 *
+	 * <p>The order id is {@code null} for every candidate between registering and
+	 * clicking "Pagar" — which is exactly who this PDF is printed for. Asserting the
+	 * absence, and not just that the render succeeds, is what pins it: a placeholder
+	 * or a bare "null" would satisfy {@link #rendersMinimalFichaWithoutFailing()} and
+	 * still tell the applicant at the window that something went missing. The
+	 * counterpart is asserted by
+	 * {@link #rendersFullPaso4FichaWithResolvedLabelsAndPayment()}, so the row cannot
+	 * simply have been dropped for good.
+	 */
+	@Test
+	void omitsTheEvoOrderRowWhenNoCheckoutWasEverStarted() throws Exception {
+		byte[] pdf = service.render(minimalFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			String text = text(reader);
+			assertFalse(text.contains("Orden de pago"),
+					"a ficha with no order must not carry an empty order row");
+			assertFalse(text.contains("null"),
+					"the missing order must be omitted, not printed as null");
+			assertTrue(text.contains("Referencia de pago"),
+					"the row that exists must still be printed");
+		}
+	}
+
+	/**
 	 * No closing date on the concept means the period has no end, so the row is
 	 * dropped. A dashed "Fecha límite de pago: -" would instead read as a date
 	 * that went missing, which is a different and wrong story.

@@ -4,9 +4,51 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
-## [2026-09-30] La ficha vence cuando cierra el proceso, no solo a los 10 días
+## [2026-09-30] Tres pruebas para el re-precio de la ficha y el reintento de cobro
 
 Commit: pendiente.
+
+### Qué cambia
+
+Solo pruebas. La producción de la Fase 3 ya estaba y estos tres tests son lo que la
+protege.
+
+### Por qué faltaban
+
+El re-precio vive en `CheckoutSlotClaimer#claim`, no en
+`InitiateFichaPaymentUseCaseImpl`. Eso dejó la regla partida en dos mitades que nunca
+se juntaron: el test del use case comprobaba que al *claimer mock* le llegaba el monto
+vivo, y el test del claimer comprobaba que `save` escribía el monto vivo. Si alguien
+borraba la llamada a `reprice()`, las dos mitades seguían en verde.
+
+### Qué fijan
+
+- **`theFichaItselfIsRepricedToTheLiveTariffBeforeEvoIsAsked`** — un checkout con el
+  claimer real y la fila registrada en 500.00 termina guardando 550.00 en **esa misma
+  fila**, y es el mismo 550.00 que ve el banco. El hilo completo, no las mitades.
+  Importa porque la confirmación después compara la captura del banco contra
+  `admission_payment.amount`: un 500.00 viejo ahí rechazaría todos los pagos legítimos
+  de una carrera que cambió de precio.
+- **`aRetryReusesThePaymentRowAndAppendsASecondAttempt`** — dos checkouts de la misma
+  ficha dejan **una sola fila de pago** (las cuatro escrituras son la misma instancia)
+  y **dos `CheckoutAttempt` abiertos** con `orderId` distinto. La fila de pago queda
+  con la orden más reciente —la que la confirmation va a verificar—, pero el historial
+  conserva las dos, que es lo que permite reconciliar contra el banco la orden que la
+  applicant sí abandonó. La unicidad de `order_id` es una restricción de base y no se
+  puede probar aquí; lo que este test fija es la conducta que la hace satisfacible.
+- **`omitsTheEvoOrderRowWhenNoCheckoutWasEverStarted`** — el PDF de quien todavía no
+  ha empezado a pagar no lleva la fila "Orden de pago (EVO)", ni como texto vacío ni
+  como `null`. `orderId` es `null` entre que alguien se registra y pulsa "Pagar", que
+  es justo para quien se imprime esta ficha. El positivo ya lo cubría el test de la
+  ficha completa, así que la fila no puede haberse eliminado de plano.
+
+1086 tests verdes.
+
+---
+
+## [2026-09-30] La ficha vence cuando cierra el proceso, no solo a los 10 días
+
+Commit: `42427c1`.
 
 ### Qué cambia
 

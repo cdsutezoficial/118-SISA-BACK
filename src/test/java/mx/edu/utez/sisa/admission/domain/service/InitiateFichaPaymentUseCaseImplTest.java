@@ -4,10 +4,13 @@ import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatu
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
@@ -33,6 +36,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -40,6 +44,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -125,6 +130,16 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	@Mock
 	private FichaAmountResolver fichaAmountResolver;
+
+	/**
+	 * Only consulted by the tests that drive a real {@link CheckoutSlotClaimer}
+	 * instead of the mock above.
+	 */
+	@Mock
+	private AdmissionQuotaPort admissionQuotaPort;
+
+	@Mock
+	private CheckoutAttemptRepository checkoutAttemptRepository;
 
 	/**
 	 * Mocked because the point of this class is the use case's own orchestration —
@@ -654,6 +669,131 @@ class InitiateFichaPaymentUseCaseImplTest {
 		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
 				LIVE_AMOUNT.compareTo(order.amount()) == 0));
+	}
+
+	// ── the live tariff reaches the ficha, not just the gateway ──
+
+	/**
+	 * A real claimer, on purpose, because the reprice lives in
+	 * {@code CheckoutSlotClaimer#claim} and not in this use case.
+	 *
+	 * <p>That split is the reason this test exists and why it could not be written
+	 * against the mock the rest of the class uses. {@link #theAmountIsTheOneTheCatalogQuotesAtCheckout()}
+	 * proves the live number reaches the claimer, and
+	 * {@code CheckoutSlotClaimerTest#aFreeSlotIsClaimedAndStamped} proves the claimer
+	 * writes the live number. Both halves pass if the seam between them is broken —
+	 * if the claimer stopped repricing, nothing here would notice, because the mock
+	 * never reprices. What is actually being pinned is the thread: the ficha issued
+	 * at 500.00 is saved at 550.00 by the same checkout, and the order sent to the
+	 * bank is that same 550.00.
+	 *
+	 * <p>The confirmation later compares the bank's capture against
+	 * {@code admission_payment.amount}, so a stale 500.00 there would fail every
+	 * legitimate payment of a re-priced career.
+	 */
+	@Test
+	void theFichaItselfIsRepricedToTheLiveTariffBeforeEvoIsAsked() {
+		AdmissionPayment registeredAtFiveHundred = payment();
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
+				.thenReturn(Optional.of(registeredAtFiveHundred));
+		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(40));
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(any(), any(), any(), anyInt()))
+				.thenReturn(0L);
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+
+		useCaseWithRealClaimer().initiateCheckout(CANDIDATE_ID, null);
+
+		// The row that leaves the backend is the registration row, repriced — not a
+		// second row and not the untouched quote.
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository, times(2)).save(saved.capture());
+		AdmissionPayment stored = saved.getAllValues().get(0);
+		assertThat(saved.getAllValues()).allSatisfy(same ->
+				assertThat(same).isSameAs(registeredAtFiveHundred));
+		assertThat(stored.getAmount()).isEqualByComparingTo(LIVE_AMOUNT);
+		assertThat(stored.getCheckoutClaimedAt()).isNotNull();
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				LIVE_AMOUNT.compareTo(order.amount()) == 0));
+	}
+
+	/**
+	 * The retry case, with the claimer real and the payment row shared.
+	 *
+	 * <p>Two properties are being pinned, and they are separate:
+	 * <ul>
+	 * <li><b>One payment row.</b> Every {@code save} carries the <em>same</em>
+	 * instance the repository handed out, so a second row was never built. The
+	 * registration row is where the receipt, the amount and the estado live; a retry
+	 * that inserted a fresh one would leave the confirmation reading an empty
+	 * payment while the applicant had in fact already paid.</li>
+	 * <li><b>Two attempts, append-only.</b> Each checkout opens its own
+	 * {@code CheckoutAttempt} under its own {@code orderId}, both still open. The
+	 * payment keeps only the latest order, but the history keeps both — that is what
+	 * lets reconciliation ask the bank about the order the applicant actually
+	 * abandoned.</li>
+	 * </ul>
+	 *
+	 * <p>The uniqueness of {@code order_id} itself is a database constraint and is
+	 * not provable here; what a unit test can prove is the behaviour that keeps it
+	 * satisfiable, which is the point of the test.
+	 */
+	@Test
+	void aRetryReusesThePaymentRowAndAppendsASecondAttempt() {
+		AdmissionPayment theRow = payment();
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(theRow));
+		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(40));
+		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(any(), any(), any(), anyInt()))
+				.thenReturn(0L);
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+
+		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = useCaseWithRealClaimer(
+				new OrderIdBuilder("TESTUTEZ", 32));
+
+		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
+		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
+
+		assertThat(first).isNotEqualTo(second);
+
+		// Same instance every time: two claims and two session writes, one row.
+		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
+		verify(admissionPaymentRepository, times(4)).save(saved.capture());
+		assertThat(saved.getAllValues()).allSatisfy(same -> assertThat(same).isSameAs(theRow));
+		// The payment keeps the newest order so the confirmation verifies the order
+		// the applicant is actually returning from.
+		assertThat(theRow.getOrderId()).isEqualTo(second);
+
+		ArgumentCaptor<CheckoutAttempt> attempts = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository, times(2)).save(attempts.capture());
+		List<CheckoutAttempt> history = attempts.getAllValues();
+		assertThat(history).extracting(CheckoutAttempt::getOrderId).containsExactly(first, second);
+		assertThat(history).allSatisfy(attempt -> {
+			assertThat(attempt.isOpen()).isTrue();
+			assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.STARTED);
+			assertThat(attempt.getClosedAt()).isNull();
+		});
+	}
+
+	/**
+	 * The real claimer, wired to the same repositories this class mocks for the
+	 * orchestration tests. Kept separate from {@link #useCase} so the majority of
+	 * the file keeps asserting the use case's own sequence of calls.
+	 */
+	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer() {
+		return useCaseWithRealClaimer(orderIdBuilder);
+	}
+
+	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer(OrderIdBuilder orderIdBuilder) {
+		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, admissionPaymentRepository,
+				candidateRepository, checkoutAttemptRepository, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS);
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+				orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort,
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer);
 	}
 
 	@Test
