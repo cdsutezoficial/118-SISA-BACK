@@ -9,6 +9,9 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseOutcome;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseResult;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
@@ -70,6 +73,9 @@ class CandidateControllerTest {
 
 	@MockitoBean
 	private InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
+
+	@MockitoBean
+	private ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase;
 
 	@MockitoBean
 	private GetCandidateFichaUseCase getCandidateFichaUseCase;
@@ -227,6 +233,80 @@ class CandidateControllerTest {
 				.contentType(MediaType.APPLICATION_JSON).content("{\"orderId\":\"" + ORDER_ID + "\"}"))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.message").value("No existe el candidato: " + ID));
+	}
+
+	// ── release (Fase 4.3: the browser gave up on the session) ──
+
+	/**
+	 * The body carries the outcome and the boolean separately because the portal
+	 * says something different for each: "el lugar es tuyo, reintenta" versus "tu
+	 * dinero ya entró". Collapsing them into one field would force the front to
+	 * guess, which is the failure this endpoint was built to end.
+	 */
+	@Test
+	void releaseReturnsTheGatewayOutcomeAndWhetherTheSlotCameBack() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenReturn(new ReleaseResult(ID, ORDER_ID, ReleaseOutcome.SLOT_RELEASED, true));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
+				.andExpect(jsonPath("$.outcome").value("SLOT_RELEASED"))
+				.andExpect(jsonPath("$.slotReleased").value(true));
+	}
+
+	/** A still-pending payment is a 200 with {@code slotReleased=false}, not an error. */
+	@Test
+	void releaseReportsAStillPendingOrderWithoutFailing() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenReturn(new ReleaseResult(ID, ORDER_ID, ReleaseOutcome.PAYMENT_IN_PROGRESS, false));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.outcome").value("PAYMENT_IN_PROGRESS"))
+				.andExpect(jsonPath("$.slotReleased").value(false));
+	}
+
+	/** Without an {@code orderId} there is no attempt to settle, so nothing is called. */
+	@Test
+	void releaseWithoutOrderIdIs400() throws Exception {
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID)).andExpect(status().isBadRequest());
+		verify(releaseFichaPaymentSlotUseCase, never()).release(any(), any());
+	}
+
+	/** An order id that is not this ficha's is the one abuse the endpoint could suffer. */
+	@Test
+	void releaseWithAnOrderIdFromAnotherFichaIs400() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID)).thenThrow(
+				new InvalidPaymentVerificationException("El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value(
+						"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
+	}
+
+	/** A paid ficha holds its place permanently: 409, never a silent no-op. */
+	@Test
+	void releaseOnAPaidFichaIs409() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenThrow(new CandidateAlreadyPaidException("La ficha del candidato " + ID + " ya estaba pagada."));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isConflict());
+	}
+
+	/**
+	 * The gateway being unreachable is a 502 and changes nothing, so the applicant can
+	 * simply try again — and the daily sweep covers whatever nobody retries.
+	 */
+	@Test
+	void releaseReturns502WhenTheGatewayCannotBeReached() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID)).thenThrow(
+				new EvoPaymentGatewayException("No se pudo contactar al proveedor de pagos (EVO): timeout"));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isBadGateway());
 	}
 
 	// ── payment-access ("vuelve a pagar mi ficha") ──

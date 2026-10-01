@@ -16,6 +16,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
@@ -27,6 +28,8 @@ import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessReque
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.VerifyFichaPaymentRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
@@ -89,6 +92,8 @@ public class CandidateController {
 
 	private final InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
 
+	private final ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase;
+
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
 	private final CandidateFichaMailService fichaMailService;
@@ -101,12 +106,14 @@ public class CandidateController {
 			AccessFichaPaymentUseCase accessFichaPaymentUseCase,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase,
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
+			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
+		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
@@ -187,6 +194,33 @@ public class CandidateController {
 		String returnPath = request == null ? null : request.returnPath();
 		return ResponseEntity
 				.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath)));
+	}
+
+	/**
+	 * Gives the quota slot back when the applicant's browser gave up on the hosted
+	 * checkout — the {@code onEvoTimeout} / {@code onEvoError} callbacks of
+	 * {@code useFichaPayment.ts}. Before this existed the browser cleaned up locally
+	 * and told the backend nothing, so the slot stayed held and the next "Pagar" on
+	 * that career was refused for a place the applicant had already released.
+	 *
+	 * <p>Despite the name and the caller, <b>this endpoint does not believe the
+	 * caller</b>. A browser timeout and a browser error are both compatible with an
+	 * order that exists and was captured moments later, so the body is treated as a
+	 * question and {@code Retrieve Order} answers it; the slot comes back only when
+	 * the bank proves nothing was captured. Anything else — still pending, captured,
+	 * or the undiagnosable {@code SUCCESS} with no capture — returns
+	 * {@code slotReleased=false} and leaves the attempt open for the daily sweep.
+	 *
+	 * <p>{@code 404} if there is no ficha, {@code 409} if it is already paid,
+	 * {@code 400} if the {@code orderId} is absent or is not this ficha's, and
+	 * {@code 502} if the gateway could not be reached — in which case nothing changed
+	 * and the applicant may simply try again.
+	 */
+	@PostMapping("/{id}/payments/release")
+	public ResponseEntity<ReleaseFichaPaymentResponse> releasePaymentSlot(@PathVariable UUID id,
+			@Valid @RequestBody ReleaseFichaPaymentRequest request) {
+		return ResponseEntity.ok(ReleaseFichaPaymentResponse
+				.from(releaseFichaPaymentSlotUseCase.release(id, request.orderId())));
 	}
 
 	/**

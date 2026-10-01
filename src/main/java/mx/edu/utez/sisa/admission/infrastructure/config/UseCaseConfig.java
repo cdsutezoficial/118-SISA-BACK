@@ -18,6 +18,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
@@ -42,6 +43,7 @@ import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImp
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.InitiateFichaPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ReleaseFichaPaymentSlotUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.OrderIdBuilder;
@@ -243,6 +245,21 @@ public class UseCaseConfig {
 	 * proxy) the allowlist entries are prefixed with it, taken from the path of
 	 * {@code frontend-base-url}, and the front sends the full browser path.
 	 */
+	/**
+	 * The slot release the portal asks for when the browser reports a timeout or an
+	 * error. It reuses {@link CheckoutSlotClaimer} for the write because the claim
+	 * has to be released in its own transaction, committed before this use case
+	 * returns — not because the release is the claimer's job to decide, which it is
+	 * not: the decision comes from {@code Retrieve Order}.
+	 */
+	@Bean
+	public ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase(
+			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			CheckoutSlotClaimer checkoutSlotClaimer) {
+		return new ReleaseFichaPaymentSlotUseCaseImpl(admissionPaymentRepository, evoPaymentsGateway,
+				checkoutSlotClaimer);
+	}
+
 	@Bean
 	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,

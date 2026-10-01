@@ -4,9 +4,74 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
-## [2026-09-30] Tres pruebas para el re-precio de la ficha y el reintento de cobro
+## [2026-09-30] Endpoint de liberación: el navegador avisa cuando el Aspirante abandona el pago
 
 Commit: pendiente.
+
+### Qué cambia
+
+`POST /candidates/{id}/payments/release` (`permitAll`, como los demás endpoints del
+portal). Lo llama el front en `onEvoError` y `onEvoTimeout`, que hasta ahora solo
+limpiaban estado local.
+
+- `ReleaseFichaPaymentSlotUseCase` + `ReleaseFichaPaymentSlotUseCaseImpl`.
+- `ReleaseFichaPaymentRequest` / `ReleaseFichaPaymentResponse`.
+- `ReleaseOutcome`: `SLOT_RELEASED`, `PAYMENT_IN_PROGRESS`, `PAYMENT_CAPTURED`,
+  `RETAINED_UNEXPLAINED`.
+
+### Qué estaba roto
+
+El navegador le avisaba al Aspirante de que su sesión había expirado, pero el backend
+no se enteraba. El lugar del cupo seguía apartado: la siguiente persona que pulsaba
+"Pagar" en esa carrera recibía "El cupo de esta carrera se agotó" por un lugar que el
+primer Aspirante ya había soltado. Y el primero tampoco podía pagar aunque quedara
+sitio, porque el suyo seguía tomado.
+
+### Lo importante: el endpoint no le cree al navegador
+
+El nombre y el llamador invitan a soltar el lugar porque el navegador dijo que se
+rindió. **Eso sería un oversell.** Un timeout es el fallo ambiguo por definición: la
+petición pudo haber llegado a EVO y ser capturada un segundo después, aunque la
+respuesta se perdiera. Liberar sobre la palabra del navegador entregaría el último
+lugar de una carrera a otra persona mientras el dinero de la primera está en camino.
+
+Así que el cuerpo es una **pregunta**, y `Retrieve Order` la responde. Se aplica la
+misma tabla de §6 que usará el barrido, y solo una fila escribe:
+
+| Retrieve Order | Lugar | `outcome` |
+|---|---|---|
+| `FAILURE` o nodo `error`, sin captura | **se suelta** | `SLOT_RELEASED` |
+| capturó dinero | se queda | `PAYMENT_CAPTURED` |
+| `SUCCESS` sin captura | se queda | `RETAINED_UNEXPLAINED` |
+| `PENDING` / desconocido | se queda | `PAYMENT_IN_PROGRESS` |
+
+Tres consecuencias de esa tabla:
+
+- **Solo `SLOT_RELEASED` cierra el intento, y con `REJECTED`.** Los otros tres lo
+  dejan **abierto** a propósito: cerrarlo sobre un "todavía no sabemos" es
+  justamente cómo se pierde una captura que llegó después de la llamada. `REJECTED` y
+  no `SESSION_TIMEOUT`/`ERROR` porque esos registran lo que vio el navegador, y esta
+  fila se cierra con lo que dijo el banco.
+- **La captura gana al veredicto.** Un `FAILURE` que capturó algo no es un rechazo: el
+  dinero entró, el lugar se queda y el barrido marca la ficha pagada.
+- **Un corte de EVO (502) no cambia nada.** Si liberara al salir, un banco
+  inalcanzable sería indistinguible de un rechazo.
+
+Rechazos, todos antes de llamar al gateway: sin ficha 404, ya pagada 409 (una ficha
+pagada ocupa su lugar para siempre), y `orderId` ausente o de otra ficha 400 — esa
+última es la única forma de abuso posible en un endpoint público, y es la que
+obliga a que el orden sea el de la propia ficha en vez de "el último intento".
+
+`slotReleased` viaja aparte de `outcome` porque el caso común es `false` y son
+situaciones opuestas: o el lugar es tuyo y reintentas, o tu dinero ya entró.
+
+1103 tests verdes.
+
+---
+
+## [2026-09-30] Tres pruebas para el re-precio de la ficha y el reintento de cobro
+
+Commit: `0bb1222`.
 
 ### Qué cambia
 
