@@ -9,6 +9,9 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseOutcome;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseResult;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
@@ -70,6 +73,9 @@ class CandidateControllerTest {
 
 	@MockitoBean
 	private InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
+
+	@MockitoBean
+	private ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase;
 
 	@MockitoBean
 	private GetCandidateFichaUseCase getCandidateFichaUseCase;
@@ -229,6 +235,80 @@ class CandidateControllerTest {
 				.andExpect(jsonPath("$.message").value("No existe el candidato: " + ID));
 	}
 
+	// ── release (Fase 4.3: the browser gave up on the session) ──
+
+	/**
+	 * The body carries the outcome and the boolean separately because the portal
+	 * says something different for each: "el lugar es tuyo, reintenta" versus "tu
+	 * dinero ya entró". Collapsing them into one field would force the front to
+	 * guess, which is the failure this endpoint was built to end.
+	 */
+	@Test
+	void releaseReturnsTheGatewayOutcomeAndWhetherTheSlotCameBack() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenReturn(new ReleaseResult(ID, ORDER_ID, ReleaseOutcome.SLOT_RELEASED, true));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
+				.andExpect(jsonPath("$.outcome").value("SLOT_RELEASED"))
+				.andExpect(jsonPath("$.slotReleased").value(true));
+	}
+
+	/** A still-pending payment is a 200 with {@code slotReleased=false}, not an error. */
+	@Test
+	void releaseReportsAStillPendingOrderWithoutFailing() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenReturn(new ReleaseResult(ID, ORDER_ID, ReleaseOutcome.PAYMENT_IN_PROGRESS, false));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.outcome").value("PAYMENT_IN_PROGRESS"))
+				.andExpect(jsonPath("$.slotReleased").value(false));
+	}
+
+	/** Without an {@code orderId} there is no attempt to settle, so nothing is called. */
+	@Test
+	void releaseWithoutOrderIdIs400() throws Exception {
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID)).andExpect(status().isBadRequest());
+		verify(releaseFichaPaymentSlotUseCase, never()).release(any(), any());
+	}
+
+	/** An order id that is not this ficha's is the one abuse the endpoint could suffer. */
+	@Test
+	void releaseWithAnOrderIdFromAnotherFichaIs400() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID)).thenThrow(
+				new InvalidPaymentVerificationException("El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value(
+						"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
+	}
+
+	/** A paid ficha holds its place permanently: 409, never a silent no-op. */
+	@Test
+	void releaseOnAPaidFichaIs409() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID))
+				.thenThrow(new CandidateAlreadyPaidException("La ficha del candidato " + ID + " ya estaba pagada."));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isConflict());
+	}
+
+	/**
+	 * The gateway being unreachable is a 502 and changes nothing, so the applicant can
+	 * simply try again — and the daily sweep covers whatever nobody retries.
+	 */
+	@Test
+	void releaseReturns502WhenTheGatewayCannotBeReached() throws Exception {
+		when(releaseFichaPaymentSlotUseCase.release(ID, ORDER_ID)).thenThrow(
+				new EvoPaymentGatewayException("No se pudo contactar al proveedor de pagos (EVO): timeout"));
+
+		mockMvc.perform(post("/candidates/{id}/payments/release", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"orderId\":\"" + ORDER_ID + "\"}")).andExpect(status().isBadGateway());
+	}
+
 	// ── payment-access ("vuelve a pagar mi ficha") ──
 	private static final String FOLIO = "ADM-2026-000101";
 
@@ -237,8 +317,11 @@ class CandidateControllerTest {
 	/** The registration window's closing day, as stored on the ticket. */
 	private static final LocalDate REGISTRATION_DEADLINE = LocalDate.of(2026, 9, 30);
 
-	/** The tuition concept's {@code available_until}: the date that governs payment. */
+	/** The tuition concept's {@code available_until}: an engine boundary, not the shown date. */
 	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
+
+	/** The date the screen promises: the earlier of the sales window and the ficha plazo. */
+	private static final LocalDate PAYMENT_DEADLINE = LocalDate.of(2026, 9, 28);
 
 	private static PaymentAccess paymentAccess(boolean alreadyPaid) {
 		return new PaymentAccess(ID, FOLIO, "Ana Torres Ramos", "Ing. en Tecnologías de la Información",
@@ -247,7 +330,8 @@ class CandidateControllerTest {
 						: mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
-				PAYMENT_CLOSES_ON);
+				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED,
+				false);
 	}
 
 	@Test
@@ -277,6 +361,7 @@ class CandidateControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"))
 				.andExpect(jsonPath("$.paymentClosesOn").value("2026-10-05"))
+				.andExpect(jsonPath("$.paymentDeadline").value("2026-09-28"))
 				.andExpect(jsonPath("$.deadline").doesNotExist());
 	}
 
@@ -290,12 +375,34 @@ class CandidateControllerTest {
 		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX)).thenReturn(new PaymentAccess(ID, FOLIO,
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
-				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null));
+				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
+				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentClosesOn").isEmpty())
+				.andExpect(jsonPath("$.paymentDeadline").isEmpty())
 				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"));
+	}
+
+	/**
+	 * The flag is what hides the "Pagar" button, so it has to reach the wire. A
+	 * projection that dropped it would leave the screen showing a button the
+	 * checkout refuses with a 409 — the exact defect this field was added for.
+	 */
+	@Test
+	void paymentAccessExposesTheExpiredFlagAndCandidateStatus() throws Exception {
+		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX))
+				.thenReturn(new PaymentAccess(ID, FOLIO, "Ana Torres Ramos", "Ing. en TIC", new BigDecimal("500.00"),
+						"REF-20260924-000101", REGISTRATION_DEADLINE,
+						mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false,
+						PAYMENT_CLOSES_ON, PAYMENT_DEADLINE,
+						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true));
+
+		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentExpired").value(true))
+				.andExpect(jsonPath("$.candidateStatus").value("PAYMENT_EXPIRED"));
 	}
 
 	@Test

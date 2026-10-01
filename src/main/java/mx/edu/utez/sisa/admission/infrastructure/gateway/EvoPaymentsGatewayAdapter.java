@@ -101,7 +101,14 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		}
 		log.info("EVO: orden {} verificada (result={}, status={}, autenticación={})", orderId, res.result(), res.status(),
 				res.authenticationStatus());
-		return new EvoOrderStatus(orderId, res.result(), res.amount());
+		// Only a real `error` node becomes the error line. `status` is NOT used as a
+		// fallback: it belongs to the EVO layer, is absent from the documented
+		// Retrieve Order fields, and inventing an error out of it would make the sweep
+		// treat an ordinary in-progress state as a refusal.
+		String errorStr = res.error() == null ? null : describeError(res.error());
+		return new EvoOrderStatus(orderId, res.result(), res.amount(), res.totalAuthorizedAmount(),
+				res.totalCapturedAmount(), res.totalDisbursedAmount(), res.totalRefundedAmount(),
+				res.creationTime(), res.lastUpdatedTime(), errorStr);
 	}
 
 	/**
@@ -168,6 +175,11 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 			if (!detail.isBlank()) {
 				return detail;
 			}
+			// No cause/explanation text: `supportCode` is the one field that still
+			// identifies the failure to whoever has to look it up.
+			if (info.supportCode() != null && !info.supportCode().isBlank()) {
+				return "el proveedor no aceptó la operación (" + info.supportCode() + ")";
+			}
 		}
 		return "el proveedor no aceptó la operación";
 	}
@@ -230,13 +242,33 @@ public class EvoPaymentsGatewayAdapter implements EvoPaymentsGatewayPort {
 		}
 	}
 
-	/** Flat {@code RETRIEVE_ORDER} response (no nested {@code order} node). */
+	/**
+	 * Flat {@code RETRIEVE_ORDER} response (no nested {@code order} node). Field set
+	 * per {@code Referencias de API.txt} (the flat Retrieve Order section): every one
+	 * of {@code totalAuthorizedAmount}, {@code totalCapturedAmount},
+	 * {@code totalDisbursedAmount}, {@code totalRefundedAmount}, {@code creationTime}
+	 * and {@code lastUpdatedTime} is ALWAYS PROVIDED, which is what lets the daily
+	 * sweep decide with real data instead of guessing from {@code result} alone.
+	 *
+	 * <p>{@code gatewayCode} is deliberately absent: it belongs to the transaction
+	 * responses ({@code Authorize}, {@code Pay}, {@code Capture}, {@code Verify}) and
+	 * to Retrieve Transaction — different endpoints, unreachable from an
+	 * {@code orderId}. That is why a {@code SUCCESS} with no capture is retained rather
+	 * than investigated: there is no field that says why.
+	 */
 	private record OrderRetrieveResponse(String result, String id, BigDecimal amount, String currency, String status,
 			String reference, String authenticationStatus, String authenticationVersion,
-			BigDecimal totalAuthorizedAmount, BigDecimal totalCapturedAmount, ErrorInfo error) {
+			BigDecimal totalAuthorizedAmount, BigDecimal totalCapturedAmount, BigDecimal totalDisbursedAmount,
+			BigDecimal totalRefundedAmount, String creationTime, String lastUpdatedTime, ErrorInfo error) {
 	}
 
-	private record ErrorInfo(String cause, String explanation) {
+	/**
+	 * {@code error} node of a gateway response. {@code cause} and {@code explanation}
+	 * are the two fields the reference documents as readable text; {@code supportCode}
+	 * and {@code field} are kept so a diagnosis is not thrown away, but they are not
+	 * surfaced in {@code EvoOrderStatus.error}, which carries one human-readable line.
+	 */
+	private record ErrorInfo(String cause, String explanation, String supportCode, String field) {
 	}
 
 	private record ErrorBody(ErrorInfo error) {

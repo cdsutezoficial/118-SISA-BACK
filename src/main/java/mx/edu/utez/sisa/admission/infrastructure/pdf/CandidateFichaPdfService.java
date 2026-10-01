@@ -13,8 +13,8 @@ import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.lowagie.text.pdf.RGBColor;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import org.springframework.stereotype.Component;
@@ -182,21 +182,31 @@ public class CandidateFichaPdfService {
 		PdfPTable table = sectionTable();
 		pagoRow(table, "Folio", ficha.folio());
 		pagoRow(table, "Carrera", ficha.programName());
-		pagoRow(table, "Monto a pagar", ficha.amount());
-		pagoRow(table, "Referencia de pago", ficha.referenceNumber());
-		// Two rows, not one, and neither may borrow the other's label. The PDF is
-		// what the applicant carries to ventanilla, so a date printed under the
-		// wrong name is the version that ends up argued about at the window. The
-		// registration window explains why the ficha stops being issuable; the
-		// payment window is the one that decides whether the money still goes in.
-		pagoRow(table, "Fecha límite de inscripción", ficha.registrationDeadline());
-		// The payment row is omitted rather than dashed when the concept has no
-		// closing date: a printed "Fecha límite de pago: -" reads as a date that
-		// got lost, whereas an absent row just means that period has no end.
-		if (ficha.paymentClosesOn() != null) {
-			pagoRow(table, "Fecha límite de pago", ficha.paymentClosesOn());
+		// Live price: the catalog can be re-priced after the ficha was issued.
+		// Omitted when the program has no price today rather than printed as "-",
+		// which would read as a number that got lost.
+		if (ficha.amount() != null) {
+			pagoRow(table, "Monto a pagar", ficha.amount());
 		}
-		pagoRow(table, "Estado de pago", ficha.paymentStatus().name());
+		pagoRow(table, "Referencia de pago", ficha.referenceNumber());
+		// The registration row explains why the ficha stops being issuable; the
+		// payment row below is the one the applicant is asked to act on. Neither
+		// may borrow the other's label: this PDF is what is carried to
+		// ventanilla, so a date printed under the wrong name is the version that
+		// ends up argued about at the window.
+		pagoRow(table, "Fecha límite de inscripción", ficha.registrationDeadline());
+		// "Fecha límite de pago" is the ficha's visible plazo (the earlier of the
+		// sales window and registeredAt + N), not the concept's available_until:
+		// the applicant can act on the former, while the latter moves with the
+		// catalog and is the engine's business. It is shown only when it differs
+		// from the registration row above — printing the same day twice under two
+		// labels is what made the old ficha look wrong.
+		if (ficha.paymentDeadline() != null && !ficha.paymentDeadline().equals(ficha.registrationDeadline())) {
+			pagoRow(table, "Fecha límite de pago", ficha.paymentDeadline());
+		}
+		// The enum goes through text(), never .name(): this document is carried to
+		// ventanilla and read at home, so the status is a state, not a column.
+		pagoRow(table, "Estado de pago", ficha.paymentStatus());
 		if (ficha.receiptNumber() != null) {
 			pagoRow(table, "Recibo", ficha.receiptNumber());
 			pagoRow(table, "Fecha de pago", ficha.paidAt());
@@ -383,8 +393,8 @@ public class CandidateFichaPdfService {
 		if (value instanceof MaritalStatus maritalStatus) {
 			return maritalStatusLabel(maritalStatus);
 		}
-		if (value instanceof EmploymentType employmentType) {
-			return employmentTypeLabel(employmentType);
+		if (value instanceof AdmissionPaymentStatus paymentStatus) {
+			return paymentStatusLabel(paymentStatus);
 		}
 		if (value instanceof String string) {
 			return string.isEmpty() ? "-" : string;
@@ -411,10 +421,10 @@ public class CandidateFichaPdfService {
 		};
 	}
 
-	private static String employmentTypeLabel(EmploymentType employmentType) {
-		return switch (employmentType) {
-			case PERMANENT -> "Permanente";
-			case TEMPORARY -> "Temporal";
+	private static String paymentStatusLabel(AdmissionPaymentStatus paymentStatus) {
+		return switch (paymentStatus) {
+			case PENDING -> "Pendiente";
+			case PAID -> "Pagado";
 		};
 	}
 }

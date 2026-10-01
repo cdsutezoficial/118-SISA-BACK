@@ -16,6 +16,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
@@ -27,10 +28,11 @@ import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessReque
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.VerifyFichaPaymentRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import org.springframework.http.HttpHeaders;
@@ -57,18 +59,18 @@ import java.util.UUID;
  * {@code identity.SecurityFilterConfig} grants {@code POST /candidates},
  * the ficha read/PDF and the payment endpoints {@code permitAll} (the
  * applicant has no session); every admin-facing endpoint stays on the
- * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
- *
- * <p>This controller is the WEB layer's translation boundary: it maps the
+* {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
+  *
+  * <p>This controller is the WEB layer's translation boundary: it maps the
  * frontend ficha payload ({@code RegisterCandidateRequest}, string-typed:
  * {@code fechaNacimiento} {@code dd/MM/yyyy}, {@code sexo}
  * {"Femenino"/"Masculino"/"Hombre"/"Mujer"}, {@code estadoCivil}
- * {"Soltero/a", …}, {@code tipoTrabajo} {"Tiempo completo"/"Medio tiempo"},
- * {@code horaInicio}/{@code horaFin} {@code HH:mm}, {@code cctConfirmacion})
- * into the enum-typed domain command ({@code Gender}, {@code MaritalStatus},
- * {@code EmploymentType}, {@code LocalDate}/{@code LocalTime},
- * {@code cctConfirmed}), keeping the domain port purist. String→enum and
- * text→date/time mappings live HERE, not in {@code RegisterCandidateUseCaseImpl}.
+ * {"Soltero/a", …}, {@code tipoTrabajo} free text, {@code horaInicio}/{@code
+ * horaFin} {@code HH:mm}, {@code cctConfirmacion}) into the typed domain
+ * command ({@code Gender}, {@code MaritalStatus}, {@code LocalDate}/{@code
+ * LocalTime}, {@code cctConfirmed}), keeping the domain port purist.
+ * String→enum and text→date/time mappings live HERE, not in
+ * {@code RegisterCandidateUseCaseImpl}.
  *
  * <p>The {@code promo} field is deliberately not included: {@code modalidad}
  * is defined by the chosen program, not stored on {@code Candidate}
@@ -90,6 +92,8 @@ public class CandidateController {
 
 	private final InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
 
+	private final ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase;
+
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
 	private final CandidateFichaMailService fichaMailService;
@@ -102,12 +106,14 @@ public class CandidateController {
 			AccessFichaPaymentUseCase accessFichaPaymentUseCase,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase,
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
+			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
+		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
@@ -191,6 +197,33 @@ public class CandidateController {
 	}
 
 	/**
+	 * Gives the quota slot back when the applicant's browser gave up on the hosted
+	 * checkout — the {@code onEvoTimeout} / {@code onEvoError} callbacks of
+	 * {@code useFichaPayment.ts}. Before this existed the browser cleaned up locally
+	 * and told the backend nothing, so the slot stayed held and the next "Pagar" on
+	 * that career was refused for a place the applicant had already released.
+	 *
+	 * <p>Despite the name and the caller, <b>this endpoint does not believe the
+	 * caller</b>. A browser timeout and a browser error are both compatible with an
+	 * order that exists and was captured moments later, so the body is treated as a
+	 * question and {@code Retrieve Order} answers it; the slot comes back only when
+	 * the bank proves nothing was captured. Anything else — still pending, captured,
+	 * or the undiagnosable {@code SUCCESS} with no capture — returns
+	 * {@code slotReleased=false} and leaves the attempt open for the daily sweep.
+	 *
+	 * <p>{@code 404} if there is no ficha, {@code 409} if it is already paid,
+	 * {@code 400} if the {@code orderId} is absent or is not this ficha's, and
+	 * {@code 502} if the gateway could not be reached — in which case nothing changed
+	 * and the applicant may simply try again.
+	 */
+	@PostMapping("/{id}/payments/release")
+	public ResponseEntity<ReleaseFichaPaymentResponse> releasePaymentSlot(@PathVariable UUID id,
+			@Valid @RequestBody ReleaseFichaPaymentRequest request) {
+		return ResponseEntity.ok(ReleaseFichaPaymentResponse
+				.from(releaseFichaPaymentSlotUseCase.release(id, request.orderId())));
+	}
+
+	/**
 	 * Full ficha projection for the screen refresh / direct-open case (the
 	 * ficha route is only reachable via {@code navigate} state today; a reload
 	 * loses it, so the frontend re-fetches by {@code id}).
@@ -255,7 +288,11 @@ public class CandidateController {
 	}
 
 	private static Ingresos toIngresos(RegisterCandidateRequest.Ingresos i) {
-		return new Ingresos(i.ingresoMensualFamiliar(), i.trabaja(), toEmploymentType(i.tipoTrabajo()),
+		// tipoTrabajo travels as written. It used to go through toEmploymentType(),
+		// which returned null for anything that was not "tiempo completo"/"medio
+		// tiempo" — silently voiding "Freelance", "Negocio propio" and every word
+		// the free-text field accepts. The field is free text on purpose now.
+		return new Ingresos(i.ingresoMensualFamiliar(), i.trabaja(), trimToNull(i.tipoTrabajo()),
 				i.telefonoTrabajo(), i.ingresoMensual(), i.nombreEmpresa(), i.puesto(), parseTime(i.horaInicio()),
 				parseTime(i.horaFin()));
 	}
@@ -332,20 +369,16 @@ public class CandidateController {
 	}
 
 	/**
-	 * Maps the front's {@code tipoTrabajo} labels — "Tiempo completo" →
-	 * {@code PERMANENT}, "Medio tiempo" → {@code TEMPORARY}, anything else →
-	 * {@code null} (EmploymentType is nullable).
+	 * Trims and nulls out a blank free-text field. The enrollment wizard sends
+	 * {@code ''} for the employment fields it never rendered, and storing ""
+	 * would print as a filled-in value on the PDF instead of "-".
 	 */
-	private static EmploymentType toEmploymentType(String value) {
+	private static String trimToNull(String value) {
 		if (value == null) {
 			return null;
 		}
-		String normalized = normalize(value);
-		return switch (normalized) {
-			case "tiempo completo", "trabajo de tiempo completo" -> EmploymentType.PERMANENT;
-			case "medio tiempo", "trabajo de medio tiempo" -> EmploymentType.TEMPORARY;
-			default -> null;
-		};
+		String trimmed = value.trim();
+		return trimmed.isEmpty() ? null : trimmed;
 	}
 
 	private static String normalize(String value) {

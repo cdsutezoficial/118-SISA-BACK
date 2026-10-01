@@ -19,7 +19,7 @@ import java.util.UUID;
  * {@code AdmissionPayment} per {@code Candidate} for the ADMISSION_FICHA
  * concept).
  *
- * <p>Occupancy queries ({@code countOccupiedByProgramId} and its
+ * <p>Occupancy queries ({@code countOccupiedByConfigId} and its
  * self-excluding variant) come from {@link AdmissionPaymentOccupancyQueries},
  * which this repository extends: the dropdown and the checkout claim have to
  * agree on what "full" means, so the JPQL is defined once.

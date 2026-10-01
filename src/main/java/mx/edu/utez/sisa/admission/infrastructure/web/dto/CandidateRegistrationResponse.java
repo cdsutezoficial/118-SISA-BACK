@@ -28,9 +28,13 @@ public record CandidateRegistrationResponse(UUID id, UUID personId, UUID admissi
 	 * {@code paymentClosesOn} is when the tuition concept stops accepting
 	 * payment (live, and enforced). The old single {@code deadline} was the
 	 * former while the screen labelled it as the latter.
+	 *
+	 * <p>{@code paymentDeadline} is the date the screen states for "Fecha límite
+	 * de pago": the earlier of {@code registrationDeadline} and the ficha's own
+	 * plazo. It is not {@code paymentClosesOn}.
 	 */
 	public record PaymentResponse(String referenceNumber, BigDecimal amount, LocalDate registrationDeadline,
-			AdmissionPaymentStatus status, LocalDate paymentClosesOn) {
+			AdmissionPaymentStatus status, LocalDate paymentClosesOn, LocalDate paymentDeadline) {
 	}
 
 	public static CandidateRegistrationResponse from(
@@ -40,6 +44,6 @@ public record CandidateRegistrationResponse(UUID id, UUID personId, UUID admissi
 				result.folio(), result.status(), result.llaveMxVerified(), result.registeredAt(),
 				result.isFirstChoice(), result.outreachChannelId(), result.isEnabledForInduction(),
 				new PaymentResponse(payment.referenceNumber(), payment.amount(), payment.registrationDeadline(),
-						payment.paymentStatus(), payment.paymentClosesOn()));
+						payment.paymentStatus(), payment.paymentClosesOn(), payment.paymentDeadline()));
 	}
 }

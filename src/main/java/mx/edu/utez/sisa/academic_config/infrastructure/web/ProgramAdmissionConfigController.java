@@ -21,7 +21,9 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionC
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionConfigListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionConfigResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateProgramAdmissionConfigRequest;
+import mx.edu.utez.sisa.admission.domain.service.FichaPaymentWindow;
 import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -88,12 +90,21 @@ public class ProgramAdmissionConfigController {
 	 */
 	private final Clock clock;
 
+	/**
+	 * Days a ficha may take to be paid, the same {@code sisa.admission.payment
+	 * .deadline-days} the registration and the sweep read. The picker's copy of the
+	 * occupancy rule needs it to decide whether an old claim still holds its slot,
+	 * and it has to be the same number or the picker and the checkout disagree.
+	 */
+	private final int fichaDeadlineDays;
+
 	public ProgramAdmissionConfigController(ListProgramAdmissionConfigsUseCase listProgramAdmissionConfigsUseCase,
 			OpenProgramAdmissionUseCase openProgramAdmissionUseCase,
 			GetProgramAdmissionConfigUseCase getProgramAdmissionConfigUseCase,
 			UpdateProgramAdmissionConfigUseCase updateProgramAdmissionConfigUseCase,
 			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase,
-			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository, Clock clock) {
+			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		this.listProgramAdmissionConfigsUseCase = listProgramAdmissionConfigsUseCase;
 		this.openProgramAdmissionUseCase = openProgramAdmissionUseCase;
 		this.getProgramAdmissionConfigUseCase = getProgramAdmissionConfigUseCase;
@@ -101,6 +112,7 @@ public class ProgramAdmissionConfigController {
 		this.changeProgramAdmissionConfigStatusUseCase = changeProgramAdmissionConfigStatusUseCase;
 		this.programAdmissionConfigJpaRepository = programAdmissionConfigJpaRepository;
 		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 	}
 
 	@PostMapping
@@ -135,11 +147,20 @@ public class ProgramAdmissionConfigController {
 	 * in the server's default zone and the checkout decided the same boundary in
 	 * the admission zone, so a career could appear in the list and be refused by
 	 * the very next screen. One clock, one zone, one answer.
+	 *
+	 * <p>The two cutoffs the occupancy subquery needs are computed by
+	 * {@code FichaPaymentWindow} rather than here, because the checkout's copy of
+	 * that rule needs the identical two values and this controller is not a place
+	 * to keep a second implementation of a date rule alive.
 	 */
 	@GetMapping("/options")
 	public List<OptionResponse> listProgramAdmissionConfigOptions() {
-		Instant now = clock.instant();
-		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(now, LocalDate.now(clock)).stream()
+		LocalDate today = LocalDate.now(clock);
+		Instant midnightToday = FichaPaymentWindow.startOfDay(today, clock.getZone());
+		Instant registeredNoLaterThan = FichaPaymentWindow.latestPayableRegistration(today, fichaDeadlineDays,
+				clock.getZone());
+		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(clock.instant(), registeredNoLaterThan,
+				midnightToday).stream()
 				.map(o -> new OptionResponse(o.getId(), o.getProgramName(), o.getModality().name())).toList();
 	}
 

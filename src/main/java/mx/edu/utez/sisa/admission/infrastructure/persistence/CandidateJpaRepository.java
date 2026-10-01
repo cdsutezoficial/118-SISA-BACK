@@ -1,8 +1,10 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,4 +30,18 @@ public interface CandidateJpaRepository extends JpaRepository<Candidate, UUID> {
 	 * unique business key.
 	 */
 	Optional<Candidate> findByFolio(String folio);
+
+	/**
+	 * Derived query backing the ficha-expiry sweep:
+	 * {@code ExpireStaleFichaPaymentsUseCase} reads the {@code REGISTERED} fichas
+	 * and expires the ones whose private payment window has passed.
+	 */
+	List<Candidate> findAllByStatus(CandidateStatus status);
+
+	/**
+	 * Derived query backing the CURP re-registration lock: registration reads a
+	 * person's fichas and blocks only when one of them is still alive (a
+	 * {@code PAID} ficha, or a {@code REGISTERED} one inside its payment window).
+	 */
+	List<Candidate> findAllByPersonId(UUID personId);
 }

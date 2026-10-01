@@ -38,9 +38,9 @@ public interface AdmissionPaymentRepository {
 	long countPaidByAdmissionConfigId(UUID admissionConfigId);
 
 	/**
-	 * How many of a program's quota slots are taken, counted the way the quota is
-	 * actually enforced: a paid ficha, or a pending one that has claimed a slot at
-	 * checkout while its payment window is still open.
+	 * How many of an admission config's quota slots are taken, counted the way the
+	 * quota is actually enforced: a paid ficha, or a pending one that has claimed
+	 * a slot at checkout while its payment window is still open.
 	 *
 	 * <p>Replaces {@link #countPaidByAdmissionConfigId} as <b>the</b> quota rule.
 	 * Counting only paid fichas was the original bug: the check ran at
@@ -48,18 +48,22 @@ public interface AdmissionPaymentRepository {
 	 * any number of people could register on the same reading of the counter and
 	 * all of them could go on to pay.
 	 *
-	 * <p>Keyed by program, not by config, because the expiry rule reads the
-	 * tuition concept's window, which is found per program. A config belongs to
-	 * exactly one program so the quota a staff member edits and the one enforced
-	 * here stay the same number.
+	 * <p>Keyed by config, matching {@link #countPaidByAdmissionConfigId} and the
+	 * picker's own subquery. It used to be keyed by program, on the reasoning that
+	 * the expiry rule is found per program — true for the <em>price</em>, which the
+	 * query still reads per program, but false for the <em>quota</em>: the same
+	 * program sold in two periods has two quotas, and summing them let a full old
+	 * cycle block the new one.
 	 *
-	 * @param programId the program whose occupied slots are counted
-	 * @param onDate    today, in the admission zone, used for window expiry
+	 * @param admissionConfigId the config whose occupied slots are counted
+	 * @param onDate            today, in the admission zone, used for window expiry
+	 * @param paymentWindowDays days a ficha may take to be paid from the day it was
+	 *                          registered, which is day 0
 	 */
-	long countOccupiedByProgramId(UUID programId, LocalDate onDate);
+	long countOccupiedByConfigId(UUID admissionConfigId, LocalDate onDate, int paymentWindowDays);
 
 	/**
-	 * {@link #countOccupiedByProgramId} minus the requesting candidate's own
+	 * {@link #countOccupiedByConfigId} minus the requesting candidate's own
 	 * ficha.
 	 *
 	 * <p>This is the one the checkout claim must use. A candidate retrying a
@@ -69,9 +73,12 @@ public interface AdmissionPaymentRepository {
 	 * makes the comparison mean "is there room for one more ficha besides the one
 	 * I already hold".
 	 *
-	 * @param programId   the program whose occupied slots are counted
-	 * @param candidateId the candidate whose own ficha is left out
-	 * @param onDate      today, in the admission zone, used for window expiry
+	 * @param admissionConfigId the config whose occupied slots are counted
+	 * @param candidateId       the candidate whose own ficha is left out
+	 * @param onDate            today, in the admission zone, used for window expiry
+	 * @param paymentWindowDays days a ficha may take to be paid from the day it was
+	 *                          registered, which is day 0
 	 */
-	long countOccupiedByProgramIdExcludingCandidate(UUID programId, UUID candidateId, LocalDate onDate);
+	long countOccupiedByConfigIdExcludingCandidate(UUID admissionConfigId, UUID candidateId, LocalDate onDate,
+			int paymentWindowDays);
 }

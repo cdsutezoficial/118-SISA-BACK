@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales;
@@ -39,7 +40,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -91,6 +94,13 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+	/**
+	 * The payment reference is the candidate's folio behind this prefix, and
+	 * nothing else — see {@link #generateReference}. It is the string the payer
+	 * quotes at ventanilla, so its shape is a contract with people, not a detail.
+	 */
+	private static final String REFERENCE_PREFIX = "REF-";
+
 	private final CandidateRepository candidateRepository;
 
 	private final CandidatePersonRepository candidatePersonRepository;
@@ -116,12 +126,21 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 */
 	private final Clock clock;
 
+	/**
+	 * Payment-window length in days (§1.9). This is the <em>same</em> value the
+	 * daily expiry sweep reads, so the lock's notion of "this old ficha is still
+	 * alive" cannot drift from the sweep's notion of "this ficha expired" by a
+	 * configuration change applied to only one of them.
+	 */
+	private final int fichaDeadlineDays;
+
 	public RegisterCandidateUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock) {
+			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock,
+			int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -131,6 +150,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.registrationDate = registrationDate;
 		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 	}
 
 	@Override
@@ -181,11 +201,18 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		return config.closesAt().atZone(clock.getZone()).toLocalDate();
 	}
 
+	/**
+	 * The visible "Fecha límite de pago" handed back with the new ficha: the
+	 * earlier of the sales window's snapshot and the ficha's own registration
+	 * day plus its N-day plazo. Shares the rule the portal and mostrador screens
+	 * use, so the three never disagree.
+	 */
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
+		return FichaPaymentWindow.deadlineOf(candidate, registrationDeadline, fichaDeadlineDays, clock.getZone());
+	}
+
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
-		if (candidatePersonRepository.findByCurp(command.datosGenerales().curp()).isPresent()) {
-			throw new CandidateAlreadyExistsException(
-					"Ya existe una persona registrada con el CURP: " + command.datosGenerales().curp());
-		}
+		validateCurpHasNoLiveFicha(command.datosGenerales().curp());
 
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(command.seleccionCarrera().admissionConfigId())
@@ -211,6 +238,78 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		}
 
 		return config;
+	}
+
+	/**
+	 * The CURP lock is on the <em>ficha</em>, not on the person (§1.10): a person
+	 * may have registered before and come back, so the mere existence of a
+	 * {@code Person} with this CURP proves nothing. What blocks a new registration
+	 * is a <em>live</em> ficha:
+	 *
+	 * <ul>
+	 * <li>{@code PAYMENT_EXPIRED} — the ficha lapsed without payment, the person is
+	 * free again;</li>
+	 * <li>{@code REGISTERED} past its payment window — the same fact stated by the
+	 * clock, before the daily sweep has had a chance to write it down. Reading the
+	 * date here keeps the lock correct in the gap between the deadline and the
+	 * next 00:10 run;</li>
+	 * <li>anything else ({@code PAID}, {@code EXAM_TAKEN}, …) — the person is
+	 * already inside the process and blocks for good.</li>
+	 * </ul>
+	 *
+	 * <p>A person with no fichas at all (a staff {@code Person} row, or a person
+	 * created by another module) is therefore free to register; that is the
+	 * intended change, and the reason the old {@code findByCurp().isPresent()}
+	 * guard is gone.
+	 */
+	private void validateCurpHasNoLiveFicha(String curp) {
+		Optional<Person> person = candidatePersonRepository.findByCurp(curp);
+		if (person.isEmpty()) {
+			return;
+		}
+		LocalDate today = LocalDate.now(clock);
+		for (Candidate previous : candidateRepository.findAllByPersonId(person.get().getId())) {
+			if (previous.getStatus() == CandidateStatus.PAYMENT_EXPIRED) {
+				continue;
+			}
+			if (isWindowOver(previous, today)) {
+				continue;
+			}
+			throw new CandidateAlreadyExistsException(previous.getStatus() == CandidateStatus.REGISTERED
+					? "Este CURP ya tiene una ficha vigente. Podrás registrarte de nuevo si esa ficha vence sin pago."
+					: "Este CURP ya tiene una ficha en el proceso de admisión. No es posible registrar una nueva.");
+		}
+	}
+
+	/**
+	 * Whether a previous ficha's payment window has closed, which is what frees
+	 * its CURP.
+	 *
+	 * <p>The window is the earlier of its own plazo and the closing day of the
+	 * process it belongs to — {@link FichaPaymentWindow#deadlineOf}, the same
+	 * function the daily sweep expires on. Reading only the ficha's own plazo here,
+	 * as this used to, kept a CURP locked for up to ten days after its admission
+	 * process had already closed: the person was told she had to wait for a window
+	 * that no longer existed, and the only thing that would free her was the sweep
+	 * eventually agreeing with the calendar.
+	 *
+	 * <p>Deliberately the same {@link FichaPaymentWindow} call the sweep and the
+	 * checkout gate make. Three copies of "when does a ficha die" is how the
+	 * portal, the checkout and this lock end up giving three different answers to
+	 * the same applicant on the same afternoon.
+	 *
+	 * <p>An unknown config falls back to the ficha's own plazo. That is the
+	 * conservative direction: it keeps the CURP locked a little longer rather than
+	 * releasing it early, and it cannot happen while the config row exists.
+	 */
+	private boolean isWindowOver(Candidate previous, LocalDate today) {
+		if (previous.getStatus() != CandidateStatus.REGISTERED) {
+			return false;
+		}
+		LocalDate closesOn = programAdmissionConfigQueryPort.findById(previous.getAdmissionConfigId())
+				.map(config -> config.closesAt().atZone(clock.getZone()).toLocalDate()).orElse(null);
+		return today.isAfter(
+				FichaPaymentWindow.deadlineOf(previous, closesOn, fichaDeadlineDays, clock.getZone()));
 	}
 
 	/**
@@ -348,14 +447,25 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	}
 
 	/**
-	 * {@code REF-{yyyyMMdd}-{folioSeq}} — deterministic, derived from the
-	 * candidate's folio sequence (matches the frontend mock format
-	 * {@code REF-yyyyMMdd-XXXXXX} so the same reference renders end-to-end).
+	 * {@code REF-{folio}} — {@code REF-ADM-2026-000004}. Pure: no clock, no suffix,
+	 * nothing but the folio the candidate already carries.
+	 *
+	 * <p>It used to be {@code REF-{yyyyMMdd}-{folioSeq}}, and the date in it came
+	 * from a bare {@code LocalDate.now()} — the server's default zone — for a
+	 * string that is quoted at ventanilla and printed on the PDF. That made the
+	 * reference a function of <em>when</em> the ficha was issued instead of
+	 * <em>which</em> ficha it is, so it could not be recomputed anywhere else, and
+	 * two fichas issued the same day on different servers could disagree. Decisión
+	 * 11.1.
+	 *
+	 * <p>It stays unique because the folio is. {@link OrderIdBuilder} keeps its
+	 * random suffix on purpose: a bank order id has to be unique per
+	 * <em>attempt</em>, and two attempts on one ficha share a reference. Splitting
+	 * the two is the point — one is the identity of the row, the other the
+	 * identity of the gateway session.
 	 */
 	private String generateReference(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("REF-%s-%s", today, seq);
+		return REFERENCE_PREFIX + folio;
 	}
 
 	/**
@@ -372,6 +482,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				candidate.isLlaveMxVerified(), candidate.getRegisteredAt(), candidate.isFirstChoice(),
 				candidate.getOutreachChannelId(), candidate.isEnabledForInduction(),
 				new FichaPayment(payment.getReferenceNumber(), payment.getAmount(), payment.getRegistrationDeadline(),
-						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId())));
+						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId()),
+						visiblePaymentDeadline(candidate, payment.getRegistrationDeadline())));
 	}
 }

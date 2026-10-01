@@ -13,6 +13,9 @@ import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.PlaceNameLookupPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
+import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.shared.model.Address;
 import mx.edu.utez.sisa.shared.model.DiversityProfile;
 import mx.edu.utez.sisa.shared.model.EmploymentInfo;
@@ -22,6 +25,8 @@ import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -61,12 +66,16 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 
 	private final FichaAmountResolver fichaAmountResolver;
 
+	private final Clock clock;
+
+	private final int fichaDeadlineDays;
+
 	public GetCandidateFichaUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			FichaAmountResolver fichaAmountResolver) {
+			FichaAmountResolver fichaAmountResolver, Clock clock, int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
@@ -75,6 +84,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.fichaAmountResolver = fichaAmountResolver;
+		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 	}
 
 	@Override
@@ -110,12 +121,23 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		// both windows separately, and the payment one is read live so an
 		// extension granted after the ficha was issued shows up on the reprint.
 		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
+		// What the applicant actually pays by: the earlier of the ficha's own plazo
+		// and the day her admission process closes, read live. The concept's
+		// available_until stays an engine-side boundary (paymentClosesOn above) and
+		// is deliberately NOT the date this screen states.
+		//
+		// The closing date comes from the config, not from the ticket's
+		// registrationDeadline snapshot: staff close a cohort by editing the config,
+		// and a PDF reprint is exactly where a stale promise would do the most damage.
+		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
+				: config.closesAt().atZone(clock.getZone()).toLocalDate();
+		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
 		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName, person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
-				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(), payment.getAmount(),
-				payment.getRegistrationDeadline(), paymentClosesOn, payment.getPaymentStatus(), payment.getReceiptNumber(),
-				payment.getPaidAt(), payment.getOrderId(),
+				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(),
+				liveAmount(config, payment), payment.getRegistrationDeadline(), paymentClosesOn, paymentDeadline,
+				payment.getPaymentStatus(), payment.getReceiptNumber(), payment.getPaidAt(), payment.getOrderId(),
 				new FichaData.DatosGenerales(person.getBirthDate(), person.getGender(), person.getNationality(),
 						resolveState(person.getBirthStateId()), resolveMunicipality(person.getBirthMunicipalityId()),
 						person.getMaritalStatus(), person.getNativeLanguage(), Boolean.TRUE.equals(person.getHasChildren())),
@@ -150,6 +172,36 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								resolveState(school.getSchoolStateId()),
 								resolveMunicipality(school.getSchoolMunicipalityId()), school.getForeignCountry(),
 								school.getSchoolCity(), school.getGpa(), school.getCct())));
+	}
+
+	/**
+	 * The ficha's visible "Fecha límite de pago": the earlier of the sales
+	 * window's snapshot and the ficha's own plazo. Never the concept's
+	 * {@code available_until} — that one gates the payment but is not a date the
+	 * applicant is asked to act on, because it moves with the catalog.
+	 */
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate processClosesOn) {
+		return FichaPaymentWindow.deadlineOf(candidate, processClosesOn, fichaDeadlineDays, clock.getZone());
+	}
+
+	/**
+	 * The amount shown on the ficha, resolved live from the catalog so a price
+	 * correction reaches a ficha issued earlier. Falls back to the ticket's
+	 * frozen amount when there is no program to ask, and to {@code null} when
+	 * the program exists but the catalog prices it for nobody today: a ficha
+	 * with no price omits the amount rather than print a number the system will
+	 * not charge.
+	 */
+	private BigDecimal liveAmount(AdmissionConfigInfo config, AdmissionPayment payment) {
+		if (config == null) {
+			return payment.getAmount();
+		}
+		try {
+			return fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+		} catch (FichaPaymentConceptNotFoundException | PaymentConceptExpiredException
+				| AmbiguousFichaPaymentConceptException ex) {
+			return null;
+		}
 	}
 
 	private String resolveState(UUID stateId) {

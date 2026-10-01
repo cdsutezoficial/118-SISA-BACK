@@ -31,9 +31,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -60,6 +62,24 @@ class GetCandidateFichaUseCaseImplTest {
 	 * separate labels, and equal values would hide a swap.
 	 */
 	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 12, 20);
+
+	/**
+	 * The ficha's own plazo: registered 01/12 + 10 days → 11/12, before the
+	 * sales window. Deliberately a third, distinct day so a mix-up between the
+	 * visible payment deadline and either window cannot pass unnoticed.
+	 */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final Instant REGISTERED_AT = LocalDate.of(2026, 12, 1).atTime(12, 0).atZone(ZONE).toInstant();
+
+	private static final int DEADLINE_DAYS = 10;
+
+	/** The earlier of {@link #REGISTRATION_DEADLINE} and {@link #REGISTERED_AT} + 10. */
+	private static final LocalDate PAYMENT_DEADLINE = LocalDate.of(2026, 12, 11);
+
+	private static final BigDecimal LIVE_AMOUNT = new BigDecimal("550.00");
+
+	private static final Clock CLOCK = Clock.fixed(REGISTERED_AT, ZONE);
 
 	@Mock
 	private CandidateRepository candidateRepository;
@@ -96,7 +116,7 @@ class GetCandidateFichaUseCaseImplTest {
 	void setUp() {
 		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository, paymentRepository,
 				programAdmissionConfigQueryPort, placeNameLookupPort, outreachChannelRepository,
-				highSchoolTypeRepository, fichaAmountResolver);
+				highSchoolTypeRepository, fichaAmountResolver, CLOCK, DEADLINE_DAYS);
 		candidateId = UUID.randomUUID();
 		personId = UUID.randomUUID();
 		configId = UUID.randomUUID();
@@ -105,6 +125,7 @@ class GetCandidateFichaUseCaseImplTest {
 		var candidate = new mx.edu.utez.sisa.admission.domain.model.Candidate(personId, configId, "ADM-2026-000001",
 				true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
+		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
 		lenient().when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
 
 		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
@@ -123,20 +144,35 @@ class GetCandidateFichaUseCaseImplTest {
 		// The payment window is read live, so the PDF's "Fecha límite de pago" can
 		// differ from the registration window and a test can tell them apart.
 		lenient().when(fichaAmountResolver.paymentClosesOn(programId)).thenReturn(PAYMENT_CLOSES_ON);
+
+		// The amount is resolved live from the catalog too: a price edit after
+		// the ficha was issued has to show up on the reprint.
+		lenient().when(fichaAmountResolver.resolve(programId, LocalDate.now(CLOCK)))
+				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Admisión"));
 	}
 
 	/**
-	 * The PDF prints both windows under their own names, so the use case has to
-	 * carry both. They are pinned to different days on purpose: a mix-up between
-	 * the two would be invisible if they were equal.
+	 * The PDF prints the registration window, the live price and the date the
+	 * applicant pays by, each under its own name, so the use case has to carry
+	 * all three. They are pinned to different days on purpose: a mix-up between
+	 * them would be invisible if they were equal.
 	 */
 	@Test
-	void get_carriesTheRegistrationDeadlineAndThePaymentWindowSeparately() {
+	void get_carriesTheRegistrationDeadlineThePaymentWindowAndTheVisiblePaymentDeadline() {
 		var ficha = useCase.get(candidateId);
 
 		assertThat(ficha).isNotNull();
 		assertThat(ficha.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
 		assertThat(ficha.paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
+		// The one shown under "Fecha límite de pago": the ficha's own plazo, not
+		// the concept's available_until.
+		assertThat(ficha.paymentDeadline()).isEqualTo(PAYMENT_DEADLINE);
+	}
+
+	/** The amount is the catalog's live price, not the number frozen at registration. */
+	@Test
+	void get_pricesTheFichaLiveFromTheCatalog() {
+		assertThat(useCase.get(candidateId).amount()).isEqualByComparingTo(LIVE_AMOUNT);
 	}
 
 	@Test
@@ -170,6 +206,7 @@ class GetCandidateFichaUseCaseImplTest {
 		var candidate = new mx.edu.utez.sisa.admission.domain.model.Candidate(personId, configId, "ADM-2026-000001",
 				true, true, channelId);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
+		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
 		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
 
 		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);

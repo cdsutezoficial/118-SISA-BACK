@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatu
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase.PaymentAccess;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
@@ -20,8 +21,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -77,6 +80,18 @@ class AccessFichaPaymentUseCaseImplTest {
 	/** The tuition concept's {@code available_until}: the date that governs payment. */
 	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
 
+	/** The ficha's own plazo: registered 10/09 + 10 days → 20/09, before the sales window. */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final Instant REGISTERED_AT = LocalDate.of(2026, 9, 10).atTime(12, 0).atZone(ZONE).toInstant();
+
+	private static final int DEADLINE_DAYS = 10;
+
+	/** The earlier of {@link #REGISTRATION_DEADLINE} and {@link #REGISTERED_AT} + 10. */
+	private static final LocalDate PAYMENT_DEADLINE = LocalDate.of(2026, 9, 20);
+
+	private static final Clock CLOCK = Clock.fixed(REGISTERED_AT, ZONE);
+
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
 
 	@Mock
@@ -99,7 +114,8 @@ class AccessFichaPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver, CLOCK,
+				DEADLINE_DAYS);
 		// Default: the concept closes its window on this date. Every test that
 		// asserts on paymentClosesOn relies on it, and the ones that don't care
 		// are unaffected because a non-stubbed mock would answer null anyway.
@@ -111,6 +127,9 @@ class AccessFichaPaymentUseCaseImplTest {
 		// Candidate#id is JPA-assigned (no public setter), so a hand-built
 		// instance has a null id — same seam the other ficha tests use.
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
+		// The ficha's visible plazo is derived from when it was registered, so it
+		// is pinned to a fixed day the same way the clock is.
+		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
 		return candidate;
 	}
 
@@ -170,6 +189,108 @@ class AccessFichaPaymentUseCaseImplTest {
 
 		assertThat(access.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
 		assertThat(access.paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
+		// The date promised to the applicant is the ficha's own plazo (earlier of
+		// the sales window and registeredAt + N), never the concept's window.
+		assertThat(access.paymentDeadline()).isEqualTo(PAYMENT_DEADLINE);
+	}
+
+	/**
+	 * When the admission process closes before the ficha's own plazo, the closing
+	 * date is the one the screen must promise.
+	 *
+	 * <p>Bounded by the config read live, not by the {@code registrationDeadline}
+	 * frozen on the ticket when it was issued. That snapshot is exactly the value
+	 * that goes stale: staff close a cohort by editing the config, and a promise
+	 * derived from the snapshot keeps offering payment until the original date.
+	 */
+	@Test
+	void theVisiblePaymentDeadlineIsTheEarlierOfTheProcessClosingAndTheFichaPlazo() {
+		givenPendingCandidate();
+		// Registered 10/09, own plazo to the 20th; her process closed on the 15th.
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(configClosingOn(LocalDate.of(2026, 9, 15))));
+
+		assertThat(useCase.access(FOLIO, SUFFIX).paymentDeadline()).isEqualTo(LocalDate.of(2026, 9, 15));
+	}
+
+	/**
+	 * A process that closes after the ficha's own window leaves her own plazo as
+	 * the binding bound — the closing date must never hand anybody extra days.
+	 */
+	@Test
+	void theVisiblePaymentDeadlineStaysOnTheFichaPlazoWhenTheProcessClosesLater() {
+		givenPendingCandidate();
+		// Own plazo ends the 20th; the process runs to December.
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(configClosingOn(LocalDate.of(2026, 12, 31))));
+
+		assertThat(useCase.access(FOLIO, SUFFIX).paymentDeadline()).isEqualTo(PAYMENT_DEADLINE);
+	}
+
+	/**
+	 * The flag the screen hides "Pagar" on, and the reason it is not the same as
+	 * {@code candidateStatus}.
+	 *
+	 * <p>A ficha whose window closed but which the 00:10 sweep has not reached yet is
+	 * still {@code REGISTERED} in the database. The portal must not offer a payment
+	 * the checkout will refuse, so the flag is computed live from the window while
+	 * the status keeps saying what the last sweep wrote down. Reading the status
+	 * here instead would put a ten-minute hole in every ficha's deadline, every
+	 * night.
+	 */
+	@Test
+	void access_flagsAnExpiredFichaEvenBeforeTheSweepWritesTheStatus() {
+		givenPendingCandidate();
+		// Move the clock past the deadline; the candidate row is untouched and still
+		// REGISTERED, exactly as it would be at 00:05.
+		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				Clock.fixed(PAYMENT_DEADLINE.plusDays(1).atStartOfDay(ZONE).toInstant(), ZONE), DEADLINE_DAYS);
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.paymentExpired()).isTrue();
+		assertThat(access.candidateStatus()).isEqualTo(CandidateStatus.REGISTERED);
+	}
+
+	/**
+	 * A closed admission process ends the ficha even with days left on its own
+	 * plazo, which is what this flag reports — the same rule the nightly sweep and
+	 * the checkout gate apply.
+	 */
+	@Test
+	void access_flagsAFichaWhoseAdmissionProcessClosedFirst() {
+		givenPendingCandidate();
+		// Registered 10/09, so her own plazo runs to the 20th; the process closed on
+		// the 15th, before that.
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(configClosingOn(LocalDate.of(2026, 9, 15))));
+		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				Clock.fixed(LocalDate.of(2026, 9, 16).atStartOfDay(ZONE).toInstant(), ZONE), DEADLINE_DAYS);
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.paymentExpired()).isTrue();
+		assertThat(access.paymentDeadline()).isEqualTo(LocalDate.of(2026, 9, 15));
+	}
+
+	/** A ficha inside its window is not expired, whatever the status says. */
+	@Test
+	void access_doesNotFlagAFichaStillInsideItsWindow() {
+		givenPendingCandidate();
+
+		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
+
+		assertThat(access.paymentExpired()).isFalse();
+		assertThat(access.candidateStatus()).isEqualTo(CandidateStatus.REGISTERED);
+	}
+
+	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo configClosingOn(LocalDate closesOn) {
+		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
+				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ing. en Tecnologías de la Información",
+				ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN,
+				closesOn.atStartOfDay(ZONE).plusHours(23).toInstant(), MAX_CANDIDATES);
 	}
 
 	/** Read live, not snapshotted: the catalog decides, on every request. */

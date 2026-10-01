@@ -2,7 +2,7 @@ package mx.edu.utez.sisa.admission.domain.port.in;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
+
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 
@@ -23,10 +23,11 @@ import java.util.UUID;
  * the web layer maps to HTTP 404.
  *
  * <p>Fase 7 expanded the projection with the full "Paso 4" ficha form so the
- * ficha PDF (Fase 8) mirrors {@code CandidatoRegistro.tsx}. The original flat
- * fields stay untouched (the screen's {@code CandidateFichaResponse} still
- * maps them one-to-one); the new sections live in nested records, resolved
- * catalog ids→names at assemble time via {@code PlaceNameLookupPort} /
+ * ficha PDF (Fase 8) mirrors {@code CandidatoRegistro.tsx}. The flat fields stay
+ * untouched; the web DTO narrows them to the ones the ficha screens consume —
+ * plus {@code orderId}, so the screen can show the bank order the PDF prints.
+ * The new sections live in nested records, resolved catalog ids→names at
+ * assemble time via {@code PlaceNameLookupPort} /
  * {@code ProgramAdmissionConfigQueryPort} / the outreach-channel and
  * high-school-type repos.
  */
@@ -35,16 +36,21 @@ public interface GetCandidateFichaUseCase {
 	FichaData get(UUID candidateId);
 
 	/**
-	 * {@code registrationDeadline} and {@code paymentClosesOn} are the two
-	 * distinct windows the ficha has to state, not one "deadline": the first is
-	 * the sales window's closing day as of registration, the second is the
-	 * tuition concept's {@code availableUntil} read live. The PDF prints them
-	 * under their own labels — see {@code CandidateFichaPdfService}.
+	 * Three distinct windows, not one "deadline". {@code registrationDeadline}
+	 * is the sales window's closing day as of registration.
+	 * {@code paymentClosesOn} is the tuition concept's {@code availableUntil},
+	 * read live, and it is an engine-side boundary — never a date the applicant
+	 * is asked to act on. {@code paymentDeadline} is the one the applicant
+	 * actually pays by: the earlier of {@code registrationDeadline} and the
+	 * ficha's own {@code registeredAt} + N-day plazo (see {@link
+	 * mx.edu.utez.sisa.admission.domain.model.Candidate#paymentDeadline}). The
+	 * PDF prints {@code paymentDeadline} under "Fecha límite de pago", and only
+	 * when it differs from {@code registrationDeadline}.
 	 */
 	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
 			UUID admissionConfigId, String programName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
-			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn,
+			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
 			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
@@ -70,7 +76,7 @@ public interface GetCandidateFichaUseCase {
 		}
 
 		/** Ingresos (Paso 2) — household/employment data. */
-		public record Ingresos(BigDecimal monthlyFamilyIncome, boolean isEmployed, EmploymentType employmentType,
+		public record Ingresos(BigDecimal monthlyFamilyIncome, boolean isEmployed, String employmentType,
 				String workPhone, BigDecimal monthlyIncome, String companyName, String jobTitle, LocalTime workStartTime,
 				LocalTime workEndTime) {
 		}

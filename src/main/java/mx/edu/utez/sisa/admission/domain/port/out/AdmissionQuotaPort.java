@@ -12,7 +12,7 @@ import java.util.UUID;
  * same transaction. Exposing a plain "read the cap" method next to a plain
  * "count the fichas" method invites exactly the two-call race this exists to
  * prevent, so the lock and the cap travel together here and the count is taken
- * by {@link AdmissionPaymentRepository#countOccupiedByProgramId} while the lock
+ * by {@link AdmissionPaymentRepository#countOccupiedByConfigId} while the lock
  * is still held.
  */
 public interface AdmissionQuotaPort {
@@ -33,12 +33,13 @@ public interface AdmissionQuotaPort {
 	QuotaState lockQuota(UUID admissionConfigId);
 
 	/**
-	 * The cap, plus the program it applies to.
+	 * The cap. The count that is compared against it is taken by
+	 * {@link AdmissionPaymentRepository#countOccupiedByConfigId}, keyed by the
+	 * same {@code admissionConfigId} the lock was taken on — the caller already
+	 * holds it and does not need it returned here.
 	 *
 	 * @param maxCandidates how many fichas may end up paid for the program
-	 * @param programId     the program, used to count occupied slots and to find
-	 *                      the tuition concept that decides claim expiry
 	 */
-	record QuotaState(int maxCandidates, UUID programId) {
+	record QuotaState(int maxCandidates) {
 	}
 }

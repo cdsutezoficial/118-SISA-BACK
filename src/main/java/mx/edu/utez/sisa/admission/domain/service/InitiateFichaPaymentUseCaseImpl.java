@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.domain.service;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -11,11 +12,18 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
+import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,21 +43,44 @@ import java.util.UUID;
  * <li>the payment must still be {@code PENDING} (409,
  * {@code CandidateAlreadyPaidException}) — an already-paid ficha cannot start
  * a new online session;</li>
- * <li>the tuition concept's availability window must contain today (409,
- * {@code PaymentConceptExpiredException}, or
- * {@code FichaPaymentConceptNotFoundException} when the program has no tuition
- * concept at all). Checked <em>before</em> the gateway is called — see
- * {@link #requireConceptWindowOpen};</li>
+ * <li>the two date gates, in order, must both pass (409 each): the ficha's
+ * payment window — the earlier of its own deadline and the admission process'
+ * closing date ({@code FichaPaymentExpiredException}) — and the tuition concept's
+ * availability window
+ * ({@code PaymentConceptExpiredException} / {@code FichaPaymentConceptNotFoundException}).
+ * Checked <em>before</em> the gateway is called — see
+ * {@link #requirePaymentWindowOpen};</li>
  * <li>the gateway {@code INITIATE_CHECKOUT} must produce a session (failure →
  * {@code EvoPaymentGatewayException} → 502).</li>
  * </ol>
  *
- * <p>The order description is "Ficha de Admisión {folio}" and the amount comes
- * from the payment concept itself — the single source of truth, never a
- * client-supplied value (the request body only carries an optional, allowlisted
- * {@code returnPath}).
+ * <p>The order description is "Ficha de Admision {folio}" and the amount is the
+ * live tariff the catalog quotes for the program today — the single source of
+ * truth, never a client-supplied value (the request body only carries an
+ * optional, allowlisted {@code returnPath}). It is re-quoted on every checkout
+ * and overwrites the registration quote on the ficha, so a tariff edited
+ * between issuing and paying reaches the applicant (§1.3).
+ *
+ * <p>The description is deliberately unaccented. It is the text the cardholder
+ * reads on their bank statement, and a real capture came back as
+ * {@code "Ficha de AdmisiÃ³n ADM-2026-000003"} — the accented "ó" encoded as
+ * UTF-8 and decoded as Latin-1 somewhere between here and the gateway. We send
+ * {@code APPLICATION_JSON} without a charset, so we are not the side declaring
+ * an encoding, and this is not worth fighting the processor over: the folio
+ * already identifies the ficha uniquely, so dropping the accent costs no
+ * information and removes the whole class of bug. {@code OrderDescriptionIsAscii}
+ * pins it.
  */
 public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseCase {
+
+	/**
+	 * What an applicant is told when the tuition concept is not payable today for
+	 * a reason that is not the calendar: no concept configured, or none with a
+	 * rate. It is a catalog problem, so it points at the office instead of at a
+	 * date that does not exist.
+	 */
+	private static final String CONCEPT_NOT_CONFIGURED_MESSAGE =
+			"No se encontró pago vigente configurado para este proceso. Comunícate con Servicios escolares.";
 
 	private final CandidateRepository candidateRepository;
 
@@ -90,6 +121,13 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	private final Clock clock;
 
 	/**
+	 * Days from the registration date (day 0) until the ficha stops being
+	 * payable, from {@code sisa.admission.payment.deadline-days}. The deadline is
+	 * derived, never stored, so changing this value re-reads every ficha.
+	 */
+	private final int fichaDeadlineDays;
+
+	/**
 	 * Takes and gives back the program's quota slot around the gateway call, in
 	 * its own short transactions. A collaborator rather than an inline step
 	 * because {@code REQUIRES_NEW} only works through a Spring proxy, so the claim
@@ -113,7 +151,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl,
 			Set<String> allowedReturnPaths, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, Clock clock, CheckoutSlotClaimer checkoutSlotClaimer) {
+			FichaAmountResolver fichaAmountResolver, Clock clock, int fichaDeadlineDays,
+			CheckoutSlotClaimer checkoutSlotClaimer) {
 		this.candidateRepository = candidateRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -126,6 +165,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
 		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 	}
 
@@ -143,20 +183,27 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * <ol>
 	 * <li>validate the ficha exists and is unpaid (no locks, cheapest checks
 	 * first);</li>
-	 * <li>{@code requireConceptWindowOpen} — before the gateway, because after it
+	 * <li>{@code requirePaymentWindowOpen} — before the gateway, because after it
 	 * a closed period would need a refund to undo;</li>
-	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row lock
-	 * and <em>commits</em>, so the slot is held while Evo is called but the lock is
-	 * not;</li>
+	 * <li><b>generate the {@code orderId}</b> — before any write, because it is
+	 * what makes the attempt recordable;</li>
+	 * <li>{@link CheckoutSlotClaimer#openAttempt} — records that order with its
+	 * amount and <em>commits</em>, so from here on there is never a held slot
+	 * without an order id the bank can be asked about (§3.6);</li>
+	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row
+	 * lock, stamps the live tariff the checkout will charge and commits, so the
+	 * slot is held while Evo is called but the lock is not;</li>
 	 * <li>the gateway call;</li>
 	 * <li>{@link CheckoutSlotClaimer#persistCheckoutSession} — the order ids the
 	 * confirmation will look up.</li>
 	 * </ol>
 	 *
-	 * <p>On a gateway refusal the claim is handed back, but only when the failure
-	 * proves no order was created. An ambiguous failure keeps the claim: Evo may
-	 * hold an order that is captured later, and that ficha's payment is real money
-	 * whether or not we got a response.
+	 * <p>On a gateway refusal the claim is handed back and the attempt closed as
+	 * {@code ORDER_NOT_CREATED}, but only when the failure proves no order was
+	 * created. An ambiguous failure keeps both: Evo may hold an order that is
+	 * captured later, and that ficha's payment is real money whether or not we got
+	 * a response — the attempt stays open and the daily sweep settles it by asking
+	 * the bank.
 	 */
 	@Override
 	public InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath) {
@@ -172,14 +219,26 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
 
-		requireConceptWindowOpen(candidate);
+		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = requirePaymentWindowOpen(candidate);
 
-		checkoutSlotClaimer.claim(candidateId);
+		// The price that governs is the one the applicant sees when they click to
+		// pay, not the quote deposited at registration, so a tariff edited in
+		// between must reach them (§1.3). The claim persists it in the same
+		// transaction that takes the slot, before Evo is asked for the money.
+		BigDecimal amount = fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+
+		// The orderId is generated before anything is written, and the attempt that
+		// carries it is committed before the gateway is called (§3.6). Generating it
+		// after the claim is what used to leave the "slot held with no order number"
+		// hole: Evo could hold a capturable order while we had nothing to ask about.
+		String orderId = orderIdBuilder.build(candidate.getFolio());
+		checkoutSlotClaimer.openAttempt(orderId, candidateId, amount);
+
+		checkoutSlotClaimer.claim(candidateId, amount);
 
 		String returnUrl = resolveReturnUrl(returnPath);
-		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), payment.getAmount(),
+				payment.getReferenceNumber(), orderDescription(candidate.getFolio()), amount,
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
 
@@ -188,7 +247,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			session = evoPaymentsGateway.initiateCheckoutSession(order);
 		} catch (EvoPaymentGatewayException ex) {
 			if (!ex.orderMayHaveBeenCreated()) {
-				checkoutSlotClaimer.release(candidateId);
+				checkoutSlotClaimer.release(candidateId, currentClaimedAt(candidateId));
+				checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 			}
 			throw ex;
 		}
@@ -200,10 +260,10 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	}
 
 	/**
-	 * Refuses to start a checkout outside the tuition concept's availability
-	 * window, and does it <em>before</em> the gateway is touched.
+	 * Refuses to start a checkout when any of the three date gates has closed,
+	 * and does it <em>before</em> the gateway is touched.
 	 *
-	 * <p>That ordering is the whole point of the method. The window is checked at
+	 * <p>That ordering is the whole point of the method. The gates are checked at
 	 * registration too, but registration and payment are days apart and the
 	 * catalog can change in between — extending a period is how staff normally
 	 * handle a late applicant, and closing it is how they close a cohort. A
@@ -216,18 +276,94 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * it will remember, and re-opening the period would then hit the duplicate
 	 * order rejection from {@code §2.3} of the plan on an id we already burned.
 	 *
-	 * <p>The amount is not consulted here and never re-priced: what the applicant
-	 * pays is still {@code payment.getAmount()}, frozen at registration.
+	 * <p>The gates run in order, and the order is the rule:
+	 * <ol>
+	 * <li><b>the ficha's payment window</b> — the earlier of its own deadline
+	 * (day 0 = registration, plus {@code deadline-days}) and the admission
+	 * process' closing date. Both bounds are the same ones the nightly expiry
+	 * sweep and the occupancy queries read, so a ficha the portal shows as
+	 * payable cannot be one the engine considers closed;</li>
+	 * <li><b>the tuition concept's window</b>, which is configuration and must
+	 * not be reported as a date the applicant can see; a concept that is missing
+	 * or not payable here is a catalog error, not a closed period.</li>
+	 * </ol>
+	 *
+	 * <p>Gate 0 used to be the ficha's own deadline alone and gate 1 the process
+	 * closing date, reported as two distinct errors. That distinction was a lie
+	 * the applicant could not act on: the process closing means the same thing as
+	 * her window closing, and one of them always arrived first. Both now report
+	 * the ficha's window as expired, which is the fact she can verify.
+	 *
+	 * <p>Every boundary is a calendar date in the admission zone, not an
+	 * {@code Instant}: a comparison at midnight UTC would refuse a ficha that is
+	 * still payable by the applicant's calendar (see {@code §10.2}).
+	 *
+	 * <p>Prices nothing: it only decides whether the window is open. The caller
+	 * prices the checkout separately with the returned config, because the
+	 * amount that governs is the live tariff at the click, not the quote frozen
+	 * at registration.
+	 *
+	 * @return the candidate's admission config, so the caller can re-quote the
+	 *         tariff for the same program without resolving it twice
 	 */
-	private void requireConceptWindowOpen(Candidate candidate) {
+	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo requirePaymentWindowOpen(Candidate candidate) {
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(candidate.getAdmissionConfigId())
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
-		fichaAmountResolver.requirePayableOn(config.programId(), LocalDate.now(clock));
+
+		LocalDate today = LocalDate.now(clock);
+		ZoneId zone = clock.getZone();
+
+		// Gate 0 — the ficha's payment window (own plazo ∩ process closing date).
+		LocalDate admissionClosesOn = config.closesAt().atZone(zone).toLocalDate();
+		if (today.isAfter(FichaPaymentWindow.deadlineOf(candidate, admissionClosesOn, fichaDeadlineDays, zone))) {
+			throw new FichaPaymentExpiredException("Tu ficha venció. El plazo de pago de " + fichaDeadlineDays
+					+ (fichaDeadlineDays == 1 ? " día" : " días") + " terminó.");
+		}
+
+		// Gate 2 — the tuition concept exists and is payable today.
+		requireConceptWindowOpen(config, today);
+
+		return config;
 	}
 
 	/**
+	 * The concept window, reworded for the admission flow. The resolver reports
+	 * "no concept" and "concept outside its window" with distinct types and
+	 * catalog-facing dates; by the time the checkout reaches here both mean the
+	 * same thing to the applicant — admissions has no payable tuition configured
+	 * for her program — so both keep their type (and therefore their 409 code)
+	 * and take the office-facing message instead of a date that would send her to
+	 * look at a screen she cannot fix.
+	 */
+	private void requireConceptWindowOpen(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config, LocalDate today) {
+		try {
+			fichaAmountResolver.requirePayableOn(config.programId(), today);
+		} catch (PaymentConceptExpiredException ex) {
+			throw new PaymentConceptExpiredException(CONCEPT_NOT_CONFIGURED_MESSAGE);
+		} catch (FichaPaymentConceptNotFoundException ex) {
+			throw new FichaPaymentConceptNotFoundException(CONCEPT_NOT_CONFIGURED_MESSAGE);
+		}
+	}
+
+	/**
+	 * The claim as it stands <em>now</em>, read again on the refusal path only.
+	 *
+	 * <p>The {@code payment} this method read at the top was loaded before
+	 * {@link CheckoutSlotClaimer#claim} ran, so it cannot know what that stamped — it
+	 * would carry a stale or absent {@code checkoutClaimedAt}, and releasing against a
+	 * stale claim is exactly what the compare-and-set refuses to do. One extra read on a
+	 * path that only runs when Evo turned the whole operation down is a fair price for a
+	 * release that cannot take the claim of somebody else's checkout.
+	 */
+	private Instant currentClaimedAt(UUID candidateId) {
+		return admissionPaymentRepository.findByCandidateId(candidateId)
+				.map(AdmissionPayment::getCheckoutClaimedAt)
+				.orElse(null);
+	}
+
+/**
 	 * Applies an allowlisted {@code returnPath} by swapping only the PATH of the
 	 * configured return URL. The scheme and host always come from configuration,
 	 * never from the request, so even a leaked or mis-configured allowlist entry
@@ -257,6 +393,22 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			return base;
 		}
 		return UriComponentsBuilder.fromUriString(base).replacePath(requestedPath).build().toUriString();
+	}
+
+	/**
+	 * The order description the bank shows on the cardholder's statement.
+	 *
+	 * <p>ASCII on purpose. A real 3DS capture in the sandbox came back from the
+	 * gateway as {@code "Ficha de AdmisiÃ³n ADM-2026-000003"}: the accented "ó"
+	 * went out as UTF-8 and came back decoded as Latin-1, so the applicant would
+	 * have seen mojibake on their bank statement. The request goes out as
+	 * {@code APPLICATION_JSON} with no charset declared, so this side is not the
+	 * one declaring an encoding and there is nothing to fix here beyond not
+	 * depending on the processor honouring ours. The folio already identifies the
+	 * ficha, so dropping the accent costs no information.
+	 */
+	static String orderDescription(String folio) {
+		return "Ficha de Admision " + folio;
 	}
 
 	private static String withCheckoutParams(String baseUrl, UUID candidateId, String orderId) {
