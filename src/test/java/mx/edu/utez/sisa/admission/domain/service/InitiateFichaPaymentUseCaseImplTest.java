@@ -73,6 +73,13 @@ class InitiateFichaPaymentUseCaseImplTest {
 	private static final String SDK_URL = "https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js";
 	private static final String ORDER_ID = "TESTUTEZ-ADM-2026-000001";
 
+	/**
+	 * The tariff the catalog quotes at checkout, deliberately different from the
+	 * 500.00 the ficha was registered with, so a test can tell the live price
+	 * apart from the registration quote.
+	 */
+	private static final BigDecimal LIVE_AMOUNT = new BigDecimal("550.00");
+
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
@@ -134,6 +141,9 @@ class InitiateFichaPaymentUseCaseImplTest {
 	void setUp() {
 		// lenient: the 404/409 guard cases throw before the builder is ever consulted
 		lenient().when(orderIdBuilder.build(any())).thenReturn(ORDER_ID);
+		// lenient: only the paths that clear all gates price the checkout
+		lenient().when(fichaAmountResolver.resolve(any(), any()))
+				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Inscripción"));
 		// lenient: only the paths that get past the PAID check resolve the config
 		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
@@ -187,7 +197,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		String expectedReturn = RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID;
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> ORDER_ID.equals(order.id())
 				&& "REF-2026-000001".equals(order.reference())
-				&& new BigDecimal("500.00").compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
+				&& LIVE_AMOUNT.compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
 				&& "Ficha de Admisión ADM-2026-000001".equals(order.description())
 				&& expectedReturn.equals(order.returnUrl()) && expectedReturn.equals(order.cancelUrl())));
 		// Persisting the session is the claimer's job now, in its own transaction.
@@ -564,19 +574,19 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	@Test
-	void theAmountIsTheOneFrozenAtRegistration() {
+	void theAmountIsTheOneTheCatalogQuotesAtCheckout() {
 		givenPayableCandidate();
 
 		useCase.initiateCheckout(CANDIDATE_ID, null);
 
-		// The catalog cost is deliberately NOT consulted: admission_payment.amount
-		// was set when the ficha was issued, and a price edit between issuing and
-		// paying must not change what the applicant owes. requirePayableOn asks
-		// the resolver about the window and nothing else; resolve() — the only
-		// method that can produce a number — is never called.
-		verify(fichaAmountResolver, never()).resolve(any(), any());
-		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> order.amount()
-				.compareTo(new BigDecimal("500.00")) == 0));
+		// The live tariff governs, not the quote deposited at registration (§1.3):
+		// resolve() is consulted for the candidate's program today, the claim is
+		// told the same number (so it is committed before Evo), and that number is
+		// what Evo is asked to charge — not the 500.00 the ficha was issued with.
+		verify(fichaAmountResolver).resolve(PROGRAM_ID, TODAY);
+		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				LIVE_AMOUNT.compareTo(order.amount()) == 0));
 	}
 
 	@Test
@@ -623,7 +633,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		useCase.initiateCheckout(CANDIDATE_ID, null);
 
 		InOrder inOrder = inOrder(checkoutSlotClaimer, evoPaymentsGateway);
-		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID);
+		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
 		inOrder.verify(evoPaymentsGateway).initiateCheckoutSession(any());
 		inOrder.verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESSION0001BR");
 	}
@@ -637,7 +647,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		doThrow(new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó."))
-				.when(checkoutSlotClaimer).claim(CANDIDATE_ID);
+				.when(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)

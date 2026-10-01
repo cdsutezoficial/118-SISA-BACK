@@ -37,13 +37,13 @@ import java.util.UUID;
  * {@link PaymentConceptExpiredException} with the date, and only a genuinely
  * absent concept produces {@code FichaPaymentConceptNotFoundException}.
  *
- * <p>Two entry points share the first step: {@link #resolve} prices the ficha
- * at registration, {@link #requirePayableOn} re-checks the window when the
- * payment is actually attempted. Only {@code resolve} consults the rates, by
- * design — the amount charged is frozen on the ticket at registration, so a
- * rate edited between registration and payment must not be able to change what
- * an already-issued ticket costs. The second step therefore never turns into a
- * payment-time failure.
+ * <p>Two entry points share the first step: {@link #resolve} prices the ficha —
+ * at registration for the initial quote, and again when the applicant starts
+ * the checkout, where the live tariff overwrites that quote and becomes the one
+ * charged (the price of the click, §1.3). {@link #requirePayableOn} only
+ * re-checks the window when the payment is actually attempted and never prices
+ * anything, so a cost edit cannot turn the window check into a payment-time
+ * failure.
  */
 public class FichaAmountResolver {
 
@@ -97,12 +97,11 @@ public class FichaAmountResolver {
 	 * after Conceptos de Pago says the period is over.
 	 *
 	 * <p>Deliberately returns nothing and re-prices nothing, and deliberately
-	 * does not look for a rate. The amount charged is frozen on
-	 * {@code admission_payment.amount} at registration and stays frozen:
-	 * re-reading the catalog here would let a mid-period price edit change what
-	 * an already-issued ticket costs, and would let a cost edit between
-	 * registration and payment decide whether the payment goes through at all.
-	 * A concept that still exists and is still sellable is enough.
+	 * does not look for a rate: pricing is {@link #resolve}'s job, which the
+	 * checkout runs itself right after this gate, so the two stay apart and a
+	 * window check cannot fail because a rate was edited, nor a cost edit decide
+	 * whether the period is open. A concept that still exists and is still
+	 * sellable is enough to open the payment.
 	 */
 	public void requirePayableOn(UUID programId, LocalDate onDate) {
 		requireSingleActiveConcept(programId, onDate);

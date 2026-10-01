@@ -18,6 +18,7 @@ import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoun
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -52,10 +53,12 @@ import java.util.UUID;
  * {@code EvoPaymentGatewayException} → 502).</li>
  * </ol>
  *
- * <p>The order description is "Ficha de Admisión {folio}" and the amount comes
- * from the payment concept itself — the single source of truth, never a
- * client-supplied value (the request body only carries an optional, allowlisted
- * {@code returnPath}).
+ * <p>The order description is "Ficha de Admisión {folio}" and the amount is the
+ * live tariff the catalog quotes for the program today — the single source of
+ * truth, never a client-supplied value (the request body only carries an
+ * optional, allowlisted {@code returnPath}). It is re-quoted on every checkout
+ * and overwrites the registration quote on the ficha, so a tariff edited
+ * between issuing and paying reaches the applicant (§1.3).
  */
 public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseCase {
 
@@ -173,9 +176,9 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * first);</li>
 	 * <li>{@code requirePaymentWindowOpen} — before the gateway, because after it
 	 * a closed period would need a refund to undo;</li>
-	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row lock
-	 * and <em>commits</em>, so the slot is held while Evo is called but the lock is
-	 * not;</li>
+	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row lock,
+	 * stamps the live tariff the checkout will charge and <em>commits</em>, so the
+	 * slot is held while Evo is called but the lock is not;</li>
 	 * <li>the gateway call;</li>
 	 * <li>{@link CheckoutSlotClaimer#persistCheckoutSession} — the order ids the
 	 * confirmation will look up.</li>
@@ -200,14 +203,19 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
 
-		requirePaymentWindowOpen(candidate);
+		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = requirePaymentWindowOpen(candidate);
 
-		checkoutSlotClaimer.claim(candidateId);
+		// The price that governs is the one the applicant sees when they click to
+		// pay, not the quote deposited at registration, so a tariff edited in
+		// between must reach them (§1.3). The claim persists it in the same
+		// transaction that takes the slot, before Evo is asked for the money.
+		BigDecimal amount = fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+		checkoutSlotClaimer.claim(candidateId, amount);
 
 		String returnUrl = resolveReturnUrl(returnPath);
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), payment.getAmount(),
+				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), amount,
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
 
@@ -262,10 +270,15 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * {@code Instant}: a comparison at midnight UTC would refuse a ficha that is
 	 * still payable by the applicant's calendar (see {@code §10.2}).
 	 *
-	 * <p>The amount is not consulted here and never re-priced: what the applicant
-	 * pays is still {@code payment.getAmount()}, frozen at registration.
+	 * <p>Prices nothing: it only decides whether the window is open. The caller
+	 * prices the checkout separately with the returned config, because the
+	 * amount that governs is the live tariff at the click, not the quote frozen
+	 * at registration.
+	 *
+	 * @return the candidate's admission config, so the caller can re-quote the
+	 *         tariff for the same program without resolving it twice
 	 */
-	private void requirePaymentWindowOpen(Candidate candidate) {
+	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo requirePaymentWindowOpen(Candidate candidate) {
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(candidate.getAdmissionConfigId())
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
@@ -289,6 +302,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 		// Gate 2 — the tuition concept exists and is payable today.
 		requireConceptWindowOpen(config, today);
+
+		return config;
 	}
 
 	/**

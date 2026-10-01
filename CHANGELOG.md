@@ -4,6 +4,43 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El checkout cobra la tarifa viva, no la cotizada al registrar
+
+Commit: pendiente.
+
+### Por qué
+
+El monto de la ficha se congelaba en el registro
+(`RegisterCandidateUseCaseImpl`) y el checkout cobraba ese valor congelado. Una
+edición de tarifa entre emitir la ficha y pagarla no llegaba al Aspirante, aunque
+§1.3 pide que gane el precio del clic. La fila de pago **sigue naciendo en el
+registro** (no se mueve al cobro, que era el plan original de Fase 3); lo que
+cambia es el monto.
+
+### Qué cambió
+
+- `AdmissionPayment.reprice(amount)`: sobrescribe `amount` mientras la ficha está
+  `PENDING`; el javadoc de `amount` pasa a decir que el valor del registro es una
+  cotización y el del cobro es lo que se cobró.
+- `InitiateFichaPaymentUseCaseImpl`: tras los tres candados, cotiza en vivo con
+  `FichaAmountResolver.resolve(programId, hoy)` y usa ese monto en la orden de
+  EVO. `requirePaymentWindowOpen` ahora devuelve la config, para no resolver el
+  programa dos veces.
+- `CheckoutSlotClaimer.claim(candidateId, amount)`: persiste el reprecio en la
+  misma transacción que toma el cupo —antes de llamar a EVO— para que el monto
+  que la confirmación compara contra el banco sea el del clic. Un rechazo por
+  cupo no repricia, porque el chequeo de capacidad corre antes.
+- `FichaAmountResolver`: javadocs actualizados; antes afirmaban que el monto
+  quedaba congelado en el registro.
+
+### Tests
+
+`InitiateFichaPaymentUseCaseImplTest` (la orden lleva el monto vivo y el claim lo
+recibe), `CheckoutSlotClaimerTest` (el claim guarda el reprecio) y el IT de
+concurrencia actualizado. Suite completa en verde, 0 fallos.
+
+---
+
 ## [2026-09-30] La ficha muestra sus fechas reales y su precio vivo
 
 Commit: pendiente.

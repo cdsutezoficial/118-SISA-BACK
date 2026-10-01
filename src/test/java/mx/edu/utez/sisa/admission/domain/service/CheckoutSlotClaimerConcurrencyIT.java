@@ -99,6 +99,9 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 	private static final Instant NOW = TODAY.atTime(12, 0).atZone(ZONE).toInstant();
 
+	/** A checkout tariff; the claim stores it, the count ignores it. */
+	private static final BigDecimal CHECKOUT_AMOUNT = new BigDecimal("500.00");
+
 	@Autowired
 	private CheckoutSlotClaimer claimer;
 
@@ -166,7 +169,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 					// before the other has started, which is the whole point.
 					go.await(10, TimeUnit.SECONDS);
 					try {
-						claimer.claim(candidateId);
+						claimer.claim(candidateId, CHECKOUT_AMOUNT);
 						return null;
 					} catch (RuntimeException e) {
 						return e;

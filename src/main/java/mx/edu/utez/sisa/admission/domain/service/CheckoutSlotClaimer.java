@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -18,7 +19,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Owns a ficha's hold on one of its program's quota slots, and nothing else.
+ * Owns the two ficha writes that must commit <em>before</em> the gateway is
+ * called: its hold on one of the program's quota slots and the checkout price
+ * snapshot. Nothing else.
  *
  * <p>This exists as its own bean for one reason that a private method could not
  * solve: {@code REQUIRES_NEW} works through the Spring proxy, so a
@@ -92,10 +95,17 @@ public class CheckoutSlotClaimer {
 	 * a current read, which is what the lock needs it to be; correctness here comes
 	 * from the lock, and the isolation level only has to stop hiding it.
 	 *
+	 * <p>Also stamps {@code amount} — the live tariff the caller resolved for
+	 * this checkout — in the same transaction, so the price sent to Evo is
+	 * committed before the order exists and the confirmation can later compare
+	 * the bank's capture against a stored value. A refusal never reaches this
+	 * write, because the capacity check runs first.
+	 *
+	 * @param amount the tariff quoted for this checkout, to store on the ficha
 	 * @throws ProgramAdmissionConfigCapacityReachedException if the career is full
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
-	public void claim(UUID candidateId) {
+	public void claim(UUID candidateId, BigDecimal amount) {
 		var candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
@@ -109,6 +119,7 @@ public class CheckoutSlotClaimer {
 		}
 
 		AdmissionPayment payment = requirePendingPayment(candidateId);
+		payment.reprice(amount);
 		payment.claimCheckoutSlot();
 		admissionPaymentRepository.save(payment);
 	}

@@ -20,8 +20,9 @@ import java.util.UUID;
  * {@code 118-SISA-CLAUDE/docs/design/dominio/03-admision.md}. Created as
  * {@code PENDING} together with its {@link Candidate} by
  * {@code RegisterCandidateUseCase} (the ticket generates a payment reference,
- * amount and the registration window's closing date the moment the ficha is
- * created); transitioned to {@code PAID} by
+ * an initial amount quote and the registration window's closing date the
+ * moment the ficha is created); the amount is re-quoted live when the applicant
+ * starts the checkout ({@link #reprice}); transitioned to {@code PAID} by
  * {@code ConfirmAdmissionPaymentUseCase}.
  *
  * <p>One {@code AdmissionPayment} per {@code Candidate} for the
@@ -56,6 +57,16 @@ public class AdmissionPayment {
 	@Column(nullable = false)
 	private AdmissionPaymentConcept concept;
 
+	/**
+	 * What the applicant is charged for this ficha.
+	 *
+	 * <p>Written twice. At registration it is a catalog quote as of that day;
+	 * the moment the applicant starts the checkout it is overwritten with the
+	 * live tariff ({@link #reprice}), because the price that governs is the one
+	 * the applicant saw when they clicked to pay (§1.3). Once the ficha is
+	 * {@code PAID} the value is frozen: confirmation compares the bank's captured
+	 * amount against it.
+	 */
 	@Column(nullable = false, precision = 12, scale = 2)
 	private BigDecimal amount;
 
@@ -218,6 +229,24 @@ public class AdmissionPayment {
 		}
 		this.orderId = orderId;
 		this.checkoutSessionId = checkoutSessionId;
+	}
+
+	/**
+	 * Overwrites the ficha's amount with the tariff the catalog quotes at the
+	 * moment the applicant starts paying.
+	 *
+	 * <p>The value deposited at registration is only a quote: a tariff edited
+	 * between issuing and paying must reach the applicant, and the number sent
+	 * to the gateway is the one the confirmation later checks against the bank.
+	 * Kept out of {@code PAID} fichas, whose amount is what was actually charged.
+	 *
+	 * @throws IllegalStateException if the ficha is already {@code PAID}
+	 */
+	public void reprice(BigDecimal amount) {
+		if (this.paymentStatus == AdmissionPaymentStatus.PAID) {
+			throw new IllegalStateException("La ficha ya está pagada; no se puede re-cotizar.");
+		}
+		this.amount = amount;
 	}
 
 	/**

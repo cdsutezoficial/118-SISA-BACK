@@ -71,6 +71,12 @@ class CheckoutSlotClaimerTest {
 
 	private static final int MAX_CANDIDATES = 15;
 
+	/**
+	 * The live tariff the checkout resolved for this claim, distinct from the
+	 * 500.00 quote {@link #payment()} carries, so the reprice is observable.
+	 */
+	private static final BigDecimal CHECKOUT_AMOUNT = new BigDecimal("550.00");
+
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
@@ -114,11 +120,15 @@ class CheckoutSlotClaimerTest {
 
 	@Test
 	void aFreeSlotIsClaimedAndStamped() {
-		claimer.claim(CANDIDATE_ID);
+		claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT);
 
 		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
 		verify(admissionPaymentRepository).save(saved.capture());
 		assertThat(saved.getValue().getCheckoutClaimedAt()).isNotNull();
+		// The claim also stamps the live tariff, so the amount the confirmation
+		// later checks against the bank is the one quoted at the click, not the
+		// registration quote.
+		assertThat(saved.getValue().getAmount()).isEqualByComparingTo(CHECKOUT_AMOUNT);
 	}
 
 	/**
@@ -127,7 +137,7 @@ class CheckoutSlotClaimerTest {
 	 */
 	@Test
 	void theQuotaIsLockedBeforeItIsCounted() {
-		claimer.claim(CANDIDATE_ID);
+		claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT);
 
 		InOrder inOrder = inOrder(admissionQuotaPort, admissionPaymentRepository);
 		inOrder.verify(admissionQuotaPort).lockQuota(ADMISSION_CONFIG_ID);
@@ -142,7 +152,7 @@ class CheckoutSlotClaimerTest {
 	 */
 	@Test
 	void theCountIsScopedToTheConfigAndToToday() {
-		claimer.claim(CANDIDATE_ID);
+		claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT);
 
 		verify(admissionPaymentRepository).countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID,
 				TODAY);
@@ -155,7 +165,7 @@ class CheckoutSlotClaimerTest {
 		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
-		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
 	}
 
@@ -182,7 +192,7 @@ class CheckoutSlotClaimerTest {
 		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
-		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT))
 				.hasMessage("El cupo de esta carrera se agotó.");
 	}
 
@@ -192,7 +202,7 @@ class CheckoutSlotClaimerTest {
 		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES - 1);
 
-		claimer.claim(CANDIDATE_ID);
+		claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT);
 
 		verify(admissionPaymentRepository).save(any());
 	}
@@ -207,7 +217,7 @@ class CheckoutSlotClaimerTest {
 		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES);
 
-		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID))
+		assertThatThrownBy(() -> claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
 
 		verify(admissionPaymentRepository, never()).save(any());
@@ -223,7 +233,7 @@ class CheckoutSlotClaimerTest {
 		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(ADMISSION_CONFIG_ID, CANDIDATE_ID, TODAY))
 				.thenReturn((long) MAX_CANDIDATES - 1);
 
-		claimer.claim(CANDIDATE_ID);
+		claimer.claim(CANDIDATE_ID, CHECKOUT_AMOUNT);
 
 		verify(admissionPaymentRepository).save(any());
 	}
