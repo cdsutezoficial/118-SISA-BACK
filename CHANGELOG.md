@@ -4,6 +4,77 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-10-01] Una ficha puede tener varios intentos: el cupo se decide por ficha
+
+Commits: `91be4a0`, `8db4122`.
+
+### El defecto
+
+`AdmissionPayment.orderId` se sobreescribe en cada reintento, así que una ficha que
+inició un checkout, volvió atrás e inició otro tiene **dos intentos abiertos**: la columna
+solo nombra el último. El dinero es de la ficha, no de un intento.
+
+Los dos caminos que escribían sobre el cuota decidían **intento por intento**:
+
+- El barrido preguntaba al banco y escribía sobre la marcha. Un `FAILURE` viejo liberaba
+  el lugar y un hermano capturando marcaba la ficha pagada después: un lugar vendido
+  entregado a otra persona y una persona pagada sin lugar. El mismo oversell que evita el
+  claim, reconstruido un nivel más arriba.
+- `POST /payments/release` liberaba porque **el pedido que nombra el navegador** estaba
+  rechazado, sin mirar el hermano. El `onEvoTimeout` es un informe del navegador, y ese
+  hermano puede ser el que tiene el dinero.
+
+### Qué cambió
+
+`OrderSettlementDecider.decideFicha` pliega los veredictos de los intentos abiertos de una
+ficha: `CAPTURED > HELD_UNKNOWN > RELEASEABLE`, y **grupo vacío es `HELD_UNKNOWN`**.
+"Nothing to inspect" y "nothing in flight" son hechos distintos, y leer el primero como el
+segundo devuelve un lugar que nadie preguntó.
+
+Los dos caminos escriben solo desde ese pliegue:
+
+- El barrido agrupa por `candidateId`, pregunta al banco por **todos** los intentos antes
+  de escribir nada, y escribe después de la decisión.
+- El endpoint de liberación hace lo mismo por el mismo motivo, y `SLOT_RELEASED` ahora solo
+  se construye donde sí se liberó. Antes un rechazo con un hermano capturando respondía
+  `"liberado"` sin haber liberado nada.
+
+### La liberación es una comparación
+
+`CheckoutSlotClaimer.release` ahora recibe la `claim` que se leyó y compara con la de la
+fila (`releaseCheckoutSlotIfClaimedAt`), devolviendo si liberó.
+
+No hay transacción que abarque la llamada al banco —a propósito, para no abrirla contra un
+tercero— así que entre leer la claim y escribir la liberación el Aspirante puede iniciar
+otro checkout. Esa claim más nueva **no** se libera: el lugar ya lo tiene un pedido vivo.
+Sin columna nueva ni candado; el valor ya está ahí y se sobreescribe en cada `claim`.
+
+Un `false` no es un error: el rechazo era real, el lugar se queda, y el barrido lo liquida
+cuando el intento más nuevo tenga veredicto. Por eso el caso perdido devuelve
+`PAYMENT_IN_PROGRESS` y no `SLOT_RELEASED`.
+
+### Tres cosas que aparecieron al probar
+
+1. **Una fila ya cerrada se lee y no se reescribe.** Descartarla al agrupar dejaba que un
+   `FAILURE` abierto liberara un lugar cuyo cobro ya estaba registrado en la fila cerrada
+   como `CAPTURED`. Se conserva en el grupo para que su captura siga sosteniendo el lugar,
+   y `closeAttempt` no la toca.
+2. **`closedRows` cuenta lo que se escribió, no lo que se quiso escribir.** Una fila que
+   no necesitó escritura no dejó trabajo pendiente.
+3. **Una ficha que no se pudo consultar gasta todos sus intentos como fallidos**, no solo el
+   ilegible: el grupo es la unidad de decisión, así que ahí `failedAttempts` es igual a
+   `heldAttempts`. El desglose por ficha queda en el log, donde se puede leer sin adivinar
+   cómo se contó.
+
+### Pruebas
+
+`1153` en verde (`mvn test`). 22 casos nuevos: captura de un hermano que bloquea la
+liberación, hermano en vuelo, dos rechazos que sí liberan, banco inalcanzable en un
+hermano, claim más nueva que no se libera, fila cerrada que se lee pero no se reescribe, y
+el pliegue de `decideFicha`.
+
+---
+
 ## [2026-09-30] El barrido nocturno: lo que el navegador no resolvió, lo responde el banco
 
 Commit: `e9f0725`.
