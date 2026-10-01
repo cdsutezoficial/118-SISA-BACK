@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -110,6 +111,71 @@ class OrderSettlementDeciderTest {
 	@Test
 	void aBlankErrorIsNotARefusal() {
 		assertThat(OrderSettlementDecider.decide(status("PENDING", null, "   ")))
+				.isEqualTo(OrderSettlementDecider.Verdict.HELD_UNKNOWN);
+	}
+
+	// ── §6bis: the fold, which is what the quota is actually allowed to act on ──
+
+	@Test
+	void aFichaWithNothingToInspectIsHeldRatherThanReleased() {
+		assertThat(OrderSettlementDecider.decideFicha(List.of()))
+				.isEqualTo(OrderSettlementDecider.Verdict.HELD_UNKNOWN);
+	}
+
+	@Test
+	void aSingleVerdictIsItsOwnFold() {
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.CAPTURED)))
+				.isEqualTo(OrderSettlementDecider.Verdict.CAPTURED);
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.RELEASEABLE)))
+				.isEqualTo(OrderSettlementDecider.Verdict.RELEASEABLE);
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.HELD_UNKNOWN)))
+				.isEqualTo(OrderSettlementDecider.Verdict.HELD_UNKNOWN);
+	}
+
+	/**
+	 * The defect this fold exists for, reduced to three words.
+	 *
+	 * <p>An attempt the bank refused and a sibling attempt that captured, same ficha, same
+	 * night. Decided in the order the sweep happened to find them, the refusal released the
+	 * place and the capture then paid for it: a sold place given away and a paid applicant
+	 * left without one. Read as a group it is {@code CAPTURED}, which is the whole truth.
+	 */
+	@Test
+	void aCaptureAmongRefusedSiblingsIsCaptured() {
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.RELEASEABLE,
+				OrderSettlementDecider.Verdict.CAPTURED, OrderSettlementDecider.Verdict.RELEASEABLE)))
+				.isEqualTo(OrderSettlementDecider.Verdict.CAPTURED);
+	}
+
+	/**
+	 * The mirror image, and the one that used to be the sweep's normal answer: an order
+	 * nobody could rule on makes the whole group undecidable, so a refusal we did
+	 * understand stays unacted on. A place held a day is the cheap direction.
+	 */
+	@Test
+	void anUnansweredSiblingHoldsTheWholeFicha() {
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.RELEASEABLE,
+				OrderSettlementDecider.Verdict.HELD_UNKNOWN)))
+				.isEqualTo(OrderSettlementDecider.Verdict.HELD_UNKNOWN);
+	}
+
+	@Test
+	void onlyWhenEverySiblingIsRefusedDoesThePlaceGoBack() {
+		assertThat(OrderSettlementDecider.decideFicha(List.of(OrderSettlementDecider.Verdict.RELEASEABLE,
+				OrderSettlementDecider.Verdict.RELEASEABLE, OrderSettlementDecider.Verdict.RELEASEABLE)))
+				.isEqualTo(OrderSettlementDecider.Verdict.RELEASEABLE);
+	}
+
+	/** Order in the list is an accident of query order, never a fact about the money. */
+	@Test
+	void theFoldDoesNotDependOnTheOrderOfTheAnswers() {
+		List<OrderSettlementDecider.Verdict> asked = List.of(OrderSettlementDecider.Verdict.HELD_UNKNOWN,
+				OrderSettlementDecider.Verdict.RELEASEABLE);
+		List<OrderSettlementDecider.Verdict> reversed = List.of(OrderSettlementDecider.Verdict.RELEASEABLE,
+				OrderSettlementDecider.Verdict.HELD_UNKNOWN);
+
+		assertThat(OrderSettlementDecider.decideFicha(asked))
+				.isEqualTo(OrderSettlementDecider.decideFicha(reversed))
 				.isEqualTo(OrderSettlementDecider.Verdict.HELD_UNKNOWN);
 	}
 }
