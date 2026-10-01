@@ -4,6 +4,47 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] La descripción del pedido llega sin acentos: se iba a ver "AdmisiÃ³n" en el estado de cuenta
+
+Commit: pendiente.
+
+### Qué estaba roto
+
+Un pago 3DS2 real en el sandbox (3DS `MANDATORY`, ACS emulator, resultado `(Y)`) llegó
+a EVO con la descripción correcta y el gateway nos la devolvió así:
+
+```json
+"description": "Ficha de AdmisiÃ³n ADM-2026-000003"
+```
+
+La "ó" salió como UTF-8 y se decodificó como Latin-1 en algún punto. Esa cadena es la
+que el titular de la tarjeta ve en su estado de cuenta: no es un dato interno, es
+texto que se lleva a otro banco.
+
+### Por qué la respuesta es quitar el acento y no arreglar el charset
+
+Enviamos `Content-Type: application/json` sin charset
+(`EvoPaymentsGatewayAdapter.java:123`), así que **esta parte no declara la
+codificación**: no somos nosotros quienes elegimos cómo se lee, y no hay nada que
+corregir del lado del request para que el gateway lo lea bien. Perseguir el
+`charset` contra el procesador es pelear por algo que él controla.
+
+La salida barata es no depender de él: enviar ASCII puro.
+
+### Por qué no cuesta nada
+
+El folio ya identifica la ficha de forma única (`ADM-2026-000003`). La descripción
+nunca fue un identificador, solo texto para el humano que revisa su banco. Perder el
+tilde no quita información y elimina la clase de bug entera, no este caso.
+
+`orderDescriptionIsAsciiSoTheBankStatementCannotShowMojibake` fija que la cadena sea
+ASCII puro, sin fijar la redacción exacta — esa es la propiedad que importa, y así un
+cambio de copy futuro no rompe el test.
+
+34 tests verdes en `InitiateFichaPaymentUseCaseImplTest`.
+
+---
+
 ## [2026-09-30] Endpoint de liberación: el navegador avisa cuando el Aspirante abandona el pago
 
 Commit: pendiente.

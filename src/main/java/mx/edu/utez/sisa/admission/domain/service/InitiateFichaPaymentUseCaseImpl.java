@@ -53,12 +53,22 @@ import java.util.UUID;
  * {@code EvoPaymentGatewayException} → 502).</li>
  * </ol>
  *
- * <p>The order description is "Ficha de Admisión {folio}" and the amount is the
+ * <p>The order description is "Ficha de Admision {folio}" and the amount is the
  * live tariff the catalog quotes for the program today — the single source of
  * truth, never a client-supplied value (the request body only carries an
  * optional, allowlisted {@code returnPath}). It is re-quoted on every checkout
  * and overwrites the registration quote on the ficha, so a tariff edited
  * between issuing and paying reaches the applicant (§1.3).
+ *
+ * <p>The description is deliberately unaccented. It is the text the cardholder
+ * reads on their bank statement, and a real capture came back as
+ * {@code "Ficha de AdmisiÃ³n ADM-2026-000003"} — the accented "ó" encoded as
+ * UTF-8 and decoded as Latin-1 somewhere between here and the gateway. We send
+ * {@code APPLICATION_JSON} without a charset, so we are not the side declaring
+ * an encoding, and this is not worth fighting the processor over: the folio
+ * already identifies the ficha uniquely, so dropping the accent costs no
+ * information and removes the whole class of bug. {@code OrderDescriptionIsAscii}
+ * pins it.
  */
 public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseCase {
 
@@ -227,7 +237,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 
 		String returnUrl = resolveReturnUrl(returnPath);
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), amount,
+				payment.getReferenceNumber(), orderDescription(candidate.getFolio()), amount,
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
 
@@ -366,6 +376,22 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			return base;
 		}
 		return UriComponentsBuilder.fromUriString(base).replacePath(requestedPath).build().toUriString();
+	}
+
+	/**
+	 * The order description the bank shows on the cardholder's statement.
+	 *
+	 * <p>ASCII on purpose. A real 3DS capture in the sandbox came back from the
+	 * gateway as {@code "Ficha de AdmisiÃ³n ADM-2026-000003"}: the accented "ó"
+	 * went out as UTF-8 and came back decoded as Latin-1, so the applicant would
+	 * have seen mojibake on their bank statement. The request goes out as
+	 * {@code APPLICATION_JSON} with no charset declared, so this side is not the
+	 * one declaring an encoding and there is nothing to fix here beyond not
+	 * depending on the processor honouring ours. The folio already identifies the
+	 * ficha, so dropping the accent costs no information.
+	 */
+	static String orderDescription(String folio) {
+		return "Ficha de Admision " + folio;
 	}
 
 	private static String withCheckoutParams(String baseUrl, UUID candidateId, String orderId) {

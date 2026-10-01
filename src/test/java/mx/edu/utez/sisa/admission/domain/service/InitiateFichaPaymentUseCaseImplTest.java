@@ -214,13 +214,45 @@ class InitiateFichaPaymentUseCaseImplTest {
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> ORDER_ID.equals(order.id())
 				&& "REF-2026-000001".equals(order.reference())
 				&& LIVE_AMOUNT.compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
-				&& "Ficha de Admisión ADM-2026-000001".equals(order.description())
+				&& "Ficha de Admision ADM-2026-000001".equals(order.description())
 				&& expectedReturn.equals(order.returnUrl()) && expectedReturn.equals(order.cancelUrl())));
 		// Persisting the session is the claimer's job now, in its own transaction.
 		// What this class pins is that the use case hands it exactly the ids Evo
 		// returned — a mismatch here would leave the confirmation flow unable to
 		// find the order it has to verify.
-		verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESSION0001BR");
+verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESSION0001BR");
+	}
+
+	/**
+	 * The description is the text the cardholder reads on their bank statement, and
+	 * a real 3DS capture in the sandbox came back from the gateway as
+	 * {@code "Ficha de AdmisiÃ³n ADM-2026-000003"} — the accented "ó" encoded as
+	 * UTF-8 and decoded as Latin-1 somewhere along the way.
+	 *
+	 * <p>This does not pin the exact wording, which is free to change; it pins that
+	 * the string is pure ASCII. That is the actual property: the request goes out as
+	 * {@code APPLICATION_JSON} with no charset declared, so we are not the side
+	 * deciding how it is read, and the only way to stop depending on the processor
+	 * is to not send anything it could misread. The folio already identifies the
+	 * ficha, so nothing is lost.
+	 */
+	@Test
+	void orderDescriptionIsAsciiSoTheBankStatementCannotShowMojibake() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any()))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		ArgumentCaptor<EvoPaymentsGatewayPort.EvoOrder> order = ArgumentCaptor.forClass(EvoPaymentsGatewayPort.EvoOrder.class);
+		verify(evoPaymentsGateway).initiateCheckoutSession(order.capture());
+
+		String description = order.getValue().description();
+		assertThat(description).isEqualTo("Ficha de Admision ADM-2026-000001");
+		assertThat(description.chars().allMatch(c -> c < 128))
+				.as("la descripción que ve el titular en su estado de cuenta debe ser ASCII puro")
+				.isTrue();
 	}
 
 	/**
