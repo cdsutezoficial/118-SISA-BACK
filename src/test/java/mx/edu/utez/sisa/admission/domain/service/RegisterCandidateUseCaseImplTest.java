@@ -218,7 +218,11 @@ class RegisterCandidateUseCaseImplTest {
 
 		assertThat(result.status()).isEqualTo(CandidateStatus.REGISTERED);
 		assertThat(result.payment()).isNotNull();
-		assertThat(result.payment().referenceNumber()).startsWith("REF-");
+		// The reference is the folio behind a prefix and nothing else: no date, no
+		// suffix (decisión 11.1). Asserting it against the folio instead of a
+		// literal keeps the test honest year-round — the folio is what carries the
+		// year, not the machine's clock — and proves there is no date left in it.
+		assertThat(result.payment().referenceNumber()).isEqualTo("REF-" + result.folio());
 		assertThat(result.payment().amount()).isEqualByComparingTo(CONCEPT_COST);
 		assertThat(result.payment().paymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
 		// The registration deadline is closes_at read in the admission zone, NOT

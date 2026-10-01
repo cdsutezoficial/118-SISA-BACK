@@ -4,6 +4,48 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] La referencia de pago es el folio, sin fecha dentro
+
+Commit: pendiente.
+
+### Por qué
+
+`generateReference` armaba `REF-{yyyyMMdd}-{folioSeq}` con un `LocalDate.now()` pelado
+—la zona por defecto del servidor— dentro de una cadena que el pagador lee en
+ventanilla y que se imprime en el PDF. Eso hace que la referencia dependa de *cuándo*
+se emitió la ficha en vez de *cuál* ficha es: no se puede recalcular en ningún otro
+lado, y dos fichas del mismo día en servidores distintos pueden discrepar. Decisión
+11.1.
+
+### Qué cambió
+
+- `RegisterCandidateUseCaseImpl.generateReference(folio)` pasa a `REF-{folio}` puro,
+  con el prefijo en una constante. Sin reloj, sin sufijo. Sigue siendo única porque el
+  folio lo es. `OrderIdBuilder` conserva su sufijo aleatorio a propósito: un pedido del
+  banco tiene que ser único por **intento**, y dos intentos de una misma ficha
+  comparten referencia.
+- `ConfirmAdmissionPaymentUseCaseImpl`: el javadoc decía "misma derivación que la
+  referencia de pago", que con lo anterior ya era falso. Ahora explica que el recibo
+  (`REC-{yyyyMMdd}-{seq}`) **sí** lleva fecha y a propósito, porque se emite una vez al
+  pagar y ya está estampado en correos enviados. Su formato no se toca —cambiarlo no
+  compra nada—, pero se deja escrito que esa lectura de `LocalDate.now()` no es un
+  patrón que haya que copiar.
+- `CandidateFichaResponse` gana `orderId` nullable, que era la mitad pendiente del ítem
+  5 de la Fase 3. `FichaData` ya lo traía y el PDF ya lo imprimía solo cuando existe;
+  el DTO lo expone para que la pantalla pueda hacer la misma distinción entre "nunca
+  intentó pagar" y "el pago es el 12345".
+- Se corrigió el javadoc de `GetCandidateFichaUseCase`, que decía que el DTO mapeaba
+  `FichaData` uno a uno cuando hace tiempo que no es así.
+
+### Tests
+
+`RegisterCandidateUseCaseImplTest` ahora fija la referencia contra el folio
+(`"REF-" + result.folio()`) en vez de con `startsWith("REF-")`: así la prueba sigue
+valiendo el año que sea y demuestra que no quedó ninguna fecha dentro. Suite completa
+en verde.
+
+---
+
 ## [2026-09-30] El checkout cobra la tarifa viva, no la cotizada al registrar
 
 Commit: pendiente.

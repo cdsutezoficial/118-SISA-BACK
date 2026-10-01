@@ -23,10 +23,11 @@ import java.util.UUID;
  * the web layer maps to HTTP 404.
  *
  * <p>Fase 7 expanded the projection with the full "Paso 4" ficha form so the
- * ficha PDF (Fase 8) mirrors {@code CandidatoRegistro.tsx}. The original flat
- * fields stay untouched (the screen's {@code CandidateFichaResponse} still
- * maps them one-to-one); the new sections live in nested records, resolved
- * catalog ids→names at assemble time via {@code PlaceNameLookupPort} /
+ * ficha PDF (Fase 8) mirrors {@code CandidatoRegistro.tsx}. The flat fields stay
+ * untouched; the web DTO narrows them to the ones the ficha screens consume —
+ * plus {@code orderId}, so the screen can show the bank order the PDF prints.
+ * The new sections live in nested records, resolved catalog ids→names at
+ * assemble time via {@code PlaceNameLookupPort} /
  * {@code ProgramAdmissionConfigQueryPort} / the outreach-channel and
  * high-school-type repos.
  */

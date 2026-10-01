@@ -94,6 +94,13 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+	/**
+	 * The payment reference is the candidate's folio behind this prefix, and
+	 * nothing else — see {@link #generateReference}. It is the string the payer
+	 * quotes at ventanilla, so its shape is a contract with people, not a detail.
+	 */
+	private static final String REFERENCE_PREFIX = "REF-";
+
 	private final CandidateRepository candidateRepository;
 
 	private final CandidatePersonRepository candidatePersonRepository;
@@ -414,14 +421,25 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	}
 
 	/**
-	 * {@code REF-{yyyyMMdd}-{folioSeq}} — deterministic, derived from the
-	 * candidate's folio sequence (matches the frontend mock format
-	 * {@code REF-yyyyMMdd-XXXXXX} so the same reference renders end-to-end).
+	 * {@code REF-{folio}} — {@code REF-ADM-2026-000004}. Pure: no clock, no suffix,
+	 * nothing but the folio the candidate already carries.
+	 *
+	 * <p>It used to be {@code REF-{yyyyMMdd}-{folioSeq}}, and the date in it came
+	 * from a bare {@code LocalDate.now()} — the server's default zone — for a
+	 * string that is quoted at ventanilla and printed on the PDF. That made the
+	 * reference a function of <em>when</em> the ficha was issued instead of
+	 * <em>which</em> ficha it is, so it could not be recomputed anywhere else, and
+	 * two fichas issued the same day on different servers could disagree. Decisión
+	 * 11.1.
+	 *
+	 * <p>It stays unique because the folio is. {@link OrderIdBuilder} keeps its
+	 * random suffix on purpose: a bank order id has to be unique per
+	 * <em>attempt</em>, and two attempts on one ficha share a reference. Splitting
+	 * the two is the point — one is the identity of the row, the other the
+	 * identity of the gateway session.
 	 */
 	private String generateReference(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("REF-%s-%s", today, seq);
+		return REFERENCE_PREFIX + folio;
 	}
 
 	/**
