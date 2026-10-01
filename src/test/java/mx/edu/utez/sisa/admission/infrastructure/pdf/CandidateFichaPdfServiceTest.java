@@ -129,9 +129,10 @@ class CandidateFichaPdfServiceTest {
 
 	/**
 	 * The applicant carries this PDF to ventanilla, so a date printed under the
-	 * wrong label is the failure that gets argued about at the window. Both
-	 * windows get their own row, with the fixture's two different days (10/03
-	 * registration, 05/03 payment) so a swap cannot pass.
+	 * wrong label is the failure that gets argued about at the window. The
+	 * registration row and the "Fecha límite de pago" row get their own labels,
+	 * with the fixture's two different days (10/03 registration, 03/03 the
+	 * ficha's visible plazo) so a swap cannot pass.
 	 */
 	@Test
 	void printsBothWindowsUnderTheirOwnLabels() throws Exception {
@@ -142,7 +143,37 @@ class CandidateFichaPdfServiceTest {
 			assertTrue(text.contains("Fecha límite de inscripción"), "missing the registration-window row");
 			assertTrue(text.contains("Fecha límite de pago"), "missing the payment-window row");
 			assertTrue(text.contains("10/03/2026"), "missing the registration deadline");
-			assertTrue(text.contains("05/03/2026"), "missing the payment window's closing day");
+			assertTrue(text.contains("03/03/2026"), "missing the ficha's visible payment deadline");
+		}
+	}
+
+	/**
+	 * The concept's own closing day is an engine boundary and is not printed:
+	 * only the ficha's visible plazo belongs under "Fecha límite de pago". The
+	 * fixture's {@code paymentClosesOn} (05/03) must therefore never appear.
+	 */
+	@Test
+	void neverPrintsTheConceptsOwnClosingDayAsThePaymentDeadline() throws Exception {
+		byte[] pdf = service.render(fullFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			assertFalse(text(reader).contains("05/03/2026"),
+					"the concept's available_until is not the date promised to the applicant");
+		}
+	}
+
+	/**
+	 * When the ficha's visible plazo is the same day as the sales window there is
+	 * only one date to state, so the payment row is dropped instead of printing
+	 * the same day twice under two labels.
+	 */
+	@Test
+	void omitsThePaymentRowWhenItMatchesTheRegistrationDeadline() throws Exception {
+		byte[] pdf = service.render(fichaWithPaymentDeadline(LocalDate.of(2026, 3, 10)));
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			assertFalse(text(reader).contains("Fecha límite de pago"),
+					"an equal deadline must not be repeated under a second label");
 		}
 	}
 
@@ -172,6 +203,15 @@ class CandidateFichaPdfServiceTest {
 	}
 
 	private static FichaData fullFicha() {
+		return fullFicha(LocalDate.of(2026, 3, 3));
+	}
+
+	/** Same fixture as {@link #fullFicha()} but with a chosen visible payment deadline. */
+	private static FichaData fichaWithPaymentDeadline(LocalDate paymentDeadline) {
+		return fullFicha(paymentDeadline);
+	}
+
+	private static FichaData fullFicha(LocalDate paymentDeadline) {
 		return new FichaData(
 				UUID.fromString("11111111-1111-1111-1111-111111111111"),
 				"ADM-2026-000001",
@@ -188,11 +228,14 @@ class CandidateFichaPdfServiceTest {
 				"351 100 20 30",
 				"REFA-2026-000001",
 				new BigDecimal("750.00"),
-				// registrationDeadline then paymentClosesOn: different days on
-				// purpose, because the PDF prints them under separate labels and
-				// equal values would let a swap through unnoticed.
+				// registrationDeadline, paymentClosesOn, paymentDeadline:
+				// different days on purpose, because the PDF prints the first and
+				// the last under separate labels and equal values would let a swap
+				// through unnoticed. paymentClosesOn (05/03) is an engine boundary
+				// and must never be the printed "Fecha límite de pago".
 				LocalDate.of(2026, 3, 10),
 				LocalDate.of(2026, 3, 5),
+				paymentDeadline,
 				AdmissionPaymentStatus.PAID,
 				"REC-2026-0042",
 				Instant.parse("2026-02-02T14:30:00Z"),
@@ -226,6 +269,7 @@ class CandidateFichaPdfServiceTest {
 				"",
 				"",
 				"REF-0001",
+				null,
 				null,
 				null,
 				null,

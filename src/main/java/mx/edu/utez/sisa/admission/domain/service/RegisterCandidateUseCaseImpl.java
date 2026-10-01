@@ -194,6 +194,20 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		return config.closesAt().atZone(clock.getZone()).toLocalDate();
 	}
 
+	/**
+	 * The visible "Fecha límite de pago" handed back with the new ficha: the
+	 * earlier of the sales window's snapshot and the ficha's own registration
+	 * day plus its N-day plazo. Shares the rule the portal and mostrador screens
+	 * use, so the three never disagree.
+	 */
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
+		LocalDate fichaDeadline = candidate.paymentDeadline(clock.getZone(), fichaDeadlineDays);
+		if (registrationDeadline == null) {
+			return fichaDeadline;
+		}
+		return fichaDeadline.isBefore(registrationDeadline) ? fichaDeadline : registrationDeadline;
+	}
+
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
 		validateCurpHasNoLiveFicha(command.datosGenerales().curp());
 
@@ -424,6 +438,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				candidate.isLlaveMxVerified(), candidate.getRegisteredAt(), candidate.isFirstChoice(),
 				candidate.getOutreachChannelId(), candidate.isEnabledForInduction(),
 				new FichaPayment(payment.getReferenceNumber(), payment.getAmount(), payment.getRegistrationDeadline(),
-						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId())));
+						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId()),
+						visiblePaymentDeadline(candidate, payment.getRegistrationDeadline())));
 	}
 }

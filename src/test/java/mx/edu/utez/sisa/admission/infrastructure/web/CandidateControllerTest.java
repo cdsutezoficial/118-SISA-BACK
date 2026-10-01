@@ -237,8 +237,11 @@ class CandidateControllerTest {
 	/** The registration window's closing day, as stored on the ticket. */
 	private static final LocalDate REGISTRATION_DEADLINE = LocalDate.of(2026, 9, 30);
 
-	/** The tuition concept's {@code available_until}: the date that governs payment. */
+	/** The tuition concept's {@code available_until}: an engine boundary, not the shown date. */
 	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
+
+	/** The date the screen promises: the earlier of the sales window and the ficha plazo. */
+	private static final LocalDate PAYMENT_DEADLINE = LocalDate.of(2026, 9, 28);
 
 	private static PaymentAccess paymentAccess(boolean alreadyPaid) {
 		return new PaymentAccess(ID, FOLIO, "Ana Torres Ramos", "Ing. en Tecnologías de la Información",
@@ -247,7 +250,7 @@ class CandidateControllerTest {
 						: mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
-				PAYMENT_CLOSES_ON);
+				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE);
 	}
 
 	@Test
@@ -277,6 +280,7 @@ class CandidateControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"))
 				.andExpect(jsonPath("$.paymentClosesOn").value("2026-10-05"))
+				.andExpect(jsonPath("$.paymentDeadline").value("2026-09-28"))
 				.andExpect(jsonPath("$.deadline").doesNotExist());
 	}
 
@@ -290,11 +294,13 @@ class CandidateControllerTest {
 		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX)).thenReturn(new PaymentAccess(ID, FOLIO,
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
-				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null));
+				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
+				null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentClosesOn").isEmpty())
+				.andExpect(jsonPath("$.paymentDeadline").isEmpty())
 				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"));
 	}
 

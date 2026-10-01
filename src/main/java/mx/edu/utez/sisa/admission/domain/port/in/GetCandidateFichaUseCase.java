@@ -35,16 +35,21 @@ public interface GetCandidateFichaUseCase {
 	FichaData get(UUID candidateId);
 
 	/**
-	 * {@code registrationDeadline} and {@code paymentClosesOn} are the two
-	 * distinct windows the ficha has to state, not one "deadline": the first is
-	 * the sales window's closing day as of registration, the second is the
-	 * tuition concept's {@code availableUntil} read live. The PDF prints them
-	 * under their own labels — see {@code CandidateFichaPdfService}.
+	 * Three distinct windows, not one "deadline". {@code registrationDeadline}
+	 * is the sales window's closing day as of registration.
+	 * {@code paymentClosesOn} is the tuition concept's {@code availableUntil},
+	 * read live, and it is an engine-side boundary — never a date the applicant
+	 * is asked to act on. {@code paymentDeadline} is the one the applicant
+	 * actually pays by: the earlier of {@code registrationDeadline} and the
+	 * ficha's own {@code registeredAt} + N-day plazo (see {@link
+	 * mx.edu.utez.sisa.admission.domain.model.Candidate#paymentDeadline}). The
+	 * PDF prints {@code paymentDeadline} under "Fecha límite de pago", and only
+	 * when it differs from {@code registrationDeadline}.
 	 */
 	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
 			UUID admissionConfigId, String programName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
-			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn,
+			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
 			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,

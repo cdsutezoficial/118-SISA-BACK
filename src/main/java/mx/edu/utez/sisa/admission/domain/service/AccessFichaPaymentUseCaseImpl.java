@@ -12,6 +12,7 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Optional;
@@ -46,15 +47,22 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 
 	private final FichaAmountResolver fichaAmountResolver;
 
+	private final Clock clock;
+
+	private final int fichaDeadlineDays;
+
 	public AccessFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
+			Clock clock, int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
+		this.clock = clock;
+		this.fichaDeadlineDays = fichaDeadlineDays;
 	}
 
 	@Override
@@ -75,13 +83,28 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 		// exists would strand the applicant with no way to see what they owe.
 		// paymentClosesOn already answers null when there is nothing to report.
 		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
+		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, payment.getRegistrationDeadline());
 
 		return new PaymentAccess(candidate.getId(), candidate.getFolio(),
 				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)),
 				config == null ? null : config.programName(), payment.getAmount(), payment.getReferenceNumber(),
 				payment.getRegistrationDeadline(), payment.getPaymentStatus(), payment.getReceiptNumber(),
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
-				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn);
+				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline);
+	}
+
+	/**
+	 * The visible "Fecha límite de pago": the earlier of the sales window's
+	 * snapshot and the ficha's own plazo. Shares the rule with
+	 * {@code GetCandidateFichaUseCaseImpl} so the portal and mostrador screens
+	 * never disagree on the date they promise.
+	 */
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
+		LocalDate fichaDeadline = candidate.paymentDeadline(clock.getZone(), fichaDeadlineDays);
+		if (registrationDeadline == null) {
+			return fichaDeadline;
+		}
+		return fichaDeadline.isBefore(registrationDeadline) ? fichaDeadline : registrationDeadline;
 	}
 
 	private Candidate resolveCandidate(String folio) {

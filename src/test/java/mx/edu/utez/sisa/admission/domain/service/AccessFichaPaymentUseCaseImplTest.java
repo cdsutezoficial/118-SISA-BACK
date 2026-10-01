@@ -20,8 +20,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -77,6 +79,18 @@ class AccessFichaPaymentUseCaseImplTest {
 	/** The tuition concept's {@code available_until}: the date that governs payment. */
 	private static final LocalDate PAYMENT_CLOSES_ON = LocalDate.of(2026, 10, 5);
 
+	/** The ficha's own plazo: registered 10/09 + 10 days → 20/09, before the sales window. */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	private static final Instant REGISTERED_AT = LocalDate.of(2026, 9, 10).atTime(12, 0).atZone(ZONE).toInstant();
+
+	private static final int DEADLINE_DAYS = 10;
+
+	/** The earlier of {@link #REGISTRATION_DEADLINE} and {@link #REGISTERED_AT} + 10. */
+	private static final LocalDate PAYMENT_DEADLINE = LocalDate.of(2026, 9, 20);
+
+	private static final Clock CLOCK = Clock.fixed(REGISTERED_AT, ZONE);
+
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
 
 	@Mock
@@ -99,7 +113,8 @@ class AccessFichaPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver, CLOCK,
+				DEADLINE_DAYS);
 		// Default: the concept closes its window on this date. Every test that
 		// asserts on paymentClosesOn relies on it, and the ones that don't care
 		// are unaffected because a non-stubbed mock would answer null anyway.
@@ -111,6 +126,9 @@ class AccessFichaPaymentUseCaseImplTest {
 		// Candidate#id is JPA-assigned (no public setter), so a hand-built
 		// instance has a null id — same seam the other ficha tests use.
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
+		// The ficha's visible plazo is derived from when it was registered, so it
+		// is pinned to a fixed day the same way the clock is.
+		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
 		return candidate;
 	}
 
@@ -170,6 +188,24 @@ class AccessFichaPaymentUseCaseImplTest {
 
 		assertThat(access.registrationDeadline()).isEqualTo(REGISTRATION_DEADLINE);
 		assertThat(access.paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
+		// The date promised to the applicant is the ficha's own plazo (earlier of
+		// the sales window and registeredAt + N), never the concept's window.
+		assertThat(access.paymentDeadline()).isEqualTo(PAYMENT_DEADLINE);
+	}
+
+	/**
+	 * When the sales window closes before the ficha's own plazo, the earlier of
+	 * the two is the one the screen must promise.
+	 */
+	@Test
+	void theVisiblePaymentDeadlineIsTheEarlierOfTheSalesWindowAndTheFichaPlazo() {
+		givenPendingCandidate();
+		// Ticket registered 10/09 with its window closing 15/09: the window wins.
+		AdmissionPayment earlyWindow = new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA,
+				new BigDecimal("500.00"), "REF-20260924-000101", LocalDate.of(2026, 9, 15));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(earlyWindow));
+
+		assertThat(useCase.access(FOLIO, SUFFIX).paymentDeadline()).isEqualTo(LocalDate.of(2026, 9, 15));
 	}
 
 	/** Read live, not snapshotted: the catalog decides, on every request. */

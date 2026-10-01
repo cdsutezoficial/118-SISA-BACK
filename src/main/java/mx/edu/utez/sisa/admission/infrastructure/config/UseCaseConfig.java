@@ -274,10 +274,11 @@ public class UseCaseConfig {
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			FichaAmountResolver fichaAmountResolver) {
+			FichaAmountResolver fichaAmountResolver, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
 				admissionPaymentRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
-				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver);
+				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, clock, fichaDeadlineDays);
 	}
 
 	/**
@@ -292,8 +293,10 @@ public class UseCaseConfig {
 			CandidatePersonRepository candidatePersonRepository,
 			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver) {
+			FichaAmountResolver fichaAmountResolver, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver);
+				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver, clock,
+				fichaDeadlineDays);
 	}
 }

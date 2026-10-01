@@ -4,6 +4,44 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] La ficha muestra sus fechas reales y su precio vivo
+
+Commit: pendiente.
+
+### Por qué
+
+La ficha imprimía como "Fecha límite de pago" el `available_until` del concepto de
+pago (una fecha que el catálogo mueve y sobre la que el Aspirante no puede actuar),
+no el plazo real de la ficha. Y el monto viajaba congelado desde el registro, así
+que una corrección de tarifa no llegaba a una ficha ya emitida (§1.13, §3.2).
+
+### Qué cambió
+
+- `GetCandidateFichaUseCase.FichaData` gana `paymentDeadline`: el más corto entre el
+  cierre de la venta y `registeredAt + N` días de la ficha. Es la fecha que se
+  imprime bajo "Fecha límite de pago"; `paymentClosesOn` queda como frontera de
+  motor y deja de mostrarse. `GetCandidateFichaUseCaseImpl` recibe `Clock` y el
+  `deadline-days`, y cotiza el monto en vivo desde el catálogo (se omite si el
+  programa no tiene precio hoy).
+- `AccessFichaPaymentUseCase.PaymentAccess` gana `paymentDeadline`, calculado con
+  la misma regla, para que la pantalla de "vuelve a pagar" no mienta la fecha.
+- `RegisterCandidateUseCase.FichaPayment` gana `paymentDeadline`, para que la
+  pantalla de registro confirme la misma fecha que luego se ve en el portal.
+- `CandidateFichaResponse`, `FichaPaymentAccessResponse` y
+  `CandidateRegistrationResponse.PaymentResponse` exponen `paymentDeadline`.
+- `CandidateFichaPdfService`: "Monto a pagar" usa el monto vivo (se omite si es
+  nulo) y "Fecha límite de pago" usa `paymentDeadline`, mostrada solo cuando difiere
+  de "Fecha límite de inscripción".
+
+### Tests
+
+`GetCandidateFichaUseCaseImplTest`, `AccessFichaPaymentUseCaseImplTest`,
+`CandidateFichaPdfServiceTest` y `CandidateControllerTest` cubren la fecha visible
+(mínimo de los dos relojes) y el monto vivo, y fijan que el `available_until` del
+concepto ya no se imprime. Suite completa en verde, 1063 tests, 0 fallos.
+
+---
+
 ## [2026-09-30] La cotización de la ficha usa el reloj, no la fecha de arranque
 
 Commit: pendiente.

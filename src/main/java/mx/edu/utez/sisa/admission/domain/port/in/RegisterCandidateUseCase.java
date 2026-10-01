@@ -99,9 +99,15 @@ public interface RegisterCandidateUseCase {
 	 * date, which the screen must render as "no deadline" rather than as a
 	 * placeholder date.
 	 *
+	 * <p>{@code paymentDeadline} is the date the screen states for "Fecha límite
+	 * de pago": the earlier of {@code registrationDeadline} and the ficha's own
+	 * {@code registeredAt} + N-day plazo. It deliberately does not borrow
+	 * {@code paymentClosesOn}: the concept's {@code availableUntil} can move with
+	 * the catalog and is not a date the applicant is asked to act on.
+	 *
 	 * <p>Mirrors the frontend ficha's "Monto a Pagar / Referencia" (screen 13).
 	 */
 	record FichaPayment(String referenceNumber, BigDecimal amount, LocalDate registrationDeadline,
-			AdmissionPaymentStatus paymentStatus, LocalDate paymentClosesOn) {
+			AdmissionPaymentStatus paymentStatus, LocalDate paymentClosesOn, LocalDate paymentDeadline) {
 	}
 }
