@@ -39,6 +39,45 @@ public interface EvoPaymentsGatewayPort {
 	record EvoSession(String id, String merchant, String successIndicator, String version) {
 	}
 
-	record EvoOrderStatus(String orderId, String result, BigDecimal amount) {
+	/**
+	 * What {@code Retrieve Order} reports about one order. The three fields are what
+	 * the confirmation path has always needed; the settlement fields are what the daily
+	 * sweep needs to tell "captured the money" from "said SUCCESS and captured nothing",
+	 * and they are documented as ALWAYS PROVIDED by {@code Referencias de API.txt}.
+	 *
+	 * <p>There is no {@code gatewayCode}: it does not come back from {@code Retrieve
+	 * Order}, so an order that reports {@code SUCCESS} with no capture cannot be
+	 * diagnosed — it has to be retained, not investigated. See the sweep use case.
+	 */
+	record EvoOrderStatus(String orderId, String result, BigDecimal amount, BigDecimal totalAuthorizedAmount,
+			BigDecimal totalCapturedAmount, BigDecimal totalDisbursedAmount, BigDecimal totalRefundedAmount,
+			String creationTime, String lastUpdatedTime, String error) {
+
+		/**
+		 * A status carrying only what the confirmation path reads, with no settlement
+		 * data. A non-null {@code totalCapturedAmount} keeps {@code SUCCESS} meaning
+		 * "money was taken" for callers that predate the sweep, and {@code null} leaves
+		 * it genuinely unknown rather than pretending nothing was captured.
+		 */
+		public EvoOrderStatus(String orderId, String result, BigDecimal amount, BigDecimal totalCapturedAmount) {
+			this(orderId, result, amount, null, totalCapturedAmount, null, null, null, null, null);
+		}
+
+		/**
+		 * The pre-sweep shape: {@code SUCCESS} with the amount, everything else unknown.
+		 */
+		public EvoOrderStatus(String orderId, String result, BigDecimal amount) {
+			this(orderId, result, amount, null, "SUCCESS".equals(result) ? amount : null, null, null, null, null, null);
+		}
+
+		/** True when the bank reported an explicit error node, regardless of {@code result}. */
+		public boolean hasError() {
+			return error != null && !error.isBlank();
+		}
+
+		/** True when money actually moved, which outranks {@code result} in every decision. */
+		public boolean capturedAny() {
+			return totalCapturedAmount != null && totalCapturedAmount.signum() > 0;
+		}
 	}
 }
