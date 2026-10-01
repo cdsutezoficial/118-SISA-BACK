@@ -4,46 +4,38 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
-## [2026-09-30] El PDF de la ficha usa los tokens del sistema
+## [2026-09-30] El estado de pago se escribe, no se imprime
 
 Commit: pendiente.
 
 ### Por qué
 
-El PDF se veía como un documento exportado por otro sistema: fondo `#F3F4F6` que no
-existe en el portal, encabezados de sección subrayados a mano, filas todas iguales y
-— lo más grave — `Estado de pago: PAID`. Ese último no es un detalle de estilo. La
-persona lleva este archivo a ventanilla en la mano y lo lee en casa; `PAID` no es un
-estado, es el nombre de una columna.
+El PDF imprimía `Estado de pago: PAID`. No es un detalle de estilo: la persona lleva
+este archivo a ventanilla en la mano y lo lee en casa, y `PAID` no es un estado, es el
+nombre de una columna.
 
 ### Qué cambió
 
-- Los colores salen de los tokens de `theme.css` (`--primary`, `--accent`, `--muted`,
-  `--border`, `----muted-foreground`, `--foreground`) y se llaman igual que en el
-  portal, para que un cambio de token se aplique en los dos lados.
-- Encabezado verde con el folio a la derecha. El folio salió del bloque de pago: es
-  la identidad del documento, no un atributo del pago, y en ventanilla se pide el folio
-  antes que cualquier otra cosa.
-- El bloque de pago es una tarjeta con borde. Es la única parte de la ficha sobre la
-  que hay que actuar, entonces es la única que se distingue del resto.
-- El estado de pago es un chip: verde y "Pagado" / ámbar y "Pendiente". El ámbar es
-  para el estado en el que sí hay que hacer algo; el rojo queda para errores, y un
-  plazo que nadie ha vencido todavía no es un error.
-- Encabezados de sección con barra verde de 2px, como el `border-left` de las
-  tarjetas del portal, en vez del subrayado dibujado a mano.
-- Filas alternas. El color se decide a partir de las celdas que ya tiene la tabla, así
-  que ninguna sección tiene que llevar su propio índice.
-- **Ningún enum se imprime con `name()`**: `text()` resuelve cada uno a su texto en
-  español. Si mañana aparece un enum nuevo, el compilador obliga a decidir qué se
-  escribe en el documento.
+- `CandidateFichaPdfService` ya no llama `paymentStatus().name()`. El enum entra por
+  `text()`, que resuelve cada enum a su texto en español: `PENDING` → "Pendiente",
+  `PAID` → "Pagado". Si mañana aparece un enum nuevo en una fila, el compilador obliga
+  a decidir qué se escribe en el documento.
+- El enum **no se tocó**. `AdmissionPaymentStatus` sigue siendo `PENDING, PAID` y
+  sigue persistiéndose: es estado real, y las consultas de cupo lo filtran
+  (`countPaidByAdmissionConfigId`, `AdmissionPaymentOccupancyQueries`). Un enum se
+  queda cuando el motor lo usa para decidir, y se cae cuando solo clasifica un texto —
+  que es lo que pasó con `EmploymentType`, en la entrada de abajo.
+- **El layout del PDF no se modificó.** Se intentó una pasada visual (encabezado con
+  banda verde, tarjeta de pago, filas alternas, barra lateral en las secciones) y se
+  revirtió a petición del negocio: el documento ya era conocido por quien lo recibe y
+  se prefiere no cambiarlo. Este commit es solo el texto del enum.
 
 ### Tests
 
-- `printsThePaymentStatusAsSpanishTextAndNeverAsTheEnumName` — afirma "Pagado" y
-  "Pendiente", y **nega** "PAID" y "PENDING", porque una aserción positiva sola
-  pasaría aunque el nombre del enum quedara en otra parte del texto.
-- El resto del archivo no necesitó cambios: los valores y las etiquetas se siguen
-  extrayendo igual, así que las pruebas existentes siguen valiendo.
+`printsThePaymentStatusAsSpanishTextAndNeverAsTheEnumName` afirma "Pagado" y
+"Pendiente", y **nega** "PAID" y "PENDING": una aserción positiva sola pasaría aunque el
+nombre del enum quedara en otra parte del texto. El resto del archivo no necesitó
+cambios, porque el layout y los valores se siguen extrayendo igual.
 
 ---
 
