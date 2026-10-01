@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatu
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -300,6 +301,67 @@ class InitiateFichaPaymentUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class)
 				.hasMessageContaining("no pudo iniciar el pago en línea");
+	}
+
+	// -- the attempt has to exist before Evo is called (§3.6) --
+
+	/**
+	 * The ordering this whole slice exists for. The attempt is opened before the
+	 * gateway call, not after: once {@code INITIATE_CHECKOUT} runs, Evo may hold an
+	 * order that can be captured at any second, and a slot held with no recorded
+	 * order id can only be released by guessing.
+	 */
+	@Test
+	void attemptIsOpenedWithTheOrderIdAndAmountBeforeTheGatewayIsCalled() {
+		givenPayableCandidate();
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		InOrder inOrder = inOrder(checkoutSlotClaimer, evoPaymentsGateway);
+		inOrder.verify(checkoutSlotClaimer).openAttempt(ORDER_ID, CANDIDATE_ID, LIVE_AMOUNT);
+		// The slot is taken after the attempt is on record and before the gateway,
+		// so no failure can leave a claim without an order to reconcile.
+		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+		inOrder.verify(evoPaymentsGateway).initiateCheckoutSession(any());
+	}
+
+	/**
+	 * A definitive refusal closes the attempt with {@code ORDER_NOT_CREATED} next
+	 * to the slot release: nothing was created at the bank, so the history says so
+	 * instead of leaving a row that looks like it may still be paying.
+	 */
+	@Test
+	void definitiveGatewayRefusalReleasesTheSlotAndClosesTheAttempt() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenThrow(new EvoPaymentGatewayException(
+				"El proveedor de pagos (EVO) no pudo iniciar el pago en línea: INVALID_REQUEST"));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(EvoPaymentGatewayException.class);
+
+		verify(checkoutSlotClaimer).release(CANDIDATE_ID);
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
+	}
+
+	/**
+	 * An ambiguous failure keeps both the slot and the open attempt. Evo may have
+	 * created the order anyway and captured it later, so releasing here would trade
+	 * a stuck career for a possible oversell — the sweep is what settles it, and it
+	 * can only do that because the attempt survived.
+	 */
+	@Test
+	void ambiguousGatewayFailureKeepsTheClaimAndLeavesTheAttemptOpen() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenThrow(EvoPaymentGatewayException
+				.possiblyCreated("No se pudo contactar al proveedor de pagos (EVO)", null));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(EvoPaymentGatewayException.class);
+
+		verify(checkoutSlotClaimer, never()).release(any());
+		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 	}
 
 	// -- returnPath: the "return me to my own screen" feature, and its guardrails --

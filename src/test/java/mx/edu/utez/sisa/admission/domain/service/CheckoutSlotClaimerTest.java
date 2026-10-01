@@ -19,10 +19,14 @@ import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 
@@ -90,12 +94,15 @@ class CheckoutSlotClaimerTest {
 	@Mock
 	private CandidateRepository candidateRepository;
 
+	@Mock
+	private CheckoutAttemptRepository checkoutAttemptRepository;
+
 	private CheckoutSlotClaimer claimer;
 
 	@BeforeEach
 	void setUp() {
 		claimer = new CheckoutSlotClaimer(admissionQuotaPort, admissionPaymentRepository, candidateRepository,
-				Clock.fixed(NOW, ZONE));
+				checkoutAttemptRepository, Clock.fixed(NOW, ZONE));
 		lenientCandidateAndPayment();
 	}
 
@@ -269,6 +276,69 @@ class CheckoutSlotClaimerTest {
 		verify(admissionPaymentRepository).save(saved.capture());
 		assertThat(saved.getValue().getOrderId()).isEqualTo("TESTUTEZ-ADM-2026-000001-abc");
 		assertThat(saved.getValue().getCheckoutSessionId()).isEqualTo("SESSION0001BR");
+	}
+
+	// -- the attempt row (§3.6): opened before the gateway, closed once --
+
+	/**
+	 * The attempt carries everything the sweep will need to ask the bank about this
+	 * order later: the id, whose ficha it is, the amount that was put in front of
+	 * the applicant and when it was opened. The amount is snapshotted rather than
+	 * re-read later so the capture is compared against the price that was actually
+	 * charged, not against a tariff that may have been edited since.
+	 */
+	@Test
+	void openingAnAttemptRecordsTheOrderTheCandidateTheAmountAndTheMoment() {
+		claimer.openAttempt("TESTUTEZ-ADM-2026-000001-abc", CANDIDATE_ID, CHECKOUT_AMOUNT);
+
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		CheckoutAttempt attempt = saved.getValue();
+		assertThat(attempt.getOrderId()).isEqualTo("TESTUTEZ-ADM-2026-000001-abc");
+		assertThat(attempt.getCandidateId()).isEqualTo(CANDIDATE_ID);
+		assertThat(attempt.getAmount()).isEqualByComparingTo(CHECKOUT_AMOUNT);
+		assertThat(attempt.getCreatedAt()).isEqualTo(NOW);
+		assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.STARTED);
+		assertThat(attempt.getClosedAt()).isNull();
+		assertThat(attempt.isOpen()).isTrue();
+	}
+
+	/** Opening an attempt must not take a quota slot: that is {@link #claim}'s job. */
+	@Test
+	void openingAnAttemptDoesNotTouchTheFichaOrTheQuota() {
+		claimer.openAttempt("TESTUTEZ-ADM-2026-000001-abc", CANDIDATE_ID, CHECKOUT_AMOUNT);
+
+		verify(admissionPaymentRepository, never()).save(any());
+		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
+	@Test
+	void closingAnAttemptStampsTheReasonAndTheMoment() {
+		CheckoutAttempt open = new CheckoutAttempt("TESTUTEZ-ADM-2026-000001-abc", CANDIDATE_ID, CHECKOUT_AMOUNT, NOW);
+		when(checkoutAttemptRepository.findByOrderId("TESTUTEZ-ADM-2026-000001-abc")).thenReturn(Optional.of(open));
+
+		claimer.closeAttempt("TESTUTEZ-ADM-2026-000001-abc", CheckoutAttemptCloseReason.SESSION_TIMEOUT);
+
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		assertThat(saved.getValue().getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.SESSION_TIMEOUT);
+		assertThat(saved.getValue().getClosedAt()).isEqualTo(NOW);
+		assertThat(saved.getValue().isOpen()).isFalse();
+	}
+
+	/**
+	 * A close with nothing to close is not an error. The browser can report a
+	 * timeout for an attempt that was never recorded, and there is nothing to
+	 * reconcile and nothing held — failing here would turn a harmless race into a
+	 * 500 on the applicant's screen.
+	 */
+	@Test
+	void closingAnUnknownAttemptIsANoOp() {
+		when(checkoutAttemptRepository.findByOrderId("TESTUTEZ-ADM-2026-000001-abc")).thenReturn(Optional.empty());
+
+		claimer.closeAttempt("TESTUTEZ-ADM-2026-000001-abc", CheckoutAttemptCloseReason.SESSION_TIMEOUT);
+
+		verify(checkoutAttemptRepository, never()).save(any());
 	}
 
 	/**

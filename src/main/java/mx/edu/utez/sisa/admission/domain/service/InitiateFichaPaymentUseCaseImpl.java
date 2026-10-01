@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.domain.service;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -176,18 +177,25 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * first);</li>
 	 * <li>{@code requirePaymentWindowOpen} — before the gateway, because after it
 	 * a closed period would need a refund to undo;</li>
-	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row lock,
-	 * stamps the live tariff the checkout will charge and <em>commits</em>, so the
+	 * <li><b>generate the {@code orderId}</b> — before any write, because it is
+	 * what makes the attempt recordable;</li>
+	 * <li>{@link CheckoutSlotClaimer#openAttempt} — records that order with its
+	 * amount and <em>commits</em>, so from here on there is never a held slot
+	 * without an order id the bank can be asked about (§3.6);</li>
+	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row
+	 * lock, stamps the live tariff the checkout will charge and commits, so the
 	 * slot is held while Evo is called but the lock is not;</li>
 	 * <li>the gateway call;</li>
 	 * <li>{@link CheckoutSlotClaimer#persistCheckoutSession} — the order ids the
 	 * confirmation will look up.</li>
 	 * </ol>
 	 *
-	 * <p>On a gateway refusal the claim is handed back, but only when the failure
-	 * proves no order was created. An ambiguous failure keeps the claim: Evo may
-	 * hold an order that is captured later, and that ficha's payment is real money
-	 * whether or not we got a response.
+	 * <p>On a gateway refusal the claim is handed back and the attempt closed as
+	 * {@code ORDER_NOT_CREATED}, but only when the failure proves no order was
+	 * created. An ambiguous failure keeps both: Evo may hold an order that is
+	 * captured later, and that ficha's payment is real money whether or not we got
+	 * a response — the attempt stays open and the daily sweep settles it by asking
+	 * the bank.
 	 */
 	@Override
 	public InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath) {
@@ -210,10 +218,17 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		// between must reach them (§1.3). The claim persists it in the same
 		// transaction that takes the slot, before Evo is asked for the money.
 		BigDecimal amount = fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+
+		// The orderId is generated before anything is written, and the attempt that
+		// carries it is committed before the gateway is called (§3.6). Generating it
+		// after the claim is what used to leave the "slot held with no order number"
+		// hole: Evo could hold a capturable order while we had nothing to ask about.
+		String orderId = orderIdBuilder.build(candidate.getFolio());
+		checkoutSlotClaimer.openAttempt(orderId, candidateId, amount);
+
 		checkoutSlotClaimer.claim(candidateId, amount);
 
 		String returnUrl = resolveReturnUrl(returnPath);
-		String orderId = orderIdBuilder.build(candidate.getFolio());
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
 				payment.getReferenceNumber(), "Ficha de Admisión " + candidate.getFolio(), amount,
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
@@ -225,6 +240,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		} catch (EvoPaymentGatewayException ex) {
 			if (!ex.orderMayHaveBeenCreated()) {
 				checkoutSlotClaimer.release(candidateId);
+				checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 			}
 			throw ex;
 		}
