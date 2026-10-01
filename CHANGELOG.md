@@ -4,6 +4,32 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] La cotización de la ficha usa el reloj, no la fecha de arranque
+
+Commit: pendiente.
+
+### Por qué
+
+`GetFichaAmountUseCaseImpl` recibía un `quoteDate` fijo inyectado al construir el
+bean (`LocalDate.now()` en `UseCaseConfig`). Si el proceso vive semanas — o si se
+cambia la vigencia de un concepto — la fecha se queda congelada y la pantalla
+puede decir "vigente" o "no vigente" mal (§2.6).
+
+### Qué cambió
+
+- `GetFichaAmountUseCaseImpl`: recibe un `Clock` y cotiza con
+  `LocalDate.now(clock)` en cada llamada, igual que el resto del flujo de
+  admisión.
+- `UseCaseConfig`: el bean `getFichaAmountUseCase` recibe el `Clock` de admisión
+  en vez de `LocalDate.now()`.
+
+### Tests
+
+`GetFichaAmountUseCaseImplTest`: el quote sigue resolviendo el concepto del
+programa, ahora contra un reloj fijo. Suite completa en verde, 0 fallos.
+
+---
+
 ## [2026-09-30] Los tres candados de fecha al iniciar el pago de la ficha
 
 Commit: pendiente.

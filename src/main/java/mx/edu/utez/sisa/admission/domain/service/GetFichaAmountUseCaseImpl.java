@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -13,8 +14,10 @@ import java.util.UUID;
  *
  * <p>Resolves the config to its program, then delegates to
  * {@link FichaAmountResolver} — the same component the registration command
- * uses — so the previewed amount cannot drift from the charged one. The quote
- * date is injected by the composition root, keeping this class framework-free.
+ * uses — so the previewed amount cannot drift from the charged one. "Today" is
+ * read from the injected {@link Clock} on every call, keeping this class
+ * framework-free without freezing the date the server happened to start on: a
+ * process that lives for weeks would otherwise quote a stale window.
  *
  * <p>Only existence is enforced here ({@code 404} when the config id is
  * unknown): an {@code OPEN} window is the registration command's rule to
@@ -27,13 +30,13 @@ public class GetFichaAmountUseCaseImpl implements GetFichaAmountUseCase {
 
 	private final FichaAmountResolver fichaAmountResolver;
 
-	private final LocalDate quoteDate;
+	private final Clock clock;
 
 	public GetFichaAmountUseCaseImpl(ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, LocalDate quoteDate) {
+			FichaAmountResolver fichaAmountResolver, Clock clock) {
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
-		this.quoteDate = quoteDate;
+		this.clock = clock;
 	}
 
 	@Override
@@ -42,7 +45,8 @@ public class GetFichaAmountUseCaseImpl implements GetFichaAmountUseCase {
 				.findById(admissionConfigId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + admissionConfigId));
-		FichaAmountResolver.FichaAmount fichaAmount = fichaAmountResolver.resolve(config.programId(), quoteDate);
+		FichaAmountResolver.FichaAmount fichaAmount = fichaAmountResolver.resolve(config.programId(),
+				LocalDate.now(clock));
 		return new FichaAmountQuote(fichaAmount.amount(), fichaAmount.conceptName(), config.programName());
 	}
 }

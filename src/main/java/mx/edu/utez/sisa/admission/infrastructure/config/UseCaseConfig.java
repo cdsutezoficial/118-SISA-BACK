@@ -189,8 +189,8 @@ public class UseCaseConfig {
 	@Bean
 	public GetFichaAmountUseCase getFichaAmountUseCase(
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver) {
-		return new GetFichaAmountUseCaseImpl(programAdmissionConfigQueryPort, fichaAmountResolver, LocalDate.now());
+			FichaAmountResolver fichaAmountResolver, Clock clock) {
+		return new GetFichaAmountUseCaseImpl(programAdmissionConfigQueryPort, fichaAmountResolver, clock);
 	}
 
 	@Bean
