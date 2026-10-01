@@ -12,9 +12,12 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -86,6 +90,16 @@ class InitiateFichaPaymentUseCaseImplTest {
 	/** Noon on {@link #TODAY} as an instant, so the local date is unambiguous. */
 	private static final Instant NOW_AT_NOON = TODAY.atTime(12, 0).atZone(ZONE).toInstant();
 
+	private static final int DEADLINE_DAYS = 10;
+
+	/**
+	 * A registration date that puts {@link #TODAY} squarely inside the 10-day
+	 * window: day 0 is 2026-09-20, the deadline is 2026-09-30, and the 25th is
+	 * payable. Pinned rather than {@code Instant.now()} so the gates are a fact
+	 * about the test rather than about the day it runs.
+	 */
+	private static final Instant REGISTERED_AT = LocalDate.of(2026, 9, 20).atTime(18, 0).atZone(ZONE).toInstant();
+
 	@Mock
 	private CandidateRepository candidateRepository;
 
@@ -129,11 +143,21 @@ class InitiateFichaPaymentUseCaseImplTest {
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
 				programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), checkoutSlotClaimer);
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 	}
 
 	private static Candidate candidate() {
-		return new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+		return candidateRegisteredAt(REGISTERED_AT);
+	}
+
+	private static Candidate candidateRegisteredAt(Instant registeredAt) {
+		Candidate candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
+		return candidate;
+	}
+
+	private static Candidate candidateRegisteredOn(LocalDate day) {
+		return candidateRegisteredAt(day.atTime(18, 0).atZone(ZONE).toInstant());
 	}
 
 	private static AdmissionPayment payment() {
@@ -189,7 +213,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				admissionPaymentRepository, evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
 				CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver,
-				Clock.fixed(NOW_AT_NOON, ZONE), checkoutSlotClaimer);
+				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 
 		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
 		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
@@ -213,7 +237,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateFichaPaymentUseCaseImpl customUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				admissionPaymentRepository, evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
 				SDK_URL, Set.of(), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), checkoutSlotClaimer);
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
@@ -283,7 +307,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), checkoutSlotClaimer);
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 	}
 
 	private void givenPayableCandidate() {
@@ -383,7 +407,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, "", SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), checkoutSlotClaimer).initiateCheckout(CANDIDATE_ID,
+				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer).initiateCheckout(CANDIDATE_ID,
 						"/portal/ficha/pago");
 
 		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
@@ -413,11 +437,120 @@ class InitiateFichaPaymentUseCaseImplTest {
 				.when(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
-				.isInstanceOf(PaymentConceptExpiredException.class).hasMessageContaining("20/09/2026");
+				.isInstanceOf(PaymentConceptExpiredException.class)
+				.hasMessageContaining("No se encontró pago vigente configurado")
+				.hasMessageNotContaining("20/09/2026");
 
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
 		verify(admissionPaymentRepository, never()).save(any());
 	}
+
+	/**
+	 * The other half of gate 2: a program with no tuition concept at all is still
+	 * "admissions has no payable payment configured", so it takes the same
+	 * office-facing message as a concept that is merely outside its window. The
+	 * type (and therefore the 409 code) is preserved so the front can keep
+	 * branching on it.
+	 */
+	@Test
+	void aMissingConceptIsReportedAsAnAdmissionsConfigurationProblem() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		doThrow(new FichaPaymentConceptNotFoundException("No hay concepto de ficha para el programa."))
+				.when(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
+				.hasMessageContaining("Comunícate con Servicios escolares");
+
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
+
+	// ── the ficha's own 10-day deadline (gate 0) and the process' close (gate 1) ──
+
+	/**
+	 * Gate 0 and its day-0 convention: a ficha registered on the 10th is payable
+	 * through the 20th and refused on the 21st. The concept window is left wide
+	 * open, which is the point — this ficha's own clock is what closed, and the
+	 * applicant must be told that, not sent to the catalog.
+	 */
+	@Test
+	void aFichaPastItsPrivateDeadlineIsRefused() {
+		Candidate stale = candidateRegisteredOn(LocalDate.of(2026, 9, 10));
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(stale));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(FichaPaymentExpiredException.class)
+				.hasMessageContaining("Tu ficha venció");
+
+		// Gate 0 runs first: the concept is never consulted, and no order is burned.
+		verify(fichaAmountResolver, never()).requirePayableOn(any(), any());
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
+
+	/** On the deadline itself the ficha is still payable — the window closes at 23:59:59. */
+	@Test
+	void theFichaIsStillPayableOnItsDeadlineDay() {
+		Candidate onLastDay = candidateRegisteredOn(LocalDate.of(2026, 9, 15));
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(onLastDay));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(any());
+	}
+
+	/**
+	 * Gate 1: the admission process' closing date. A ficha whose private deadline
+	 * is still ahead is still refused once the cohort's sales have closed, with
+	 * the same type and message registration uses, so the two ends of the flow
+	 * tell the applicant the same thing.
+	 */
+	@Test
+	void aPaymentAfterTheAdmissionProcessClosedIsRefused() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(admissionConfigClosingOn(LocalDate.of(2026, 9, 20))));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
+				.hasMessageContaining("cerró el 20/09/2026");
+
+		verify(fichaAmountResolver, never()).requirePayableOn(any(), any());
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
+
+	/**
+	 * The §10.2 regression. A ficha issued before the process closed stays payable
+	 * all through its closing day: the gate compares calendar dates, so the
+	 * closing time-of-day is irrelevant. An {@code Instant} check would have
+	 * refused this payment — noon is after a midnight close — which is exactly the
+	 * bug that killed valid payments.
+	 */
+	@Test
+	void theClosingDayStaysPayableRegardlessOfTimeOfDay() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(admissionConfigClosingOn(TODAY)));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		verify(evoPaymentsGateway).initiateCheckoutSession(any());
+	}
+
+	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo admissionConfigClosingOn(LocalDate closeDay) {
+		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
+				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null,
+				LocalDate.of(2026, 9, 1).atStartOfDay(ZONE).toInstant(), closeDay.atStartOfDay(ZONE).toInstant(), 40);
+	}
+
 	@Test
 	void theWindowIsCheckedAgainstTheCandidatesOwnProgram() {
 		givenPayableCandidate();

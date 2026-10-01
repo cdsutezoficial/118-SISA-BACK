@@ -241,7 +241,8 @@ public class UseCaseConfig {
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
-			Clock clock, CheckoutSlotClaimer checkoutSlotClaimer,
+			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
+			CheckoutSlotClaimer checkoutSlotClaimer,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths,
 			@Value("${sisa.security.password-reset.frontend-base-url:}") String frontendBaseUrl) {
 		String frontendBasePath = frontendBasePath(frontendBaseUrl);
@@ -251,7 +252,7 @@ public class UseCaseConfig {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
-				fichaAmountResolver, clock, checkoutSlotClaimer);
+				fichaAmountResolver, clock, fichaDeadlineDays, checkoutSlotClaimer);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */

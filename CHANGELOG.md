@@ -4,6 +4,52 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] Los tres candados de fecha al iniciar el pago de la ficha
+
+Commit: pendiente.
+
+### Por qué
+
+`InitiateFichaPaymentUseCaseImpl` solo miraba la ventana del **concepto** de
+pago. Con el plazo de 10 días reinstalado (§1.9) aparecen dos cortes más, y el
+orden importa: la **ficha** tiene su propio reloj (día 0 = registro + 10 días),
+el **proceso** tiene su fecha de cierre (`closesAt`), y el **concepto** su
+ventana de catálogo. Además, comparar estas fechas con `Instant` mataba pagos
+válidos: una ficha pagable el día de cierre lo dejaba de ser en cuanto pasaba la
+hora exacta de cierre, aunque el calendario del aspirante todavía dijera "hoy"
+(§10.2). Los tres gates se comparan ahora como **fechas de calendario** en la
+zona de admisión.
+
+### Qué cambió
+
+- `InitiateFichaPaymentUseCaseImpl`: `requirePaymentWindowOpen` evalúa los tres
+  gates en orden, **antes** de tocar EVO (un cierre local es reversible; un
+  `INITIATE_CHECKOUT` quemado no):
+  1. **Ficha** — `today > candidate.paymentDeadline(zone, deadline-days)` →
+     nueva `FichaPaymentExpiredException`
+     (`409 ADMISSION_FICHA_EXPIRED`).
+  2. **Proceso** — `today > closesAt` (fecha local) → reusa
+     `ProgramAdmissionConfigSalesClosedException`
+     (`409 ADMISSION_SALES_WINDOW_CLOSED`), mismo mensaje que el registro.
+  3. **Concepto** — `fichaAmountResolver.requirePayableOn` conserva su tipo y
+     código (concepto vencido / inexistente) pero con el mensaje de admisión
+     "No se encontró pago vigente configurado para este proceso. Comunícate con
+     Servicios escolares."
+- Nuevo parámetro `deadline-days` en el constructor del caso de uso, cableado en
+  `UseCaseConfig` desde `sisa.admission.payment.deadline-days`.
+- Nueva `FichaPaymentExpiredException` (`admission/shared/exception`), mapeada
+  en `GlobalExceptionHandler` al código estable `ADMISSION_FICHA_EXPIRED`.
+
+### Tests
+
+`InitiateFichaPaymentUseCaseImplTest`: gate 0 (ficha vencida se rechaza antes de
+consultar concepto/Evo), el día límite sigue pagable, gate 1 (tras el cierre del
+proceso se rechaza con el mensaje del registro), regresión §10.2 (el día de
+cierre sigue pagable sin importar la hora) y gate 2 (concepto vencido o
+inexistente toman el mensaje de admisión sin filtrar la fecha del catálogo).
+
+---
+
 ## [2026-09-30] El candado del CURP pasa a ser la ficha viva
 
 Commit: pendiente.

@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
@@ -77,6 +78,7 @@ public class GlobalExceptionHandler {
 	 */
 	public static final String CODE_QUOTA_REACHED = "ADMISSION_QUOTA_REACHED";
 	public static final String CODE_SALES_WINDOW_CLOSED = "ADMISSION_SALES_WINDOW_CLOSED";
+	public static final String CODE_FICHA_EXPIRED = "ADMISSION_FICHA_EXPIRED";
 	public static final String CODE_CONFIG_NOT_OPEN = "ADMISSION_CONFIG_NOT_OPEN";
 	public static final String CODE_PAYMENT_WINDOW_CLOSED = "ADMISSION_PAYMENT_WINDOW_CLOSED";
 	public static final String CODE_CANDIDATE_ALREADY_EXISTS = "ADMISSION_CANDIDATE_ALREADY_EXISTS";
@@ -190,6 +192,17 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigCapacityReached(
 			ProgramAdmissionConfigCapacityReachedException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, CODE_QUOTA_REACHED, ex.getMessage(), request);
+	}
+
+	/**
+	 * The applicant's own ficha window lapsed. Shouted with its own code because
+	 * the front shows a different screen than it does for a closed sales window:
+	 * this one is about her 10 days, not about the cohort's calendar.
+	 */
+	@ExceptionHandler(FichaPaymentExpiredException.class)
+	public ResponseEntity<ErrorResponse> handleFichaPaymentExpired(FichaPaymentExpiredException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, CODE_FICHA_EXPIRED, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(FichaPaymentConceptNotFoundException.class)
