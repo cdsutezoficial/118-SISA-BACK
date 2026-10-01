@@ -13,8 +13,8 @@ import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.lowagie.text.pdf.RGBColor;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import org.springframework.stereotype.Component;
@@ -36,12 +36,14 @@ import java.time.format.DateTimeFormatter;
  *
  * <p>Fase 8 restructured the layout to mirror the "Paso 4" confirmation of
  * {@code CandidatoRegistro.tsx}: title + period, then the payment block
- * (folio, program, amount, reference, the two window dates, status, receipt, EVO
+ * (program, amount, reference, the two window dates, status, receipt, EVO
  * order) and the sectioned form — Datos Generales, Domicilio Actual, Contacto,
  * Información Complementaria, Ingresos, Selección de Carrera and Antecedentes
  * Escolares. Catalog ids reach the PDF already resolved to display names by
- * the use case (Fase 7); enum labels (sexo/estado civil/tipo de trabajo)
- * resolve here so the download reads the same Spanish as the portal.
+ * the use case (Fase 7); enum labels (sexo, estado civil, estado de pago)
+ * resolve here so the download reads the same Spanish as the portal — every
+ * enum goes through {@link #text(Object)}, which never prints a {@code name()}.
+ * The visual tokens are copied from {@code theme.css}; see the palette block.
  *
  * <p><b>Non-official copy.</b> The applicant can download this from her own
  * ficha, so it must never be mistakable for the official record: the
@@ -53,10 +55,30 @@ import java.time.format.DateTimeFormatter;
 @Component
 public class CandidateFichaPdfService {
 
+	/**
+	 * Palette taken verbatim from the portal's {@code theme.css} tokens so the
+	 * PDF reads as the same product and not as a document somebody else exported:
+	 * {@code --primary #009574}, {@code --accent #e6f5f1}, {@code --muted
+	 * #F8F9FA}, {@code --border #E5E7EB}, {@code --muted-foreground #6B7280},
+	 * {@code --foreground #333333}. Changing a token in the portal means changing
+	 * it here too, which is why they are named after the tokens.
+	 */
 	private static final RGBColor BRAND = new RGBColor(0x00, 0x95, 0x74);
+	private static final RGBColor ACCENT = new RGBColor(0xE6, 0xF5, 0xF1);
+	private static final RGBColor MUTED_BG = new RGBColor(0xF8, 0xF9, 0xFA);
+	private static final RGBColor BORDER = new RGBColor(0xE5, 0xE7, 0xEB);
 	private static final RGBColor LABEL_GRAY = new RGBColor(0x6B, 0x72, 0x80);
 	private static final RGBColor VALUE_DARK = new RGBColor(0x33, 0x33, 0x33);
-	private static final RGBColor PAYMENT_BG = new RGBColor(0xF3, 0xF4, 0xF6);
+	private static final RGBColor WHITE = new RGBColor(0xFF, 0xFF, 0xFF);
+
+	/**
+	 * A pending payment is the one state the applicant has to act on, so it gets
+	 * its own color instead of the neutral gray a plain "Pendiente" would wear.
+	 * Amber reads as "attention" without the red of an error, which a deadline
+	 * nobody has missed yet is not.
+	 */
+	private static final RGBColor PENDING_BG = new RGBColor(0xFE, 0xF3, 0xC7);
+	private static final RGBColor PENDING_FG = new RGBColor(0x92, 0x40, 0x0E);
 
 	private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 	private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
@@ -81,9 +103,9 @@ public class CandidateFichaPdfService {
 		PdfWriter writer = PdfWriter.getInstance(document, out);
 		writer.setPageEvent(new NonOfficialWatermark());
 		document.open();
-		document.add(title(ficha));
+		document.add(header(ficha));
 		document.add(nonOfficialNotice());
-		document.add(pagoRows(ficha));
+		document.add(paymentCard(ficha));
 		heading(document, "Datos Generales");
 		document.add(datosGenerales(ficha));
 		heading(document, "Domicilio Actual");
@@ -112,9 +134,9 @@ public class CandidateFichaPdfService {
 				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, BRAND));
 		text.setAlignment(Element.ALIGN_CENTER);
 		PdfPCell cell = new PdfPCell(text);
-		cell.setBackgroundColor(PAYMENT_BG);
+		cell.setBackgroundColor(MUTED_BG);
 		cell.setBorderWidth(0.5f);
-		cell.setBorderColor(BRAND);
+		cell.setBorderColor(BORDER);
 		cell.setPadding(6);
 		cell.setHorizontalAlignment(Element.ALIGN_CENTER);
 		PdfPTable table = new PdfPTable(1);
@@ -160,41 +182,97 @@ public class CandidateFichaPdfService {
 		}
 	}
 
-	private static Paragraph title(FichaData ficha) {
-		Paragraph title = new Paragraph("FICHA DE ADMISIÓN", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, VALUE_DARK));
-		title.setAlignment(Element.ALIGN_CENTER);
-		title.add(new Chunk("\nPeríodo: " + text(ficha.seleccionCarrera().periodName()),
-				FontFactory.getFont(FontFactory.HELVETICA, 10, LABEL_GRAY)));
-		title.setSpacingAfter(10);
-		return title;
+	/**
+	 * Green masthead: title + period on the left, folio on the right.
+	 *
+	 * <p>The folio moved here from the payment block. It is the identity of the
+	 * document, not a payment attribute — ventanilla asks for the folio before it
+	 * asks for anything else — so it belongs in the header where it is readable
+	 * without scrolling to the payment card.
+	 */
+	private static PdfPTable header(FichaData ficha) {
+		Paragraph title = new Paragraph("FICHA DE ADMISIÓN",
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, WHITE));
+		title.setSpacingAfter(2);
+		Paragraph period = new Paragraph("Período: " + text(ficha.seleccionCarrera().periodName()),
+				FontFactory.getFont(FontFactory.HELVETICA, 10, WHITE));
+
+		PdfPCell left = new PdfPCell();
+		left.addElement(title);
+		left.addElement(period);
+		left.setVerticalAlignment(Element.ALIGN_MIDDLE);
+		left.setBorder(0);
+		left.setPaddingLeft(12);
+		left.setBackgroundColor(BRAND);
+
+		Paragraph folioLabel = new Paragraph("Folio",
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, WHITE));
+		folioLabel.setAlignment(Element.ALIGN_RIGHT);
+		Paragraph folio = new Paragraph(text(ficha.folio()),
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, WHITE));
+		folio.setAlignment(Element.ALIGN_RIGHT);
+
+		PdfPCell right = new PdfPCell();
+		right.addElement(folioLabel);
+		right.addElement(folio);
+		right.setVerticalAlignment(Element.ALIGN_MIDDLE);
+		right.setBorder(0);
+		right.setPaddingRight(12);
+		right.setBackgroundColor(BRAND);
+
+		PdfPTable band = new PdfPTable(new float[] { 0.62f, 0.38f });
+		band.setWidthPercentage(100);
+		band.setSpacingAfter(10);
+		band.addCell(left);
+		band.addCell(right);
+		return band;
 	}
 
+	/**
+	 * Section title on a green bar, mirroring the {@code border-left: 2px solid
+	 * #009574} of the portal's cards. An underline had to be drawn by hand and
+	 * disappeared at small sizes; a cell with a background cannot go missing.
+	 */
 	private static void heading(Document document, String title) {
-		Chunk titleChunk = new Chunk(title, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, BRAND));
-		titleChunk.setUnderline(0.6f, -2f);
-		Paragraph heading = new Paragraph(titleChunk);
-		heading.setSpacingBefore(18);
-		heading.setSpacingAfter(8);
-		document.add(heading);
+		PdfPTable bar = new PdfPTable(new float[] { 0.012f, 0.988f });
+		bar.setWidthPercentage(100);
+		PdfPCell accent = new PdfPCell();
+		accent.setBackgroundColor(BRAND);
+		accent.setBorder(0);
+		accent.setPadding(0);
+		PdfPCell text = new PdfPCell(
+				new Paragraph(title, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, BRAND)));
+		text.setBorder(0);
+		text.setPaddingLeft(6);
+		bar.addCell(accent);
+		bar.addCell(text);
+		bar.setSpacingBefore(16);
+		bar.setSpacingAfter(6);
+		document.add(bar);
 	}
 
-	private static PdfPTable pagoRows(FichaData ficha) {
-		PdfPTable table = sectionTable();
-		pagoRow(table, "Folio", ficha.folio());
-		pagoRow(table, "Carrera", ficha.programName());
+	/**
+	 * The payment block, boxed. It is the one part of the ficha the applicant acts
+	 * on, so it is the one part that gets a card rather than a bare table: the
+	 * amount, the reference to take to the window and the status have to be
+	 * findable at a glance while the rest of the page is reference data.
+	 */
+	private static PdfPTable paymentCard(FichaData ficha) {
+		PdfPTable rows = sectionTable();
+		pagoRow(rows, "Carrera", ficha.programName());
 		// Live price: the catalog can be re-priced after the ficha was issued.
 		// Omitted when the program has no price today rather than printed as "-",
 		// which would read as a number that got lost.
 		if (ficha.amount() != null) {
-			pagoRow(table, "Monto a pagar", ficha.amount());
+			pagoRow(rows, "Monto a pagar", ficha.amount());
 		}
-		pagoRow(table, "Referencia de pago", ficha.referenceNumber());
+		pagoRow(rows, "Referencia de pago", ficha.referenceNumber());
 		// The registration row explains why the ficha stops being issuable; the
 		// payment row below is the one the applicant is asked to act on. Neither
 		// may borrow the other's label: this PDF is what is carried to
 		// ventanilla, so a date printed under the wrong name is the version that
 		// ends up argued about at the window.
-		pagoRow(table, "Fecha límite de inscripción", ficha.registrationDeadline());
+		pagoRow(rows, "Fecha límite de inscripción", ficha.registrationDeadline());
 		// "Fecha límite de pago" is the ficha's visible plazo (the earlier of the
 		// sales window and registeredAt + N), not the concept's available_until:
 		// the applicant can act on the former, while the latter moves with the
@@ -202,17 +280,54 @@ public class CandidateFichaPdfService {
 		// from the registration row above — printing the same day twice under two
 		// labels is what made the old ficha look wrong.
 		if (ficha.paymentDeadline() != null && !ficha.paymentDeadline().equals(ficha.registrationDeadline())) {
-			pagoRow(table, "Fecha límite de pago", ficha.paymentDeadline());
+			pagoRow(rows, "Fecha límite de pago", ficha.paymentDeadline());
 		}
-		pagoRow(table, "Estado de pago", ficha.paymentStatus().name());
+		statusRow(rows, ficha.paymentStatus());
 		if (ficha.receiptNumber() != null) {
-			pagoRow(table, "Recibo", ficha.receiptNumber());
-			pagoRow(table, "Fecha de pago", ficha.paidAt());
+			pagoRow(rows, "Recibo", ficha.receiptNumber());
+			pagoRow(rows, "Fecha de pago", ficha.paidAt());
 		}
 		if (ficha.orderId() != null) {
-			pagoRow(table, "Orden de pago (EVO)", ficha.orderId());
+			pagoRow(rows, "Orden de pago (EVO)", ficha.orderId());
 		}
-		return table;
+
+		PdfPCell card = new PdfPCell(rows);
+		card.setBorderWidth(0.75f);
+		card.setBorderColor(BORDER);
+		card.setPadding(0);
+		PdfPTable wrapper = new PdfPTable(1);
+		wrapper.setWidthPercentage(100);
+		wrapper.setSpacingAfter(4);
+		wrapper.addCell(card);
+		return wrapper;
+	}
+
+	/**
+	 * The status as a colored chip. Printed as {@code PAID}/{@code PENDING} it
+	 * read as a database value in a document a person carries to a window; as
+	 * "Pagado"/"Pendiente" with a background it reads as a state, and the color
+	 * says which without the word having to be parsed.
+	 */
+	private static void statusRow(PdfPTable table, AdmissionPaymentStatus status) {
+		boolean paid = status == AdmissionPaymentStatus.PAID;
+		Paragraph label = new Paragraph("Estado de pago",
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, LABEL_GRAY));
+		Paragraph value = new Paragraph(paymentStatusLabel(status),
+				FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, paid ? BRAND : PENDING_FG));
+
+		PdfPCell labelCell = new PdfPCell(label);
+		labelCell.setBackgroundColor(MUTED_BG);
+		labelCell.setBorder(0);
+		labelCell.setPadding(4);
+
+		PdfPCell valueCell = new PdfPCell(value);
+		valueCell.setBackgroundColor(paid ? ACCENT : PENDING_BG);
+		valueCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+		valueCell.setBorder(0);
+		valueCell.setPadding(4);
+
+		table.addCell(labelCell);
+		table.addCell(valueCell);
 	}
 
 	private static PdfPTable datosGenerales(FichaData ficha) {
@@ -336,7 +451,7 @@ public class CandidateFichaPdfService {
 	}
 
 	private static void pagoRow(PdfPTable table, String label, Object value) {
-		row(table, label, value, PAYMENT_BG);
+		row(table, label, value, MUTED_BG);
 	}
 
 	private static void row(PdfPTable table, String label, Object value) {
@@ -352,9 +467,15 @@ public class CandidateFichaPdfService {
 		valueCell.setBorder(0);
 		labelCell.setPadding(3);
 		valueCell.setPadding(3);
-		if (background != null) {
-			labelCell.setBackgroundColor(background);
-			valueCell.setBackgroundColor(background);
+		// Zebra striping off the cell count already in the table, so a section
+		// gets readable rows without every call site tracking an index. One
+		// number per row (table.size() counts cells) and only on the odd rows,
+		// which leaves a blank line above a group of conditional rows looking
+		// like a separator instead of a missing value.
+		RGBColor fill = background != null ? background : (table.size() / 2) % 2 == 0 ? null : MUTED_BG;
+		if (fill != null) {
+			labelCell.setBackgroundColor(fill);
+			valueCell.setBackgroundColor(fill);
 		}
 		table.addCell(labelCell);
 		table.addCell(valueCell);
@@ -391,8 +512,8 @@ public class CandidateFichaPdfService {
 		if (value instanceof MaritalStatus maritalStatus) {
 			return maritalStatusLabel(maritalStatus);
 		}
-		if (value instanceof EmploymentType employmentType) {
-			return employmentTypeLabel(employmentType);
+		if (value instanceof AdmissionPaymentStatus paymentStatus) {
+			return paymentStatusLabel(paymentStatus);
 		}
 		if (value instanceof String string) {
 			return string.isEmpty() ? "-" : string;
@@ -419,10 +540,10 @@ public class CandidateFichaPdfService {
 		};
 	}
 
-	private static String employmentTypeLabel(EmploymentType employmentType) {
-		return switch (employmentType) {
-			case PERMANENT -> "Permanente";
-			case TEMPORARY -> "Temporal";
+	private static String paymentStatusLabel(AdmissionPaymentStatus paymentStatus) {
+		return switch (paymentStatus) {
+			case PENDING -> "Pendiente";
+			case PAID -> "Pagado";
 		};
 	}
 }

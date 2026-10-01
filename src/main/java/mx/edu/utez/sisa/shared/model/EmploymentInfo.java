@@ -2,8 +2,6 @@ package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapsId;
@@ -37,9 +35,22 @@ public class EmploymentInfo {
 	@Column(name = "is_employed", nullable = false)
 	private boolean isEmployed;
 
-	@Enumerated(EnumType.STRING)
+	/**
+	 * Free text as the applicant wrote it, not a catalog.
+	 *
+	 * <p>This was an {@code @Enumerated(STRING)} {@code EmploymentType}
+	 * (PERMANENT/TEMPORARY), and that was silently dropping data: both admission
+	 * forms write this field and neither restricts it to those two values — the
+	 * registration form offered a plain {@code TextField} and the enrollment
+	 * wizard a 4-option select whose "Freelance" and "Negocio propio" mapped to
+	 * {@code null}. Nothing errored, the value just never reached the PDF.
+	 *
+	 * <p>As free text the column keeps its existing VARCHAR type and its existing
+	 * rows; only the {@code PERMANENT}/{@code TEMPORARY} literals left behind by
+	 * the enum are renamed to Spanish once (see CHANGELOG).
+	 */
 	@Column(name = "employment_type")
-	private EmploymentType employmentType;
+	private String employmentType;
 
 	@Column(name = "company_name")
 	private String companyName;
@@ -63,7 +74,7 @@ public class EmploymentInfo {
 		// JPA
 	}
 
-	public EmploymentInfo(boolean isEmployed, EmploymentType employmentType, String companyName, String jobTitle,
+	public EmploymentInfo(boolean isEmployed, String employmentType, String companyName, String jobTitle,
 			String workPhone, BigDecimal monthlyIncome, LocalTime workStartTime, LocalTime workEndTime) {
 		this.isEmployed = isEmployed;
 		this.employmentType = employmentType;
@@ -95,11 +106,11 @@ public class EmploymentInfo {
 		isEmployed = employed;
 	}
 
-	public EmploymentType getEmploymentType() {
+	public String getEmploymentType() {
 		return employmentType;
 	}
 
-	public void setEmploymentType(EmploymentType employmentType) {
+	public void setEmploymentType(String employmentType) {
 		this.employmentType = employmentType;
 	}
 

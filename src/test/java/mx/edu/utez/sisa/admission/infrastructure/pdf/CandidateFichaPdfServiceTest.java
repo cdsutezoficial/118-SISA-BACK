@@ -11,7 +11,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaD
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData.InformacionComplementaria;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData.SeleccionCarrera;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import org.junit.jupiter.api.Test;
@@ -65,7 +64,7 @@ class CandidateFichaPdfServiceTest {
 			assertTrue(text.contains("Información Complementaria"));
 			assertTrue(text.contains("LGBTTTIQ+"));
 			assertTrue(text.contains("Ingresos"));
-			assertTrue(text.contains("Permanente"));
+			assertTrue(text.contains("Negocio propio"));
 			assertTrue(text.contains("Selección de Carrera"));
 			assertTrue(text.contains("Mixta"));
 			assertTrue(text.contains("Medio de Difusión"));
@@ -193,6 +192,45 @@ class CandidateFichaPdfServiceTest {
 		}
 	}
 
+	/**
+	 * The applicant reads this at the window and at home, so the status has to be
+	 * Spanish prose. It used to print {@code paymentStatus().name()}, which put
+	 * "PAID"/"PENDING" in the document. Asserting the negative matters: a label
+	 * that happens to contain the enum name somewhere else would pass otherwise.
+	 */
+	@Test
+	void printsThePaymentStatusAsSpanishTextAndNeverAsTheEnumName() throws Exception {
+		try (PdfReader reader = new PdfReader(service.render(fullFicha()))) {
+			String text = text(reader);
+			assertTrue(text.contains("Estado de pago"));
+			assertTrue(text.contains("Pagado"), "PAID must be written as prose");
+			assertFalse(text.contains("PAID"), "the enum name leaked into the document");
+		}
+		try (PdfReader reader = new PdfReader(service.render(minimalFicha()))) {
+			String text = text(reader);
+			assertTrue(text.contains("Pendiente"), "PENDING must be written as prose");
+			assertFalse(text.contains("PENDING"), "the enum name leaked into the document");
+		}
+	}
+
+	/**
+	 * Regression guard for a silent data loss, not a layout change: the employment
+	 * type used to go through a switch that only knew "tiempo completo" and "medio
+	 * tiempo" and returned null for everything else, so "Negocio propio" never
+	 * reached the PDF. The field is free text now, and whatever was written has to
+	 * come out verbatim.
+	 */
+	@Test
+	void keepsTheEmploymentTypeExactlyAsTheApplicantWroteIt() throws Exception {
+		byte[] pdf = service.render(fullFicha());
+
+		try (PdfReader reader = new PdfReader(pdf)) {
+			assertTrue(text(reader).contains("Tipo de Trabajo"));
+			assertTrue(text(reader).contains("Negocio propio"),
+					"the employment type is free text and must survive verbatim");
+		}
+	}
+
 	private static String text(PdfReader reader) throws Exception {
 		PdfTextExtractor extractor = new PdfTextExtractor(reader);
 		StringBuilder text = new StringBuilder();
@@ -246,8 +284,8 @@ class CandidateFichaPdfServiceTest {
 						"Jiquilpan"),
 				new InformacionComplementaria(true, "Asma leve", false, null, true, "Purépecha", true, "Purépecha",
 						true, false, true, true, true),
-				new Ingresos(new BigDecimal("8500.00"), true, EmploymentType.PERMANENT, "351 516 23 41",
-						new BigDecimal("6500.00"), "Ferretería López", "Cajero", LocalTime.of(9, 0), LocalTime.of(18, 0)),
+new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
+					new BigDecimal("6500.00"), "Ferretería López", "Cajero", LocalTime.of(9, 0), LocalTime.of(18, 0)),
 				new SeleccionCarrera("Mixta", "Amigo que estudia aquí", true, "Enero – Abril 2026"),
 				new AntecedentesEscolares("CBTis 121", "Bachillerato General", true, "Michoacán de Ocampo", "Jiquilpan",
 						null, null, new BigDecimal("8.90"), "16DCT0121B"));

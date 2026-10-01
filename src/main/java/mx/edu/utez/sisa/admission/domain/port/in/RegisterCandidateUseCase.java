@@ -2,7 +2,7 @@ package mx.edu.utez.sisa.admission.domain.port.in;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
+
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 
@@ -60,7 +60,7 @@ public interface RegisterCandidateUseCase {
 			boolean isAfrodescendant, boolean selfIdentifiesAfrodescendant) {
 	}
 
-	record Ingresos(BigDecimal monthlyFamilyIncome, boolean isEmployed, EmploymentType employmentType,
+	record Ingresos(BigDecimal monthlyFamilyIncome, boolean isEmployed, String employmentType,
 			String workPhone, BigDecimal monthlyIncome, String companyName, String jobTitle, LocalTime workStartTime,
 			LocalTime workEndTime) {
 	}

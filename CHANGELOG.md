@@ -4,6 +4,87 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El PDF de la ficha usa los tokens del sistema
+
+Commit: pendiente.
+
+### Por qué
+
+El PDF se veía como un documento exportado por otro sistema: fondo `#F3F4F6` que no
+existe en el portal, encabezados de sección subrayados a mano, filas todas iguales y
+— lo más grave — `Estado de pago: PAID`. Ese último no es un detalle de estilo. La
+persona lleva este archivo a ventanilla en la mano y lo lee en casa; `PAID` no es un
+estado, es el nombre de una columna.
+
+### Qué cambió
+
+- Los colores salen de los tokens de `theme.css` (`--primary`, `--accent`, `--muted`,
+  `--border`, `----muted-foreground`, `--foreground`) y se llaman igual que en el
+  portal, para que un cambio de token se aplique en los dos lados.
+- Encabezado verde con el folio a la derecha. El folio salió del bloque de pago: es
+  la identidad del documento, no un atributo del pago, y en ventanilla se pide el folio
+  antes que cualquier otra cosa.
+- El bloque de pago es una tarjeta con borde. Es la única parte de la ficha sobre la
+  que hay que actuar, entonces es la única que se distingue del resto.
+- El estado de pago es un chip: verde y "Pagado" / ámbar y "Pendiente". El ámbar es
+  para el estado en el que sí hay que hacer algo; el rojo queda para errores, y un
+  plazo que nadie ha vencido todavía no es un error.
+- Encabezados de sección con barra verde de 2px, como el `border-left` de las
+  tarjetas del portal, en vez del subrayado dibujado a mano.
+- Filas alternas. El color se decide a partir de las celdas que ya tiene la tabla, así
+  que ninguna sección tiene que llevar su propio índice.
+- **Ningún enum se imprime con `name()`**: `text()` resuelve cada uno a su texto en
+  español. Si mañana aparece un enum nuevo, el compilador obliga a decidir qué se
+  escribe en el documento.
+
+### Tests
+
+- `printsThePaymentStatusAsSpanishTextAndNeverAsTheEnumName` — afirma "Pagado" y
+  "Pendiente", y **nega** "PAID" y "PENDING", porque una aserción positiva sola
+  pasaría aunque el nombre del enum quedara en otra parte del texto.
+- El resto del archivo no necesitó cambios: los valores y las etiquetas se siguen
+  extrayendo igual, así que las pruebas existentes siguen valiendo.
+
+---
+
+## [2026-09-30] "Tipo de trabajo" es texto libre
+
+Commit: pendiente.
+
+### Por qué
+
+El campo no se llenaba, y no era cosa del PDF. `CandidateController.toEmploymentType`
+traducía "Tiempo completo" → `PERMANENT` y "Medio tiempo" → `TEMPORARY`, y **todo lo
+demás caía en `default -> null` sin error**. Dos formularios escriben ese campo y
+ninguno se limita a esos dos valores: el de admisión es un `TextField` libre, y el del
+inscripción ofrece un catálogo de cuatro del que "Freelance" y "Negocio propio"
+tampoco sobrevivían. El dato nunca llegaba a la base, así que el PDF imprimía `-` con
+total honestidad.
+
+### Qué cambió
+
+- `EmploymentInfo.employmentType` es `String`. Se borró el enum `EmploymentType`.
+- `tipoTrabajo` viaja tal cual llega, con `trimToNull` para que el `''` que manda el
+  wizard por campos que nunca renderizó no se guarde como un valor lleno (imprimiría
+  una respuesta donde la persona no contestó nada).
+- Los puertos (`RegisterCandidateUseCase.Ingresos`, `FichaData.Ingresos`) y el PDF
+  siguen el mismo tipo.
+- **No hace falta migración de esquema**: `@Enumerated(STRING)` ya guardaba el texto en
+  un `varchar(255)`, y el DDL generado lo confirma. Lo único pendiente son dos
+  `UPDATE` para los datos que el enum dejó en inglés:
+
+```sql
+UPDATE person_employment_info SET employment_type = 'Tiempo completo' WHERE employment_type = 'PERMANENT';
+UPDATE person_employment_info SET employment_type = 'Medio tiempo'   WHERE employment_type = 'TEMPORARY';
+```
+
+### Tests
+
+`keepsTheEmploymentTypeExactlyAsTheApplicantWroteIt` usa "Negocio propio" en el
+fixture —justo el valor que el switch descartaba— y exige que salga literal en el PDF.
+
+---
+
 ## [2026-09-30] La referencia de pago es el folio, sin fecha dentro
 
 Commit: pendiente.
