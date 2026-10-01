@@ -4,9 +4,104 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
-## [2026-09-30] La descripción del pedido llega sin acentos: se iba a ver "AdmisiÃ³n" en el estado de cuenta
+## [2026-09-30] El barrido nocturno: lo que el navegador no resolvió, lo responde el banco
 
 Commit: pendiente.
+
+### Qué se agrega
+
+- `ReconcileFichaPaymentsUseCase` + `ReconcileFichaPaymentsUseCaseImpl`.
+- `ReconcileFichaPaymentsJob` — `RECONCILIAR_PAGOS`, cron `0 5 0 * * *`.
+- `OrderSettlementDecider` — la tabla §6 como función pura.
+- `ConfirmFichaPaymentVerifiedUseCaseImpl` reescrito (ver abajo).
+
+### Las 00:05, y por qué antes de las 00:10
+
+`VENCEN_FICHAS` corre a las 00:10 y decide qué fichas no se pagaron a tiempo. Si la
+conciliación corriera después, un pago capturado a las 23:59 se encontraría con la ficha
+ya expirada, y el sistema estaría eligiendo creer el plazo sobre el dinero efectivamente
+cobrado. Conciliar primero significa que toda captura ocurrida ya está registrada antes
+de que el barrido de vencimientos mire la ficha.
+
+### El bug que esto destapó: nadie escribía `CAPTURED`
+
+`CheckoutAttempt.close()` tiene un guard escrito explícitamente para que un timeout
+tardío no pise un `CAPTURED`, y ese `CAPTURED` no lo ponía nadie. Tres llamadas a
+`closeAttempt` en todo el código: `ORDER_NOT_CREATED` al iniciar, `REJECTED` en el
+liberar. Consecuencias:
+
+1. Toda ficha pagada dejaba su intento abierto para siempre, así que el barrido
+   re-consultaría al banco cada noche, para siempre.
+2. Cada una de esas noches, el barrido pediría además `release()` sobre un pago `PAID`,
+   que es un `IllegalStateException` en `requirePendingPayment`.
+
+Ahora `confirm` cierra su intento como `CAPTURED`, y el invariante es "ficha pagada ⇒
+ningún intento abierto", que es justo lo que hace que el barrido no vuelva a mirar esa
+ficha.
+
+### `confirm` cambió, y no es un afloje
+
+Tres cambios, todos forzados por el barrido:
+
+- **El `orderId` se valida contra `CheckoutAttempt`, no contra `payment.orderId`.** Esa
+  columna se sobreescribe en cada reintento, así que había dos situaciones reales sin
+  respuesta: la persona paga, el navegador vuelve a entrar al checkout antes de que
+  llegue la confirmación, y la columna ya guarda el *segundo* pedido mientras el primero
+  es el que capturó; y el barrido, cuyo trabajo es liquidar intentos que ya no son el
+  pedido vivo. No es una pérdida de seguridad: nadie puede nombrar un pedido que no sea
+  suyo, porque tiene que ser una fila de `checkout_attempt` con su `candidate_id`, y
+  exigirse que siga **abierto** es lo que impide re-confirmar.
+- **El monto se compara contra el del intento**, no el de la ficha. El javadoc de
+  `CheckoutAttempt.amount` ya decía que ese es el número que se puso enfrente del
+  Aspirante; la tariff se re-cotiza en cada checkout, así que la ficha pudo cambiar en
+  medio.
+- **La puerta es `capturedAny()`, no `result == SUCCESS`.** Este era el ítem 5 pendiente.
+  `SUCCESS` es una etiqueta que el gateway imprime; `totalCapturedAmount > 0` es dinero
+  que se movió. Una orden `SUCCESS` que no capturó nada no es un pago, y aceptarla era
+  exactamente la forma de marcar pagada una ficha sin pago.
+
+### Captura por debajo de la tarifa: se paga igual, se loguea
+
+Si el intento capturado se alicuotó a un precio viejo y la tarifa viva es mayor, la ficha
+se marca pagada y se loguea la diferencia.
+
+No es una decisión de justicia sino una consecuencia de que las órdenes de EVO son
+inmutables: el dinero está en el banco y no se puede recuperar. Dejarla `PENDING` con
+captura es una ficha cuyo dueño va a volver a pulsar "Pagar" y a pagar dos veces, que es
+justo lo que toda esta reconciliación existe para evitar. La tarifa se re-cotiza por
+checkout, así que el hueco solo es alcanzable si el catálogo se movió entre dos intentos:
+un hecho operativo para que Servicios Escolares lo concilie, nunca una razón para
+retener una admisión ya cobrada.
+
+### Se pregunta al banco incluso en fichas ya pagadas
+
+Podría seem más simple saltarlas, y estaría mal dos veces: dejaría esas filas abiertas
+para siempre —no existe un valor "superseded" para una orden que el banco nunca
+rechazó— y decidaría el destino de un intento a partir de nuestra propia contabilidad en
+vez de la única parte que sabe. Lo que una ficha pagada **sí** omite es el `release`: su
+lugar es suyo para siempre. Y cuando el banco dice que esa orden se rechazó, el motivo
+que se registra es `REJECTED`, porque eso es lo que él dijo, aunque otra orden sí haya
+funcionado.
+
+### Aislamiento por intento
+
+`EvoPaymentGatewayException` se captura y se sigue. Es la falla que el barrido jamás debe
+convertir en liberación: "no pudimos preguntar" y "el banco rechazó" tienen que quedar
+distinguibles, o una caída del banco reparte lugares cuyos pagos siguen en vuelo. Cualquier
+otra excepción también se cuenta y se sobrevive — un intento envenenado no puede abandonar
+los otros treinta y nueve.
+
+Tampoco es `@Transactional`: llama a un tercero una vez por intento, así que una
+transacción alrededor del bucle dejaría una abierta mientras el banco contesta y
+reventaría cuarenta pagos ya liquidados porque el cuarenta y uno tardó.
+
+35 tests nuevos/reescritos (14 del barrido, 15 de `confirm`, 8 del decider). 1131 en total.
+
+---
+
+## [2026-09-30] La descripción del pedido llega sin acentos: se iba a ver "AdmisiÃ³n" en el estado de cuenta
+
+Commit: `501060a`.
 
 ### Qué estaba roto
 
@@ -47,7 +142,7 @@ cambio de copy futuro no rompe el test.
 
 ## [2026-09-30] Endpoint de liberación: el navegador avisa cuando el Aspirante abandona el pago
 
-Commit: pendiente.
+Commit: `37c4c7a`.
 
 ### Qué cambia
 

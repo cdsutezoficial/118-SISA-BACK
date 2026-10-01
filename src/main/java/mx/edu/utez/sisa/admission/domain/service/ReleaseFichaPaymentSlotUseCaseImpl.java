@@ -80,7 +80,7 @@ public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSl
 		}
 
 		EvoPaymentsGatewayPort.EvoOrderStatus status = evoPaymentsGateway.retrieveOrder(orderId);
-		ReleaseOutcome outcome = decide(status);
+		ReleaseOutcome outcome = toOutcome(OrderSettlementDecider.decide(status), status);
 
 		if (outcome != ReleaseOutcome.SLOT_RELEASED) {
 			// Nothing is written. The attempt stays open on purpose so the daily sweep
@@ -98,22 +98,26 @@ public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSl
 	}
 
 	/**
-	 * The {@code §6} table, applied to one order. Capture outranks {@code result},
-	 * because money that arrived is a fact and {@code SUCCESS} is only a label — an
-	 * order that says SUCCESS and captured nothing is the case §6 declines to
-	 * diagnose, so it is retained for the expiry sweep instead of being released on a
-	 * guess.
+	 * The applicant's four situations, projected from the three answers of §6.
+	 *
+	 * <p>The verdict decides <em>whether to release</em>; it cannot decide what to say,
+	 * because it deliberately does not say what a {@code SUCCESS} with nothing captured
+	 * <em>means</em>. So the projection reads the status for the one distinction the
+	 * table refuses to draw: {@code PAYMENT_IN_PROGRESS} is the bank still working, while
+	 * {@code RETAINED_UNEXPLAINED} is an order that claims to be fine and took nothing.
+	 * Telling an applicant the first when it is the second would be a claim we cannot
+	 * make, and it is the reason the release path keeps its own projection instead of
+	 * reading {@code Verdict} alone.
 	 */
-	private static ReleaseOutcome decide(EvoPaymentsGatewayPort.EvoOrderStatus status) {
-		if (status.capturedAny()) {
+	private static ReleaseOutcome toOutcome(OrderSettlementDecider.Verdict verdict,
+			EvoPaymentsGatewayPort.EvoOrderStatus status) {
+		if (verdict == OrderSettlementDecider.Verdict.CAPTURED) {
 			return ReleaseOutcome.PAYMENT_CAPTURED;
 		}
-		if (status.hasError() || "FAILURE".equals(status.result())) {
+		if (verdict == OrderSettlementDecider.Verdict.RELEASEABLE) {
 			return ReleaseOutcome.SLOT_RELEASED;
 		}
-		if ("SUCCESS".equals(status.result())) {
-			return ReleaseOutcome.RETAINED_UNEXPLAINED;
-		}
-		return ReleaseOutcome.PAYMENT_IN_PROGRESS;
+		return "SUCCESS".equals(status.result()) ? ReleaseOutcome.RETAINED_UNEXPLAINED
+				: ReleaseOutcome.PAYMENT_IN_PROGRESS;
 	}
 }

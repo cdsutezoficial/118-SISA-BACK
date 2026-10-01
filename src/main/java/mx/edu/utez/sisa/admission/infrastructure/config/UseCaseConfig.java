@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
@@ -21,6 +22,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -34,6 +36,7 @@ import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseC
 import mx.edu.utez.sisa.admission.domain.service.CheckoutSlotClaimer;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ReconcileFichaPaymentsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ExpireStaleFichaPaymentsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
@@ -204,9 +207,10 @@ public class UseCaseConfig {
 	@Bean
 	public ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase(CandidateRepository candidateRepository,
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
-			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase) {
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
+			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
 		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase);
+				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
 	}
 
 	/**
@@ -258,6 +262,24 @@ public class UseCaseConfig {
 			CheckoutSlotClaimer checkoutSlotClaimer) {
 		return new ReleaseFichaPaymentSlotUseCaseImpl(admissionPaymentRepository, evoPaymentsGateway,
 				checkoutSlotClaimer);
+	}
+
+	/**
+	 * The nightly sweep behind {@code ReconcileFichaPaymentsJob}.
+	 *
+	 * <p>It is handed the confirmation use case rather than a repository so that "this
+	 * ficha is paid" is defined in exactly one place. If the sweep marked payments itself
+	 * it would be a second implementation of the same transition, and the day the two
+	 * diverged would be the day a captured payment produced a paid ficha with no receipt.
+	 */
+	@Bean
+	public ReconcileFichaPaymentsUseCase reconcileFichaPaymentsUseCase(
+			CheckoutAttemptRepository checkoutAttemptRepository,
+			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			CheckoutSlotClaimer checkoutSlotClaimer,
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, admissionPaymentRepository,
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
 	}
 
 	@Bean
