@@ -52,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -348,8 +349,9 @@ class RegisterCandidateUseCaseImplTest {
 		useCase.register(command());
 
 		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
-		verify(admissionPaymentRepository, never()).countOccupiedByConfigId(any(), any());
-		verify(admissionPaymentRepository, never()).countOccupiedByConfigIdExcludingCandidate(any(), any(), any());
+		verify(admissionPaymentRepository, never()).countOccupiedByConfigId(any(), any(), anyInt());
+		verify(admissionPaymentRepository, never()).countOccupiedByConfigIdExcludingCandidate(any(), any(), any(),
+				anyInt());
 	}
 
 	/**

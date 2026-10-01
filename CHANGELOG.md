@@ -4,6 +4,134 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] El barrido le pregunta al banco, y la orden del pago se conoce desde el inicio
+
+Commits: `de0a1f4`, este commit.
+
+### Qué cambia
+
+`CheckoutAttempt` nace en el dominio y el `orderId` se genera **antes** de llamar al
+gateway, no después:
+
+- `CheckoutAttempt` + `CheckoutAttemptCloseReason` (`STARTED`, `SESSION_TIMEOUT`,
+  `ERROR`, `ORDER_NOT_CREATED`, `REJECTED`, `CAPTURED`, `ORDER_EXPIRED`), con
+  `order_id` único y escritura append-only: cada reintento agrega su fila, ninguna se
+  pisa.
+- `CheckoutSlotClaimer.openAttempt()` / `closeAttempt()` en `REQUIRES_NEW`, para que el
+  intento sobreviva a un rollback posterior.
+- `InitiateFichaPaymentUseCaseImpl` genera el `orderId` y abre el intento antes de
+ gateway. Ante un rechazo definitivo cierra el intento con `ORDER_NOT_CREATED` y suelta
+  el lugar; ante un fallo ambiguo (`orderMayHaveBeenCreated`) lo deja abierto, porque el
+  banco puede tener una orden que se capture después.
+
+Esto elimina de raíz el caso "lugar apartado sin número de pedido" que obligaba a
+soltar a ciegas por antigüedad: el `orderId` se conoce desde el principio, así que
+siempre hay con qué preguntar al banco.
+
+### Por qué el adapter mira más campos
+
+`EvoOrderStatus` crece con lo que el barrido necesita para decidir: los cuatro
+`total*Amount`, `creationTime`, `lastUpdatedTime` y `error`. Los campos están
+documentados como ALWAYS PROVIDED en `Referencias de API.txt` (sección plana de
+`Retrieve Order`), así que son datos reales y no inferencias.
+
+**No se agrega `gatewayCode`:** no viene en `Retrieve Order` —vive en las respuestas de
+transacción y en `Retrieve Transaction, que son endpoints distintos—, y no se llega a
+ellos desde un `orderId`. Esa ausencia es la razón por la que un `SUCCESS` sin captura
+se **retiene y se registra** en vez de investigarse: no hay campo que diga por qué, y
+soltar ese lugar le robaría el cupo a alguien que quizá sí pagó.
+
+El `error` solo se arma con un nodo `error` real. Se quitó el fallback que inventaba una
+línea de error a partir de `status`: ese campo es de la capa EVO y no está entre los
+documentados, así que usarlo convertía un estado normal en curso en un rechazo.
+
+`EvoOrderStatus` conserva constructores de 3 y 4 campos para el camino de confirmación,
+que solo lee `result` y `amount`. Con `SUCCESS` el monto capturado se toma igual al
+amount, de modo que ese camino conserva el significado que tenía antes del barrido.
+
+### Tests
+
+`CheckoutSlotClaimerTest` cubre apertura y cierre de intentos; `InitiateFichaPaymentUseCaseImplTest`
+cubre el orden de las escrituras y el caso ambiguo. 1072 en verde.
+
+---
+
+## [2026-09-30] Un lugar lo suelta su propia ficha, no el catálogo
+
+Commit: pendiente.
+
+### Qué cambia
+
+Las tres consultas de ocupación dejan de decidir la vigencia de una ficha preguntando
+al catálogo de pagos. Ahora la decide la ficha: su `registeredAt` y el `closesAt` de su
+proceso. El `EXISTS` sobre `PaymentConcept`/`PaymentRate` desapareció de las tres.
+
+El `EXISTS` era la forma en que una reserva se liberaba, y estaba mal por dos motivos
+que no tienen nada que ver entre sí:
+
+- **Decidía con la fecha equivocada.** La reserva moría cuando `available_until` del
+  concepto de admisión pasaba, no cuando la ficha se cumplía su propio plazo. El
+  calendario que la ventanilla edita pasó a ser la razón por la que alguien no podía
+  pagar, y el checkout y el catálogo applicaban fechas distintas para la misma regla.
+- **Recorría la escalera de precios completa** —programa, nivel, general— en cada
+  intento de pago, que es la escritura más disputada del sistema, dentro de una
+  transacción con candado sobre la fila del config.
+
+La regla que queda es la que el negocio ya tenía escrita: una ficha registrada tiene 10
+días naturales desde el registro y nunca sobrevive al cierre del proceso. Los dos
+cortes son **fechas**, no instantes: `cand.registeredAt >= :registeredNoLaterThan` y
+`cfg.closesAt >= :midnightToday`. Por eso una ficha emitida el 28 con ventas hasta el 30
+se puede pagar todo el 30, y por eso una carrera que cierra a las 23:00 no se apaga a
+esa hora.
+
+Nada de esto necesita un job para funcionar. Una reserva se suelta porque ya no cuenta,
+no porque alguien pasó a limpiar.
+
+### `FichaPaymentWindow`
+
+Nuevo, y es la parte que evita el problema de fondo. La aritmética de "cuánto vive una
+ficha" está en un solo lugar y las tres consultas la llaman: el adapter de pagos, el
+controller del selector y los propios tests. Antes esa cuenta estaba implícita en cada
+copia de la consulta, y dos copias de una regla de fechas es exactamente cómo empiezan
+a discrepar.
+
+`latestPayableRegistration` es `today - N`, el espejo exacto de
+`Candidate.paymentDeadline`, que suma `N` al día de registro. Escribirló como
+`today - (N-1)` regalaría un día a todos y contradiría al vencimiento que calcula la
+misma clase: el único bug que este método no puede tener es dos respuestas distintas a
+"¿cuándo vence una ficha?" en el mismo lugar.
+
+### La zona se lee del reloj, no del servidor
+
+El adapter toma `clock.getZone()` y el controlador ya tenía el `Clock`. Nada usa
+`ZoneId.systemDefault()`: `NOW` en los tests es 18:00Z, que en México es el 25 y en
+UTC ya es el 26, así que un test que resolviera "hoy" en la zona equivocada se
+sentaría a un día del límite que toda la clase existe para medir.
+
+### Tests
+
+`ProgramAdmissionConfigOptionsQueryIT` gana los dos bordes que antes no existían, porque
+la regla nueva los hace distinguibles: una ficha en su **último** día todavía ocupa
+lugar, y una de un proceso cerrado ayer lo suelta todo. La segunda se afirma por el
+conteo y no por el selector, porque un config cerrado ya cae por la cláusula de
+ventana y el selector no podría separar las dos razones.
+
+El IT ya no siembra concepto de admisión ni tarifa. Su ausencia es el punto: lo que
+sostiene una reserva son las fechas de la ficha, así que una carrera cuyo catálogo ni
+siquiera está configurado conserva bien sus lugares en vez de reportarse vacía y
+sobrevender. Y `CheckoutSlotClaimerConcurrencyIT` necesitaba el
+`CheckoutAttemptRepositoryAdapter` en su `@Import`, que faltaba desde `de0a1f4`.
+
+`Candidate.registeredAt` no tiene setter y no se le dio uno: el día de registro se fija
+una vez y no es algo que el código de producción deba poder reescribir. Los tests que
+lo necesitan reescriben la columna con SQL nativo después del insert.
+
+39 en verde en los dos IT y `ProgramAdmissionConfigControllerTest`; el controlador
+además afirma que el corte cae exactamente 10 días atrás, para que un día de
+colchón se note como lo que es.
+
+---
+
 ## [2026-09-30] El estado de pago se escribe, no se imprime
 
 Commit: pendiente.

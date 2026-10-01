@@ -11,6 +11,7 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.service.FichaPaymentWindow;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.AdmissionPaymentJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateJpaRepository;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
@@ -18,11 +19,14 @@ import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -60,6 +64,17 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	 * {@code NOW} is 2026-09-25T18:00Z, which in the admission zone is the 25th.
 	 */
 	private static final LocalDate TODAY = LocalDate.of(2026, 9, 25);
+
+	/**
+	 * The admission zone. Not the server's default: {@link #NOW} is 18:00Z, which is
+	 * the 25th in Mexico and would already be the 26th in UTC, so a test that
+	 * resolved "today" in the wrong zone would sit a day off the boundary this whole
+	 * class is about.
+	 */
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	/** The ficha's payment window, the default the application ships with. */
+	private static final int PAYMENT_WINDOW_DAYS = 10;
 
 	private static final Instant OPENS_AT = Instant.parse("2026-09-01T15:00:00Z");
 
@@ -228,15 +243,59 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	@Test
-	void stopsCountingAClaimWhosePaymentWindowHasPassed() {
+	void stopsCountingAClaimWhoseFichaIsPastItsPaymentWindow() {
 		// Nobody swept a counter here: the claim is still stamped and still PENDING.
-		// It leaves the count because the concept can no longer be paid, which is the
-		// rule that keeps a dropped checkout from shrinking a career for good.
+		// It leaves the count because the ficha itself is too old to pay, which is
+		// the rule that keeps a dropped checkout from shrinking a career for good.
+		//
+		// Stamped as registered 11 days ago against a 10-day window. The catalog is
+		// deliberately left unconfigured: a claim is released by the ficha's own
+		// dates, so it stops occupying a slot even when the admission concept is
+		// still perfectly payable.
 		ProgramAdmissionConfig config = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
-		saveTuitionConceptFor(config, TODAY.minusDays(1));
-		saveClaimedFichas(config.getId(), MAX_CANDIDATES);
+		saveTuitionConceptFor(config, TODAY.plusDays(5));
+		saveClaimedFichasRegisteredOn(config.getId(), MAX_CANDIDATES, TODAY.minusDays(11));
 
 		assertThat(idsOf(options())).containsExactly(config.getId());
+	}
+
+	@Test
+	void keepsCountingAClaimOnTheLastDayOfItsPaymentWindow() {
+		// The boundary from the other side, and the one worth pinning. Registration
+		// day is day 0, so a ficha registered on the 15th has its 10 days through the
+		// 25th and is payable all of the 25th; it only lapses on the 26th.
+		ProgramAdmissionConfig config = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
+		saveTuitionConceptFor(config, TODAY.plusDays(5));
+		saveClaimedFichasRegisteredOn(config.getId(), MAX_CANDIDATES, TODAY.minusDays(PAYMENT_WINDOW_DAYS));
+
+		assertThat(options()).isEmpty();
+	}
+
+	@Test
+	void keepsCountingAClaimWhileTheProcessIsStillOpen() {
+		// A ficha inside its own 10-day plazo still occupies its place right up to the
+		// last day of sales. closesAt is compared against the <em>start</em> of today,
+		// not against now, so a career closing at 23:00 is not shut by the hour of the
+		// day it happens to close — and its claims are not released before that.
+		ProgramAdmissionConfig closesTonight = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT,
+				TODAY.atTime(23, 0).atZone(ZONE).toInstant());
+		saveClaimedFichas(closesTonight.getId(), MAX_CANDIDATES);
+
+		assertThat(claimed(closesTonight.getId())).isEqualTo(MAX_CANDIDATES);
+	}
+
+	@Test
+	void releasesEveryClaimOnceTheProcessHasClosed() {
+		// Closing yesterday releases the claims, which is the half of the rule the
+		// catalog never enforced: a place that can no longer be bought is not
+		// occupied. Asserted through the count rather than through the picker, because
+		// a closed config is already excluded by the sales-window clause above it and
+		// so the picker could not tell the two reasons apart.
+		ProgramAdmissionConfig closedYesterday = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT,
+				TODAY.minusDays(1).atTime(23, 0).atZone(ZONE).toInstant());
+		saveClaimedFichas(closedYesterday.getId(), MAX_CANDIDATES);
+
+		assertThat(claimed(closedYesterday.getId())).isZero();
 	}
 
 	@Test
@@ -269,8 +328,14 @@ class ProgramAdmissionConfigOptionsQueryIT {
 
 		ProgramAdmissionConfig lapsed = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
 		saveTuitionConceptFor(lapsed, TODAY.minusDays(1));
-		saveClaimedFichas(lapsed.getId(), MAX_CANDIDATES);
+		saveClaimedFichasRegisteredOn(lapsed.getId(), MAX_CANDIDATES, TODAY.minusDays(11));
 		configs.add(lapsed);
+
+		ProgramAdmissionConfig onItsLastDay = saveOpenOfferedConfig(MAX_CANDIDATES, OPENS_AT, CLOSES_AT);
+		saveTuitionConceptFor(onItsLastDay, TODAY.plusDays(5));
+		saveClaimedFichasRegisteredOn(onItsLastDay.getId(), MAX_CANDIDATES,
+				TODAY.minusDays(PAYMENT_WINDOW_DAYS));
+		configs.add(onItsLastDay);
 
 		UUID sharedProgramId = saveProgram("Ingeniería en Software").getId();
 		ProgramAdmissionConfig oldCycle = saveConfigForProgram(sharedProgramId, true, MAX_CANDIDATES, OPENS_AT,
@@ -285,8 +350,8 @@ class ProgramAdmissionConfigOptionsQueryIT {
 
 		for (ProgramAdmissionConfig config : configs) {
 			long occupiedByClaimer = admissionPaymentJpaRepository.countOccupiedByConfigId(config.getId(),
-					AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, PaymentConceptStatus.ACTIVE,
-					PaymentConceptType.ADMISSION, TODAY);
+					AdmissionPaymentStatus.PAID, AdmissionPaymentStatus.PENDING, latestPayableRegistration(),
+					midnightToday());
 			boolean roomForAnother = occupiedByClaimer < config.getMaxCandidates();
 			boolean offeredByDropdown = idsOf(options()).contains(config.getId());
 
@@ -298,7 +363,24 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	private List<ProgramAdmissionConfigJpaRepository.ProgramAdmissionConfigOptionProjection> options() {
-		return jpaRepository.findOpenOfferedOptions(NOW, TODAY);
+		return jpaRepository.findOpenOfferedOptions(NOW, latestPayableRegistration(), midnightToday());
+	}
+
+	/**
+	 * The two cutoffs the occupancy rule compares against, built by
+	 * {@code FichaPaymentWindow} rather than written out here.
+	 *
+	 * <p>This test exists to hold the picker and the claim against each other, and
+	 * it can only do that if it asks the database the same question they do. A
+	 * hand-written {@code TODAY.minusDays(9)} would be a second copy of the rule,
+	 * and a copy is exactly what this test is meant to catch.
+	 */
+	private Instant latestPayableRegistration() {
+		return FichaPaymentWindow.latestPayableRegistration(TODAY, PAYMENT_WINDOW_DAYS, ZONE);
+	}
+
+	private Instant midnightToday() {
+		return FichaPaymentWindow.startOfDay(TODAY, ZONE);
 	}
 
 	private static List<UUID> idsOf(
@@ -369,15 +451,71 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	/**
 	 * PENDING fichas that already reserved their slot at the checkout, which is the
 	 * occupancy the quota was widened to include.
+	 *
+	 * <p>{@code Candidate}'s constructor stamps {@code Instant.now()}, so these land
+	 * inside their payment window by accident of the machine clock rather than by
+	 * construction. {@link #saveClaimedFichasRegisteredOn} exists for the tests that
+	 * need the registration day itself to be the thing under test.
 	 */
 	private void saveClaimedFichas(UUID admissionConfigId, int count) {
+		saveClaimedFichasRegisteredOn(admissionConfigId, count, null);
+	}
+
+	/**
+	 * Claimed fichas whose registration day is chosen rather than inherited from the
+	 * wall clock.
+	 *
+	 * <p>{@code registeredOn == null} keeps {@link Candidate}'s own
+	 * {@code Instant.now()}, which is what every test that is not about the window
+	 * wants. A named date is applied with a direct column update because
+	 * {@code registeredAt} has no setter and no legitimate reason to grow one: a
+	 * ficha's registration day is set once, at registration, and is not something
+	 * production code should be able to rewrite.
+	 */
+	private void saveClaimedFichasRegisteredOn(UUID admissionConfigId, int count, LocalDate registeredOn) {
 		IntStream.range(0, count).forEach(i -> {
 			Candidate candidate = saveCandidate(admissionConfigId);
+			if (registeredOn != null) {
+				backdateRegistration(candidate, registeredOn);
+			}
 			AdmissionPayment payment = new AdmissionPayment(candidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA,
 					new BigDecimal("1578.00"), "REF-" + UUID.randomUUID(), LocalDate.of(2026, 10, 5));
 			payment.claimCheckoutSlot();
 			admissionPaymentJpaRepository.save(payment);
 		});
+	}
+
+	/**
+	 * Rewrites {@code candidate.registered_at} after the insert, for tests that need a
+	 * ficha whose window has already run out.
+	 *
+	 * <p>A native statement on purpose, and in its own transaction: this is fixture
+	 * setup for a state that only arises days later in real life, not a state the
+	 * application can produce. Going through the entity instead would mean adding a
+	 * setter that exists only to let tests lie about history.
+	 */
+	@Autowired
+	private TestEntityManager entityManager;
+
+	private void backdateRegistration(Candidate candidate, LocalDate registeredOn) {
+		// Flushed first, or the UPDATE finds no row: the candidate is still sitting in
+		// the persistence context from the insert, and a statement that matches nothing
+		// would leave the ficha dated "now" and quietly turn these tests into the
+		// opposite of what they claim.
+		entityManager.flush();
+		Instant registeredAt = registeredOn.atTime(9, 0).atZone(ZONE).toInstant();
+		entityManager.getEntityManager().createNativeQuery("UPDATE candidate SET registered_at = :at WHERE id = :id")
+				.setParameter("at", Timestamp.from(registeredAt)).setParameter("id", candidate.getId()).executeUpdate();
+		entityManager.clear();
+	}
+
+	/**
+	 * What the occupancy rule counts for one config, read through the same interface
+	 * the claimer uses.
+	 */
+	private long claimed(UUID admissionConfigId) {
+		return admissionPaymentJpaRepository.countOccupiedByConfigId(admissionConfigId, AdmissionPaymentStatus.PAID,
+				AdmissionPaymentStatus.PENDING, latestPayableRegistration(), midnightToday());
 	}
 
 	/**

@@ -10,7 +10,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -78,15 +77,30 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 	 * already being paid for, and the applicant would be refused at the checkout —
 	 * the user-visible form of the overshoot this whole block exists to remove.
 	 *
-	 * <p>Both copies key the quota by {@code cand.admissionConfigId = c.id} and both
-	 * read the price ladder per program ({@code c.programId}), because the ladder is
-	 * defined per program and the quota is defined per config. They disagreed once:
-	 * this one counted per config while {@code AdmissionPaymentOccupancyQueries}
-	 * counted per program, so a program whose old cycle was full had its new cycle
-	 * offered here and refused at checkout. {@code ProgramAdmissionConfigOptionsQueryIT}
-	 * holds the two definitions against the same data, on data that actually
-	 * separates "per config" from "per program" — one cycle per program would pass
-	 * either way.
+	 * <p>Both copies key the quota by {@code cand.admissionConfigId = c.id}. They
+	 * disagreed once by a wider margin: this one counted per config while
+	 * {@code AdmissionPaymentOccupancyQueries} counted per program, so a program
+	 * whose old cycle was full had its new cycle offered here and refused at
+	 * checkout. {@code ProgramAdmissionConfigOptionsQueryIT} holds the two
+	 * definitions against the same data, on data that actually separates "per
+	 * config" from "per program" — one cycle per program would pass either way.
+	 *
+	 * <p>Both copies also used to expire a claim by asking the payment catalog
+	 * whether an admission concept was still payable, walking the program/level/
+	 * general rate ladder on every read. That made the catalog's {@code
+	 * availableUntil} the thing that decided when a checkout claim died, which is
+	 * not what the applicant was promised and not what the checkout enforces. What
+	 * releases a claim is now the ficha's own dates: still inside its
+	 * {@code registeredAt} plazo ({@code :registeredNoLaterThan}) and inside this
+	 * config's window ({@code :midnightToday}). Both cutoffs come from
+	 * {@code FichaPaymentWindow}, so the copy here and the one in the admission
+	 * module cannot drift apart on the arithmetic either.
+	 *
+	 * <p>{@code c.closesAt} is compared against {@code :midnightToday} even though
+	 * {@code :now BETWEEN c.opensAt AND c.closesAt} above has already excluded
+	 * anything past its window. It is kept to make the occupancy clause byte for
+	 * byte the same rule the claim applies, which is the only thing that makes the
+	 * duplication above maintainable.
 	 */
 	@Query(value = """
 			SELECT c.id AS id, p.name AS programName, p.modality AS modality
@@ -102,28 +116,14 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 			           AND (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID
 			                OR (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING
 			                    AND pay.checkoutClaimedAt IS NOT NULL
-			                    AND EXISTS (
-				                         SELECT cc FROM PaymentConcept cc
-				                         WHERE cc.status = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE
-				                           AND cc.type = mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType.ADMISSION
-				                           AND EXISTS (
-				                               SELECT r FROM PaymentRate r
-				                               WHERE r.conceptId = cc.id
-				                                 AND r.periodId IS NULL
-				                                 AND r.validFrom <= :today
-				                                 AND (r.validTo IS NULL OR r.validTo >= :today)
-				                                 AND (r.programId = c.programId
-				                                      OR (r.programId IS NULL AND r.level = (
-				                                           SELECT pp.level FROM AcademicProgram pp WHERE pp.id = c.programId))
-				                                      OR (r.programId IS NULL AND r.level IS NULL))
-				                           )
-				                           AND (cc.availableUntil IS NULL OR cc.availableUntil >= :today)
-				                    )))
+			                    AND cand.registeredAt >= :registeredNoLaterThan
+			                    AND c.closesAt >= :midnightToday))
 			      ) < c.maxCandidates
 			ORDER BY p.name
 			""")
 	List<ProgramAdmissionConfigOptionProjection> findOpenOfferedOptions(@Param("now") Instant now,
-			@Param("today") LocalDate today);
+			@Param("registeredNoLaterThan") Instant registeredNoLaterThan,
+			@Param("midnightToday") Instant midnightToday);
 
 	/** Minimal projection for the public picker — {@code id}, program name (label) and modality. */
 	interface ProgramAdmissionConfigOptionProjection {

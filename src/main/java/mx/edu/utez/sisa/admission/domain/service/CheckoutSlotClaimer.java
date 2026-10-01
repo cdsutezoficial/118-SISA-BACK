@@ -17,6 +17,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -67,14 +68,24 @@ public class CheckoutSlotClaimer {
 	 */
 	private final Clock clock;
 
+	/**
+	 * Days a ficha may take to be paid, counting from the day it was registered.
+	 * Needed here because a claim stops occupying a slot once its ficha's own
+	 * window is over — otherwise a career would stay short for ten days waiting
+	 * for somebody who is no longer allowed to pay.
+	 */
+	private final int paymentWindowDays;
+
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort,
 			AdmissionPaymentRepository admissionPaymentRepository, CandidateRepository candidateRepository,
-			CheckoutAttemptRepository checkoutAttemptRepository, Clock clock) {
+			CheckoutAttemptRepository checkoutAttemptRepository, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int paymentWindowDays) {
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.clock = clock;
+		this.paymentWindowDays = paymentWindowDays;
 	}
 
 	/**
@@ -119,7 +130,7 @@ public class CheckoutSlotClaimer {
 		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
 
 		long occupiedByOthers = admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(
-				candidate.getAdmissionConfigId(), candidateId, LocalDate.now(clock));
+				candidate.getAdmissionConfigId(), candidateId, LocalDate.now(clock), paymentWindowDays);
 
 		if (occupiedByOthers >= quota.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());

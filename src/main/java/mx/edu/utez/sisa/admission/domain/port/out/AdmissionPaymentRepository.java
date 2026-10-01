@@ -57,8 +57,10 @@ public interface AdmissionPaymentRepository {
 	 *
 	 * @param admissionConfigId the config whose occupied slots are counted
 	 * @param onDate            today, in the admission zone, used for window expiry
+	 * @param paymentWindowDays days a ficha may take to be paid from the day it was
+	 *                          registered, which is day 0
 	 */
-	long countOccupiedByConfigId(UUID admissionConfigId, LocalDate onDate);
+	long countOccupiedByConfigId(UUID admissionConfigId, LocalDate onDate, int paymentWindowDays);
 
 	/**
 	 * {@link #countOccupiedByConfigId} minus the requesting candidate's own
@@ -74,6 +76,9 @@ public interface AdmissionPaymentRepository {
 	 * @param admissionConfigId the config whose occupied slots are counted
 	 * @param candidateId       the candidate whose own ficha is left out
 	 * @param onDate            today, in the admission zone, used for window expiry
+	 * @param paymentWindowDays days a ficha may take to be paid from the day it was
+	 *                          registered, which is day 0
 	 */
-	long countOccupiedByConfigIdExcludingCandidate(UUID admissionConfigId, UUID candidateId, LocalDate onDate);
+	long countOccupiedByConfigIdExcludingCandidate(UUID admissionConfigId, UUID candidateId, LocalDate onDate,
+			int paymentWindowDays);
 }
