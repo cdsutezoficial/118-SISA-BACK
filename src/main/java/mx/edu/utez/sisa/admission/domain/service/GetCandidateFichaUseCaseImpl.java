@@ -121,11 +121,17 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		// both windows separately, and the payment one is read live so an
 		// extension granted after the ficha was issued shows up on the reprint.
 		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
-		// What the applicant actually pays by: the earlier of the sales window
-		// and the ficha's own plazo. The concept's available_until stays an
-		// engine-side boundary (paymentClosesOn above) and is deliberately NOT
-		// the date this screen states.
-		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, payment.getRegistrationDeadline());
+		// What the applicant actually pays by: the earlier of the ficha's own plazo
+		// and the day her admission process closes, read live. The concept's
+		// available_until stays an engine-side boundary (paymentClosesOn above) and
+		// is deliberately NOT the date this screen states.
+		//
+		// The closing date comes from the config, not from the ticket's
+		// registrationDeadline snapshot: staff close a cohort by editing the config,
+		// and a PDF reprint is exactly where a stale promise would do the most damage.
+		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
+				: config.closesAt().atZone(clock.getZone()).toLocalDate();
+		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
 		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName, person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
@@ -174,12 +180,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 	 * {@code available_until} — that one gates the payment but is not a date the
 	 * applicant is asked to act on, because it moves with the catalog.
 	 */
-	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
-		LocalDate fichaDeadline = candidate.paymentDeadline(clock.getZone(), fichaDeadlineDays);
-		if (registrationDeadline == null) {
-			return fichaDeadline;
-		}
-		return fichaDeadline.isBefore(registrationDeadline) ? fichaDeadline : registrationDeadline;
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate processClosesOn) {
+		return FichaPaymentWindow.deadlineOf(candidate, processClosesOn, fichaDeadlineDays, clock.getZone());
 	}
 
 	/**

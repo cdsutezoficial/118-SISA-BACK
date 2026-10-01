@@ -250,7 +250,8 @@ class CandidateControllerTest {
 						: mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
-				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE);
+				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED,
+				false);
 	}
 
 	@Test
@@ -295,13 +296,33 @@ class CandidateControllerTest {
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
-				null));
+				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentClosesOn").isEmpty())
 				.andExpect(jsonPath("$.paymentDeadline").isEmpty())
 				.andExpect(jsonPath("$.registrationDeadline").value("2026-09-30"));
+	}
+
+	/**
+	 * The flag is what hides the "Pagar" button, so it has to reach the wire. A
+	 * projection that dropped it would leave the screen showing a button the
+	 * checkout refuses with a 409 — the exact defect this field was added for.
+	 */
+	@Test
+	void paymentAccessExposesTheExpiredFlagAndCandidateStatus() throws Exception {
+		when(accessFichaPaymentUseCase.access(FOLIO, SUFFIX))
+				.thenReturn(new PaymentAccess(ID, FOLIO, "Ana Torres Ramos", "Ing. en TIC", new BigDecimal("500.00"),
+						"REF-20260924-000101", REGISTRATION_DEADLINE,
+						mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false,
+						PAYMENT_CLOSES_ON, PAYMENT_DEADLINE,
+						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true));
+
+		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.paymentExpired").value(true))
+				.andExpect(jsonPath("$.candidateStatus").value("PAYMENT_EXPIRED"));
 	}
 
 	@Test

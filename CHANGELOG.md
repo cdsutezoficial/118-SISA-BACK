@@ -4,9 +4,57 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-09-30] La ficha vence cuando cierra el proceso, no solo a los 10 días
+
+Commit: pendiente.
+
+### Qué cambia
+
+La regla de vigencia de una ficha queda en un solo lugar (`FichaPaymentWindow`) y pasa
+a ser el **menor** de dos límites: `min(registeredAt + N días, closesAt del proceso)`.
+
+Antes, el barrido `VENCEN_FICHAS` solo conocía el plazo propio de la ficha. Eso dejaba
+un hueco visible: un proceso que cerraba el día 20 seguía con sus fichas sin pagar en
+estado "Registrado" hasta el día 30, el portal seguía ofreciendo pagar una venta que ya
+había acabado, y al pulsar la applicant recibía un 409 que le decía que su plazo de 10
+días había terminado — que no era la razón.
+
+- `ExpireStaleFichaPaymentsUseCaseImpl` resuelve el `closesAt` de cada proceso y expira
+  también por cierre. El cierre se lee **una vez por proceso**, memoizado por
+  `admissionConfigId`, porque el barrido recorre todas las fichas `REGISTERED` del
+  sistema. Un config borrado no aborta la noche: esa ficha cae a su plazo propio, la
+  dirección conservadora (vence después, nunca antes).
+- El candado por CURP de `RegisterCandidateUseCaseImpl` también pasa a respetar
+  `closesAt`. Antes retenía una persona hasta 10 días después de que su proceso cerrara,
+  con un mensaje pidiéndole esperar una ventana que ya no existía.
+- El checkout tenía **dos** gates con **dos** errores distintos: "tu ficha venció" y
+  "la venta cerró". Ahora es uno solo —`FichaPaymentExpiredException`— porque para la
+  applicant los dos hechos son el mismo y cuál de los dos límites llegó primero no es
+  algo sobre lo que pueda actuar.
+- `PaymentAccess` y `FichaPaymentAccessResponse` agregan `candidateStatus` y
+  `paymentExpired`. Son dos preguntas distintas: el estado es lo que el barrido dejó
+  escrito, el flag es lo cierto hoy. En la ventana entre que un plazo vence y las 00:10
+  se diferencian, y al portal le obedece el flag — es lo que el checkout exige.
+- `paymentDeadline` en `payment-access` y en la ficha PDF pasa a leer el `closesAt`
+  **vivo** en vez del snapshot `registrationDeadline` congelado en el ticket. Cerrar un
+  cohorte anticipadamente tiene que acortar la promesa de la pantalla, y la reimpresión
+  del PDF es donde una promesa vieja haría más daño.
+
+### Por qué el barrido sigue siendo el único que escribe `PAYMENT_EXPIRED`
+
+El candado por CURP trata `REGISTERED` fuera de ventana como ya libre, y las consultas
+de cupo liberan una reserva vencida por fechas, no por un barrido. Los dos toleran el
+hueco entre el vencimiento y las 00:10, y ambos dependen de que nadie más escriba ese
+estado.
+
+### Por qué `ProgramAdmissionConfigSalesClosedException` sigue existiendo
+
+La usa el registro, que sí tiene dos límites distintos y dos mensajes distintos que
+sí significan algo ("la venta abre el 01/09" ≠ "la venta cerró el 30/09").
+
 ## [2026-09-30] El barrido le pregunta al banco, y la orden del pago se conoce desde el inicio
 
-Commits: `de0a1f4`, este commit.
+Commits: `de0a1f4`, `dcb98e6`.
 
 ### Qué cambia
 

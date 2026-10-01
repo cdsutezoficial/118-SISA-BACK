@@ -16,7 +16,6 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
@@ -43,10 +42,10 @@ import java.util.UUID;
  * <li>the payment must still be {@code PENDING} (409,
  * {@code CandidateAlreadyPaidException}) — an already-paid ficha cannot start
  * a new online session;</li>
- * <li>the three date gates, in order, must all pass (409 each): the ficha's
- * private deadline ({@code FichaPaymentExpiredException}), the admission
- * process' closing date ({@code ProgramAdmissionConfigSalesClosedException})
- * and the tuition concept's availability window
+ * <li>the two date gates, in order, must both pass (409 each): the ficha's
+ * payment window — the earlier of its own deadline and the admission process'
+ * closing date ({@code FichaPaymentExpiredException}) — and the tuition concept's
+ * availability window
  * ({@code PaymentConceptExpiredException} / {@code FichaPaymentConceptNotFoundException}).
  * Checked <em>before</em> the gateway is called — see
  * {@link #requirePaymentWindowOpen};</li>
@@ -62,8 +61,6 @@ import java.util.UUID;
  * between issuing and paying reaches the applicant (§1.3).
  */
 public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseCase {
-
-	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	/**
 	 * What an applicant is told when the tuition concept is not payable today for
@@ -268,19 +265,23 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * it will remember, and re-opening the period would then hit the duplicate
 	 * order rejection from {@code §2.3} of the plan on an id we already burned.
 	 *
-	 * <p>The three gates run in order, and the order is the rule:
+	 * <p>The gates run in order, and the order is the rule:
 	 * <ol>
-	 * <li><b>the ficha's own deadline</b> (day 0 = registration, plus
-	 * {@code deadline-days}). It is checked first because it is the applicant's
-	 * fact, and when it is the shorter of the two it is the one that actually
-	 * closed;</li>
-	 * <li><b>the admission process' closing date</b> ({@code closesAt}), so
-	 * admissions that keep a short ficha alive past the cohort's last day still
-	 * stop on that day;</li>
+	 * <li><b>the ficha's payment window</b> — the earlier of its own deadline
+	 * (day 0 = registration, plus {@code deadline-days}) and the admission
+	 * process' closing date. Both bounds are the same ones the nightly expiry
+	 * sweep and the occupancy queries read, so a ficha the portal shows as
+	 * payable cannot be one the engine considers closed;</li>
 	 * <li><b>the tuition concept's window</b>, which is configuration and must
 	 * not be reported as a date the applicant can see; a concept that is missing
 	 * or not payable here is a catalog error, not a closed period.</li>
 	 * </ol>
+	 *
+	 * <p>Gate 0 used to be the ficha's own deadline alone and gate 1 the process
+	 * closing date, reported as two distinct errors. That distinction was a lie
+	 * the applicant could not act on: the process closing means the same thing as
+	 * her window closing, and one of them always arrived first. Both now report
+	 * the ficha's window as expired, which is the fact she can verify.
 	 *
 	 * <p>Every boundary is a calendar date in the admission zone, not an
 	 * {@code Instant}: a comparison at midnight UTC would refuse a ficha that is
@@ -303,17 +304,11 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		LocalDate today = LocalDate.now(clock);
 		ZoneId zone = clock.getZone();
 
-		// Gate 0 — the ficha's private 10-day window.
-		if (today.isAfter(candidate.paymentDeadline(zone, fichaDeadlineDays))) {
+		// Gate 0 — the ficha's payment window (own plazo ∩ process closing date).
+		LocalDate admissionClosesOn = config.closesAt().atZone(zone).toLocalDate();
+		if (today.isAfter(FichaPaymentWindow.deadlineOf(candidate, admissionClosesOn, fichaDeadlineDays, zone))) {
 			throw new FichaPaymentExpiredException("Tu ficha venció. El plazo de pago de " + fichaDeadlineDays
 					+ (fichaDeadlineDays == 1 ? " día" : " días") + " terminó.");
-		}
-
-		// Gate 1 — the admission process' closing date.
-		LocalDate admissionClosesOn = config.closesAt().atZone(zone).toLocalDate();
-		if (today.isAfter(admissionClosesOn)) {
-			throw new ProgramAdmissionConfigSalesClosedException(
-					"La venta de fichas para esta carrera cerró el " + DATE_FORMAT.format(admissionClosesOn) + ".");
 		}
 
 		// Gate 2 — the tuition concept exists and is payable today.

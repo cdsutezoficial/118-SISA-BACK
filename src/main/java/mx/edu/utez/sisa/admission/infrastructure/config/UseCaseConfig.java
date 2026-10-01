@@ -212,11 +212,18 @@ public class UseCaseConfig {
 	 * released again. The days come from {@code SISA_PAGO_DIAS} (default 10) and
 	 * the clock is the admission clock, so the deadline is a calendar date in the
 	 * same zone the rest of the flow reads (§1.9, §3.8).
+	 *
+	 * <p>The config port is needed because the window it applies is the earlier of
+	 * the ficha's own plazo and the closing day of its admission process: a process
+	 * that closed must expire its unpaid fichas on the day it closed, not ten days
+	 * later.
 	 */
 	@Bean
 	public ExpireStaleFichaPaymentsUseCase expireStaleFichaPaymentsUseCase(CandidateRepository candidateRepository,
-			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays) {
-		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, clock, deadlineDays);
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays) {
+		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, clock,
+				deadlineDays);
 	}
 
 	@Bean

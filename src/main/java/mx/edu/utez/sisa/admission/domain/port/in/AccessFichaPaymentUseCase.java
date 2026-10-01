@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.port.in;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -64,10 +65,21 @@ public interface AccessFichaPaymentUseCase {
 	 * N-day plazo. {@code paymentClosesOn} is {@code null} when the catalog sets
 	 * no closing date, which the screen must render as an absence rather than as
 	 * a placeholder.
+	 *
+	 * <p>{@code candidateStatus} and {@code paymentExpired} answer two different
+	 * questions and the screen needs both. The status is what is <em>written
+	 * down</em>, and only the nightly VENCEN_FICHAS sweep writes it down; the flag
+	 * is what is <em>true today</em>. Between a deadline falling at 00:00 and the
+	 * sweep running at 00:10 those disagree, and the flag is the one the applicant
+	 * must be shown: her window closed, and the checkout will refuse her, so
+	 * offering a button that cannot work is the bug this field exists to prevent.
+	 * Making the screen re-derive that from {@code paymentDeadline} instead would
+	 * put a second copy of the window rule in TypeScript, which is exactly how the
+	 * portal and the engine start answering differently.
 	 */
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
-			LocalDate paymentDeadline) {
+			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired) {
 	}
 }

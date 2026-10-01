@@ -576,21 +576,26 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	/**
-	 * Gate 1: the admission process' closing date. A ficha whose private deadline
-	 * is still ahead is still refused once the cohort's sales have closed, with
-	 * the same type and message registration uses, so the two ends of the flow
-	 * tell the applicant the same thing.
+	 * Gate 0 read as the whole window: a ficha whose own ten days are still ahead
+	 * is refused once her admission process has closed, because the window is the
+	 * earlier of the two bounds.
+	 *
+	 * <p>Reported as {@link FichaPaymentExpiredException}, not as "sales closed".
+	 * Both bounds were once separate errors, which told the applicant a sale had
+	 * ended while the screen she was standing on still offered her the button.
+	 * Which date ran out is not a fact she can act on — her ficha is simply no
+	 * longer payable.
 	 */
 	@Test
-	void aPaymentAfterTheAdmissionProcessClosedIsRefused() {
+	void aPaymentAfterTheAdmissionProcessClosedIsRefusedAsExpired() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(admissionConfigClosingOn(LocalDate.of(2026, 9, 20))));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
-				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class)
-				.hasMessageContaining("cerró el 20/09/2026");
+				.isInstanceOf(FichaPaymentExpiredException.class)
+				.hasMessageContaining("Tu ficha venció");
 
 		verify(fichaAmountResolver, never()).requirePayableOn(any(), any());
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());

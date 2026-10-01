@@ -61,6 +61,12 @@ import static org.mockito.Mockito.when;
 class RegisterCandidateUseCaseImplTest {
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
+
+	/**
+	 * A second admission process, already closed. Used to date a previous ficha by
+	 * the process that actually issued it instead of by the one open for sales.
+	 */
+	private static final UUID CLOSED_CONFIG_ID = UUID.randomUUID();
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
 	private static final UUID CHANNEL_ID = UUID.randomUUID();
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
@@ -148,7 +154,16 @@ class RegisterCandidateUseCaseImplTest {
 	}
 
 	private static AdmissionConfigInfo config(Instant opensAt, Instant closesAt, int maxCandidates) {
-		return new AdmissionConfigInfo(ADMISSION_CONFIG_ID, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
+		return configIn(ADMISSION_CONFIG_ID, opensAt, closesAt, maxCandidates);
+	}
+
+	/**
+	 * Same config under a different id, for the tests where a previous ficha
+	 * belongs to a different admission process than the one being applied to —
+	 * otherwise the lock would date it by the process currently open for sales.
+	 */
+	private static AdmissionConfigInfo configIn(UUID configId, Instant opensAt, Instant closesAt, int maxCandidates) {
+		return new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
 				"Ingeniería en Sistemas", null, null, opensAt, closesAt, maxCandidates);
 	}
 
@@ -464,9 +479,39 @@ class RegisterCandidateUseCaseImplTest {
 		assertThatCode(() -> useCase.register(command())).doesNotThrowAnyException();
 	}
 
+	/**
+	 * The other half of the same rule: a process closing also ends the ficha, so a
+	 * CURP whose previous ficha belongs to a closed process is free again even
+	 * though its own ten days are not up.
+	 *
+	 * <p>Before this the lock only knew the ficha's own window, so the person was
+	 * told to wait for a payment window that had already closed with her process —
+	 * and the only thing that would ever release her was the nightly sweep, which
+	 * used to agree about this for the wrong reason.
+	 */
+	@Test
+	void register_allowsAReRegistrationWhenTheClosedProcessEndedTheFicha() {
+		// Registered on the 20th: her own ten days run to the 30th, so only the
+		// closing of her process can end this ficha.
+		Candidate fresh = candidateRegisteredIn(CLOSED_CONFIG_ID, Instant.parse("2026-09-20T18:00:00Z"));
+		Person existing = personWithId();
+		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(existing));
+		when(candidateRepository.findAllByPersonId(existing.getId())).thenReturn(List.of(fresh));
+		// Her process closed yesterday. Not stubAcceptedRegistration: that would
+		// re-stub the CURP as free and undo the whole point of this test.
+		when(programAdmissionConfigQueryPort.findById(CLOSED_CONFIG_ID)).thenReturn(Optional
+				.of(configIn(CLOSED_CONFIG_ID, WINDOW_OPEN, Instant.parse("2026-09-24T18:00:00Z"), MAX_CANDIDATES)));
+		stubAcceptedRegistrationStubs(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES));
+
+		assertThatCode(() -> useCase.register(command())).doesNotThrowAnyException();
+	}
+
 	private static Candidate candidateRegisteredAt(Instant registeredAt) {
-		Candidate candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true,
-				null);
+		return candidateRegisteredIn(ADMISSION_CONFIG_ID, registeredAt);
+	}
+
+	private static Candidate candidateRegisteredIn(UUID configId, Instant registeredAt) {
+		Candidate candidate = new Candidate(UUID.randomUUID(), configId, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
 		return candidate;
 	}

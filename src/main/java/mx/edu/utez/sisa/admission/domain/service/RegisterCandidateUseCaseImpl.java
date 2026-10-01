@@ -208,11 +208,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 * use, so the three never disagree.
 	 */
 	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
-		LocalDate fichaDeadline = candidate.paymentDeadline(clock.getZone(), fichaDeadlineDays);
-		if (registrationDeadline == null) {
-			return fichaDeadline;
-		}
-		return fichaDeadline.isBefore(registrationDeadline) ? fichaDeadline : registrationDeadline;
+		return FichaPaymentWindow.deadlineOf(candidate, registrationDeadline, fichaDeadlineDays, clock.getZone());
 	}
 
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
@@ -276,14 +272,44 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 			if (previous.getStatus() == CandidateStatus.PAYMENT_EXPIRED) {
 				continue;
 			}
-			if (previous.getStatus() == CandidateStatus.REGISTERED
-					&& today.isAfter(previous.paymentDeadline(clock.getZone(), fichaDeadlineDays))) {
+			if (isWindowOver(previous, today)) {
 				continue;
 			}
 			throw new CandidateAlreadyExistsException(previous.getStatus() == CandidateStatus.REGISTERED
 					? "Este CURP ya tiene una ficha vigente. Podrás registrarte de nuevo si esa ficha vence sin pago."
 					: "Este CURP ya tiene una ficha en el proceso de admisión. No es posible registrar una nueva.");
 		}
+	}
+
+	/**
+	 * Whether a previous ficha's payment window has closed, which is what frees
+	 * its CURP.
+	 *
+	 * <p>The window is the earlier of its own plazo and the closing day of the
+	 * process it belongs to — {@link FichaPaymentWindow#deadlineOf}, the same
+	 * function the daily sweep expires on. Reading only the ficha's own plazo here,
+	 * as this used to, kept a CURP locked for up to ten days after its admission
+	 * process had already closed: the person was told she had to wait for a window
+	 * that no longer existed, and the only thing that would free her was the sweep
+	 * eventually agreeing with the calendar.
+	 *
+	 * <p>Deliberately the same {@link FichaPaymentWindow} call the sweep and the
+	 * checkout gate make. Three copies of "when does a ficha die" is how the
+	 * portal, the checkout and this lock end up giving three different answers to
+	 * the same applicant on the same afternoon.
+	 *
+	 * <p>An unknown config falls back to the ficha's own plazo. That is the
+	 * conservative direction: it keeps the CURP locked a little longer rather than
+	 * releasing it early, and it cannot happen while the config row exists.
+	 */
+	private boolean isWindowOver(Candidate previous, LocalDate today) {
+		if (previous.getStatus() != CandidateStatus.REGISTERED) {
+			return false;
+		}
+		LocalDate closesOn = programAdmissionConfigQueryPort.findById(previous.getAdmissionConfigId())
+				.map(config -> config.closesAt().atZone(clock.getZone()).toLocalDate()).orElse(null);
+		return today.isAfter(
+				FichaPaymentWindow.deadlineOf(previous, closesOn, fichaDeadlineDays, clock.getZone()));
 	}
 
 	/**

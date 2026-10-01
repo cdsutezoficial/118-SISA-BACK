@@ -83,28 +83,37 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 		// exists would strand the applicant with no way to see what they owe.
 		// paymentClosesOn already answers null when there is nothing to report.
 		LocalDate paymentClosesOn = config == null ? null : fichaAmountResolver.paymentClosesOn(config.programId());
-		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, payment.getRegistrationDeadline());
+		// Read live, with the ticket's snapshot only as the fallback: closing a
+		// cohort early has to shorten the window the screen promises, and that is a
+		// config edit made after the ficha was issued.
+		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
+				: config.closesAt().atZone(clock.getZone()).toLocalDate();
+		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
+		boolean paymentExpired = !FichaPaymentWindow.isPayableOn(candidate, processClosesOn, fichaDeadlineDays,
+				LocalDate.now(clock), clock.getZone());
 
 		return new PaymentAccess(candidate.getId(), candidate.getFolio(),
 				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)),
 				config == null ? null : config.programName(), payment.getAmount(), payment.getReferenceNumber(),
 				payment.getRegistrationDeadline(), payment.getPaymentStatus(), payment.getReceiptNumber(),
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
-				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline);
+				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
+				candidate.getStatus(), paymentExpired);
 	}
 
 	/**
-	 * The visible "Fecha límite de pago": the earlier of the sales window's
-	 * snapshot and the ficha's own plazo. Shares the rule with
-	 * {@code GetCandidateFichaUseCaseImpl} so the portal and mostrador screens
-	 * never disagree on the date they promise.
+	 * The visible "Fecha límite de pago": the ficha's window, i.e. the earlier of
+	 * its own plazo and the day its admission process closes.
+	 *
+	 * <p>Shares {@link FichaPaymentWindow#deadlineOf} with the sweep and the
+	 * checkout gate, so the date this screen promises is the date the engine
+	 * enforces. It used to bound the window by the ticket's snapshotted
+	 * {@code registrationDeadline} instead: an office that closes a cohort early
+	 * would see the portal keep promising payment until the original date, and the
+	 * applicant would only learn otherwise from a 409 at the checkout.
 	 */
-	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate registrationDeadline) {
-		LocalDate fichaDeadline = candidate.paymentDeadline(clock.getZone(), fichaDeadlineDays);
-		if (registrationDeadline == null) {
-			return fichaDeadline;
-		}
-		return fichaDeadline.isBefore(registrationDeadline) ? fichaDeadline : registrationDeadline;
+	private LocalDate visiblePaymentDeadline(Candidate candidate, LocalDate processClosesOn) {
+		return FichaPaymentWindow.deadlineOf(candidate, processClosesOn, fichaDeadlineDays, clock.getZone());
 	}
 
 	private Candidate resolveCandidate(String folio) {
