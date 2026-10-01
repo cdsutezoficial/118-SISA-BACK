@@ -17,4 +17,6 @@ public interface CheckoutAttemptJpaRepository extends JpaRepository<CheckoutAtte
 	List<CheckoutAttempt> findAllByCandidateId(UUID candidateId);
 
 	List<CheckoutAttempt> findByCloseReason(CheckoutAttemptCloseReason closeReason);
+
+	List<CheckoutAttempt> findByCandidateIdAndCloseReason(UUID candidateId, CheckoutAttemptCloseReason closeReason);
 }

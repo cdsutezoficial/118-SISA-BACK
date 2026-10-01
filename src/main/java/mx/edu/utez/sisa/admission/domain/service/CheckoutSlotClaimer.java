@@ -210,18 +210,33 @@ public class CheckoutSlotClaimer {
 	}
 
 	/**
-	 * Hands the slot back after the gateway refused the checkout.
+	 * Hands the slot back after the gateway refused the checkout, if it is still the
+	 * same claim the caller asked the bank about.
 	 *
 	 * <p>Called only for a <em>definitive</em> refusal. A timeout or a dropped
 	 * response is not one: Evo may have created the order anyway and captured the
 	 * payment later, so releasing on an ambiguous failure would trade a stuck
 	 * career for a possible oversell. Those go to reconciliation instead.
+	 *
+	 * <p>The expected claim is not ceremony. Every caller reads the ficha, asks the
+	 * bank, and only then writes — and the applicant can start a second checkout in
+	 * between, which stamps a fresh {@code checkoutClaimedAt}. Without this guard a
+	 * release decided about an old attempt would give back the claim a live attempt is
+	 * holding, so the value the decision was made on travels with it.
+	 *
+	 * @param expectedClaimedAt the {@code checkoutClaimedAt} the caller read before
+	 *                          asking the bank
+	 * @return whether this call is the one that gave the place back; {@code false}
+	 *         means the claim moved in the meantime and nothing was written
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void release(UUID candidateId) {
+	public boolean release(UUID candidateId, Instant expectedClaimedAt) {
 		AdmissionPayment payment = requirePendingPayment(candidateId);
-		payment.releaseCheckoutSlot();
+		if (!payment.releaseCheckoutSlotIfClaimedAt(expectedClaimedAt)) {
+			return false;
+		}
 		admissionPaymentRepository.save(payment);
+		return true;
 	}
 
 	/**

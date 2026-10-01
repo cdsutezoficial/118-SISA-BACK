@@ -20,6 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -246,7 +247,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			session = evoPaymentsGateway.initiateCheckoutSession(order);
 		} catch (EvoPaymentGatewayException ex) {
 			if (!ex.orderMayHaveBeenCreated()) {
-				checkoutSlotClaimer.release(candidateId);
+				checkoutSlotClaimer.release(candidateId, currentClaimedAt(candidateId));
 				checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 			}
 			throw ex;
@@ -347,6 +348,22 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	}
 
 	/**
+	 * The claim as it stands <em>now</em>, read again on the refusal path only.
+	 *
+	 * <p>The {@code payment} this method read at the top was loaded before
+	 * {@link CheckoutSlotClaimer#claim} ran, so it cannot know what that stamped — it
+	 * would carry a stale or absent {@code checkoutClaimedAt}, and releasing against a
+	 * stale claim is exactly what the compare-and-set refuses to do. One extra read on a
+	 * path that only runs when Evo turned the whole operation down is a fair price for a
+	 * release that cannot take the claim of somebody else's checkout.
+	 */
+	private Instant currentClaimedAt(UUID candidateId) {
+		return admissionPaymentRepository.findByCandidateId(candidateId)
+				.map(AdmissionPayment::getCheckoutClaimedAt)
+				.orElse(null);
+	}
+
+/**
 	 * Applies an allowlisted {@code returnPath} by swapping only the PATH of the
 	 * configured return URL. The scheme and host always come from configuration,
 	 * never from the request, so even a leaked or mis-configured allowlist entry

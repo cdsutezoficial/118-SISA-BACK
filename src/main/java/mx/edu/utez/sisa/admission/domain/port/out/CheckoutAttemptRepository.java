@@ -19,4 +19,13 @@ public interface CheckoutAttemptRepository {
 	List<CheckoutAttempt> findAllByCandidateId(UUID candidateId);
 
 	List<CheckoutAttempt> findOpenAttempts();
+
+	/**
+	 * The open attempts of one ficha, which is what a quota decision has to be made on.
+	 *
+	 * <p>A ficha's {@code orderId} column names only the latest attempt, so any caller
+	 * deciding whether money can still be taken needs the whole set — see
+	 * {@code OrderSettlementDecider#decideFicha}.
+	 */
+	List<CheckoutAttempt> findOpenAttemptsByCandidateId(UUID candidateId);
 }

@@ -270,12 +270,35 @@ public class AdmissionPayment {
 	}
 
 	/**
-	 * Gives the slot back immediately after the gateway refused the checkout, so
-	 * the quota does not stay held until the payment window closes for an order
-	 * that does not exist.
+	 * Gives the slot back, but only if it is still the same claim the caller read.
+	 *
+	 * <p>Release is the one quota write that happens from a decision made <em>before</em>
+	 * it: every caller asks the bank first and writes afterwards, and between those two
+	 * moments the applicant may have started another checkout and stamped a fresh claim.
+	 * A release that only checked "is this ficha still {@code PENDING}" would then hand
+	 * back the <em>new</em> claim — the one keeping a live order occupied — because the
+	 * decision it was carrying belonged to an older attempt.
+	 *
+	 * <p>So the caller hands back the {@code checkoutClaimedAt} it decided against and
+	 * this refuses to touch a claim it does not recognise. No lock and no version column:
+	 * the value is already there, it is already overwritten on every claim, and a
+	 * mismatch means precisely the one thing worth protecting against. Compare-and-set,
+	 * returning whether the slot actually went back.
+	 *
+	 * <p>An absent claim is {@code false}, not a silent success — "there was nothing to
+	 * give back" and "the place is now free" are different answers, and a caller counting
+	 * releases has to be able to tell them apart.
+	 *
+	 * @param expectedClaimedAt the {@code checkoutClaimedAt} the caller read before asking
+	 *                           the bank; {@code null} when it expected no claim
+	 * @return {@code true} if this call is the one that gave the place back
 	 */
-	public void releaseCheckoutSlot() {
+	public boolean releaseCheckoutSlotIfClaimedAt(Instant expectedClaimedAt) {
+		if (this.checkoutClaimedAt == null || !this.checkoutClaimedAt.equals(expectedClaimedAt)) {
+			return false;
+		}
 		this.checkoutClaimedAt = null;
+		return true;
 	}
 
 	public Instant getCheckoutClaimedAt() {

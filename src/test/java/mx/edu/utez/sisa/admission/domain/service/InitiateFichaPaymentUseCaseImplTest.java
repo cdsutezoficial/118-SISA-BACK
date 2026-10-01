@@ -387,7 +387,9 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID);
+		// The null claim is what a mocked claimer leaves behind: nothing stamped the row.
+		// What this case pins is the pairing of the release with the close.
+		verify(checkoutSlotClaimer).release(CANDIDATE_ID, null);
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 	}
 
@@ -407,7 +409,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer, never()).release(any());
+		verify(checkoutSlotClaimer, never()).release(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 	}
 
@@ -903,15 +905,24 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	 */
 	@Test
 	void aDefinitiveGatewayRefusalHandsTheSlotBack() {
+		AdmissionPayment claimed = payment();
+		claimed.claimCheckoutSlot();
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		// Read once to open the checkout and again on the refusal path: the second read is
+		// where the claim stamped by `claim` shows up, and it is the value the release is
+		// allowed to compare against. Handing over the first read's value — a ficha with no
+		// claim at all — is what a compare-and-set refuses, so the two reads have to differ
+		// here or the test would pass without proving the re-read happens.
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
+				.thenReturn(Optional.of(payment()), Optional.of(claimed));
 		when(evoPaymentsGateway.initiateCheckoutSession(any()))
 				.thenThrow(new EvoPaymentGatewayException("EVO rechazó la operación: ORDER_ALREADY_EXISTS"));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID);
+		verify(checkoutSlotClaimer).release(CANDIDATE_ID, claimed.getCheckoutClaimedAt());
+		verify(checkoutSlotClaimer).closeAttempt(any(), eq(CheckoutAttemptCloseReason.ORDER_NOT_CREATED));
 		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any(), any());
 	}
 
@@ -934,6 +945,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer, never()).release(any());
+		verify(checkoutSlotClaimer, never()).release(any(), any());
 	}
 }

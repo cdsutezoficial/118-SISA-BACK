@@ -259,9 +259,9 @@ public class UseCaseConfig {
 	@Bean
 	public ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase(
 			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
-			CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutSlotClaimer checkoutSlotClaimer, CheckoutAttemptRepository checkoutAttemptRepository) {
 		return new ReleaseFichaPaymentSlotUseCaseImpl(admissionPaymentRepository, evoPaymentsGateway,
-				checkoutSlotClaimer);
+				checkoutSlotClaimer, checkoutAttemptRepository);
 	}
 
 	/**

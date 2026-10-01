@@ -41,4 +41,9 @@ public class CheckoutAttemptRepositoryAdapter implements CheckoutAttemptReposito
 	public List<CheckoutAttempt> findOpenAttempts() {
 		return jpaRepository.findByCloseReason(CheckoutAttemptCloseReason.STARTED);
 	}
+
+	@Override
+	public List<CheckoutAttempt> findOpenAttemptsByCandidateId(UUID candidateId) {
+		return jpaRepository.findByCandidateIdAndCloseReason(candidateId, CheckoutAttemptCloseReason.STARTED);
+	}
 }

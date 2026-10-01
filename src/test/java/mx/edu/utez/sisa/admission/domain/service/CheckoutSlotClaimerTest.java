@@ -259,8 +259,9 @@ class CheckoutSlotClaimerTest {
 		claimed.claimCheckoutSlot();
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(claimed));
 
-		claimer.release(CANDIDATE_ID);
+		boolean released = claimer.release(CANDIDATE_ID, claimed.getCheckoutClaimedAt());
 
+		assertThat(released).isTrue();
 		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
 		verify(admissionPaymentRepository).save(saved.capture());
 		assertThat(saved.getValue().getCheckoutClaimedAt()).isNull();
@@ -269,11 +270,55 @@ class CheckoutSlotClaimerTest {
 	/** Releasing must not re-read the quota: the slot is the candidate's to give back. */
 	@Test
 	void releasingDoesNotConsultTheQuota() {
-		claimer.release(CANDIDATE_ID);
+		AdmissionPayment claimed = payment();
+		claimed.claimCheckoutSlot();
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(claimed));
+
+		claimer.release(CANDIDATE_ID, claimed.getCheckoutClaimedAt());
 
 		verify(admissionQuotaPort, never()).lockQuota(any());
 		verify(admissionPaymentRepository, never())
 				.countOccupiedByConfigIdExcludingCandidate(any(), any(), any(), anyInt());
+	}
+
+	/**
+	 * A release decided about an older attempt must not give away the claim a newer
+	 * checkout just stamped.
+	 *
+	 * <p>This is the whole reason the release carries the claim it read. Both the nightly
+	 * sweep and the give-up endpoint ask the bank first and write afterwards, and the
+	 * applicant can start another checkout in between; without the comparison, the release
+	 * clears a fresh claim that a live order is holding and the place is oversold. No lock,
+	 * no version column — the value is already there and already overwritten on every claim.
+	 */
+	@Test
+	void aClaimStampedAfterTheDecisionIsNotReleased() {
+		AdmissionPayment fresh = payment();
+		fresh.claimCheckoutSlot();
+		Instant olderClaim = NOW.minusSeconds(3600);
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(fresh));
+
+		boolean released = claimer.release(CANDIDATE_ID, olderClaim);
+
+		assertThat(released).isFalse();
+		verify(admissionPaymentRepository, never()).save(any());
+		assertThat(fresh.getCheckoutClaimedAt()).isNotNull();
+	}
+
+	/**
+	 * Nothing held is not a release.
+	 *
+	 * <p>Returning {@code false} rather than a silent success keeps the distinction a
+	 * counting caller needs: "there was nothing to give back" and "the place is now free"
+	 * are different answers, and a log that cannot tell them apart cannot be read.
+	 */
+	@Test
+	void releasingAFichaThatHoldsNoClaimReportsNoRelease() {
+		AdmissionPayment unclaimed = payment();
+		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(unclaimed));
+
+		assertThat(claimer.release(CANDIDATE_ID, null)).isFalse();
+		verify(admissionPaymentRepository, never()).save(any());
 	}
 
 	@Test
@@ -358,7 +403,7 @@ class CheckoutSlotClaimerTest {
 	void aMissingFichaIsReportedRatherThanSkipped() {
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID))
+		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID, NOW))
 				.isInstanceOf(CandidateNotFoundException.class).hasMessageContaining("no tiene ficha de pago");
 	}
 
@@ -373,7 +418,7 @@ class CheckoutSlotClaimerTest {
 		paid.markPaid("REC-20260925-000001");
 		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
 
-		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID)).isInstanceOf(IllegalStateException.class)
+		assertThatThrownBy(() -> claimer.release(CANDIDATE_ID, NOW)).isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("PENDING");
 	}
 }
