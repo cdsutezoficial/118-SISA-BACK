@@ -8,6 +8,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.CandidateListItem;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesQuery;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseOutcome;
@@ -22,24 +26,30 @@ import mx.edu.utez.sisa.admission.shared.exception.TooManyPaymentAccessAttemptsE
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -79,6 +89,9 @@ class CandidateControllerTest {
 
 	@MockitoBean
 	private GetCandidateFichaUseCase getCandidateFichaUseCase;
+
+	@MockitoBean
+	private ListCandidatesUseCase listCandidatesUseCase;
 
 	@MockitoBean
 	private CandidateFichaMailService fichaMailService;
@@ -454,6 +467,68 @@ class CandidateControllerTest {
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"08\"}"))
 				.andExpect(status().isBadRequest());
 		verify(accessFichaPaymentUseCase, never()).access(any(), any());
+	}
+
+	// ── candidatos (listado) ──
+
+	/**
+	 * The caller id travels in the principal, never in the query string: the
+	 * server-side division scope is derived from the JWT identity, so a Director
+	 * cannot widen their view by adding/removing a parameter.
+	 */
+	@Test
+	void listCandidatesUsesThePrincipalAsCallerId() throws Exception {
+		UUID callerId = UUID.randomUUID();
+		when(listCandidatesUseCase.listCandidates(any())).thenReturn(
+				new ListCandidatesResult(List.of(new CandidateListItem(ID, "ADM-2026-000001", "Ana Torres Ramos",
+						"GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI", CandidateStatus.REGISTERED,
+						Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
+
+		mockMvc.perform(get("/candidates").principal(authentication(callerId))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.items[0].folio").value("ADM-2026-000001"))
+				.andExpect(jsonPath("$.items[0].status").value("REGISTERED"))
+				.andExpect(jsonPath("$.totalElements").value(1));
+
+		ArgumentCaptor<ListCandidatesQuery> captor = ArgumentCaptor.forClass(ListCandidatesQuery.class);
+		verify(listCandidatesUseCase).listCandidates(captor.capture());
+		assertThat(captor.getValue().callerId()).isEqualTo(callerId);
+	}
+
+	@Test
+	void listCandidatesDefaultsToFirstPageOfTwenty() throws Exception {
+		when(listCandidatesUseCase.listCandidates(any()))
+				.thenReturn(new ListCandidatesResult(List.of(), 0, 0, 0, 20));
+
+		mockMvc.perform(get("/candidates").principal(authentication(UUID.randomUUID())))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
+
+		ArgumentCaptor<ListCandidatesQuery> captor = ArgumentCaptor.forClass(ListCandidatesQuery.class);
+		verify(listCandidatesUseCase).listCandidates(captor.capture());
+		assertThat(captor.getValue().page()).isZero();
+		assertThat(captor.getValue().size()).isEqualTo(20);
+	}
+
+	@Test
+	void listCandidatesForwardsEveryFilterToTheUseCase() throws Exception {
+		when(listCandidatesUseCase.listCandidates(any()))
+				.thenReturn(new ListCandidatesResult(List.of(), 0, 0, 1, 5));
+
+		mockMvc.perform(get("/candidates").param("status", "PAID").param("programId", CFG_ID)
+				.param("periodId", GEO_ID).param("search", "ana").param("page", "1").param("size", "5")
+				.principal(authentication(UUID.randomUUID()))).andExpect(status().isOk());
+
+		ArgumentCaptor<ListCandidatesQuery> captor = ArgumentCaptor.forClass(ListCandidatesQuery.class);
+		verify(listCandidatesUseCase).listCandidates(captor.capture());
+		assertThat(captor.getValue().status()).isEqualTo(CandidateStatus.PAID);
+		assertThat(captor.getValue().programId()).isEqualTo(UUID.fromString(CFG_ID));
+		assertThat(captor.getValue().periodId()).isEqualTo(UUID.fromString(GEO_ID));
+		assertThat(captor.getValue().search()).isEqualTo("ana");
+		assertThat(captor.getValue().page()).isEqualTo(1);
+		assertThat(captor.getValue().size()).isEqualTo(5);
+	}
+
+	private static Authentication authentication(UUID callerId) {
+		return new UsernamePasswordAuthenticationToken(callerId.toString(), null, List.of());
 	}
 
 	// ── registro (validación anidada del DTO) ──
