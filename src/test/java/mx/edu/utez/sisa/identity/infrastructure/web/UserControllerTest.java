@@ -2,6 +2,9 @@ package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase.AdminResetPasswordCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase.AdminResetPasswordResult;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleResult;
@@ -27,6 +30,7 @@ import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.PersonAlreadyHasUserException;
+import mx.edu.utez.sisa.identity.shared.exception.UserNotFoundException;
 import mx.edu.utez.sisa.identity.shared.exception.UserRoleNotFoundException;
 import mx.edu.utez.sisa.shared.model.RoleType;
 import org.junit.jupiter.api.AfterEach;
@@ -86,6 +90,9 @@ class UserControllerTest {
 
 	@MockitoBean
 	private UnlockUserUseCase unlockUserUseCase;
+
+	@MockitoBean
+	private AdminResetPasswordUseCase adminResetPasswordUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -296,6 +303,36 @@ class UserControllerTest {
 		when(unlockUserUseCase.unlockUser(any())).thenThrow(new MustChangePasswordException("must change"));
 
 		mockMvc.perform(patch("/users/" + UUID.randomUUID() + "/unlock")).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void resetPasswordReturns201WithTheGeneratedTemporaryPassword() throws Exception {
+		UUID userId = UUID.randomUUID();
+		when(adminResetPasswordUseCase.reset(new AdminResetPasswordCommand(callerId, userId)))
+				.thenReturn(new AdminResetPasswordResult(userId, "jane.doe@utez.edu.mx", "Pl4in!xt"));
+
+		mockMvc.perform(post("/users/" + userId + "/reset-password")).andExpect(status().isCreated())
+				.andExpect(jsonPath("$.userId").value(userId.toString()))
+				.andExpect(jsonPath("$.username").value("jane.doe@utez.edu.mx"))
+				.andExpect(jsonPath("$.temporaryPassword").value("Pl4in!xt"));
+
+		verify(adminResetPasswordUseCase).reset(new AdminResetPasswordCommand(callerId, userId));
+	}
+
+	@Test
+	void resetPasswordByMustChangePasswordCallerReturns403() throws Exception {
+		when(adminResetPasswordUseCase.reset(any())).thenThrow(new MustChangePasswordException("must change"));
+
+		mockMvc.perform(post("/users/" + UUID.randomUUID() + "/reset-password"))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void resetPasswordForUnknownUserReturns404() throws Exception {
+		when(adminResetPasswordUseCase.reset(any())).thenThrow(new UserNotFoundException("not found"));
+
+		mockMvc.perform(post("/users/" + UUID.randomUUID() + "/reset-password"))
+				.andExpect(status().isNotFound());
 	}
 
 	private record CreateUserBody(UUID personId, String temporaryPassword) {

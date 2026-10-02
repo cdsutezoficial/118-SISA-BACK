@@ -67,8 +67,17 @@ public class RefreshToken {
 		return revokedAt;
 	}
 
-	public void setRevokedAt(Instant revokedAt) {
-		this.revokedAt = revokedAt;
+	/**
+	 * Marks this token as no longer usable (plan
+	 * {@code 2026-10-02-admin-reset-password.md}): an ADMIN reset of the
+	 * holder's password must not leave a stolen session alive for the remaining
+	 * {@code refresh-token-ttl}. Idempotent — the first revocation wins, so a
+	 * later bulk revoke cannot overwrite the original timestamp.
+	 */
+	public void revoke(Instant revokedAt) {
+		if (this.revokedAt == null) {
+			this.revokedAt = revokedAt;
+		}
 	}
 
 	@Override

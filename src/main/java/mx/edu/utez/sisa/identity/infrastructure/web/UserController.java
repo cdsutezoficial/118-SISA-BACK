@@ -2,6 +2,9 @@ package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.identity.domain.model.UserStatus;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase.AdminResetPasswordCommand;
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase.AdminResetPasswordResult;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase.AssignRoleResult;
@@ -20,6 +23,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.RevokeRoleUseCase.RevokeRoleComm
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserCommand;
 import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase.UnlockUserResult;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.AdminResetPasswordResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.AssignRoleRequest;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.AssignRoleResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.CreateUserRequest;
@@ -50,9 +54,12 @@ import java.util.UUID;
  * (01-identidad.md — ListUsersUseCase), and — plan
  * {@code docs/plans/2026-07-28-persons-and-user-management.md} —
  * {@code GET /users/{id}}, {@code DELETE /users/{userId}/roles/{userRoleId}},
- * and {@code PATCH /users/{id}/unlock}. {@code POST /users},
- * {@code POST /users/{userId}/roles}, {@code DELETE .../roles/{userRoleId}}
- * and {@code PATCH /users/{id}/unlock} are ADMIN-only; both GET endpoints
+ * {@code PATCH /users/{id}/unlock} and — plan
+ * {@code 2026-10-02-admin-reset-password.md} —
+ * {@code POST /users/{userId}/reset-password}. {@code POST /users},
+ * {@code POST /users/{userId}/roles}, {@code DELETE .../roles/{userRoleId}},
+ * {@code PATCH /users/{id}/unlock} and {@code POST .../reset-password} are
+ * ADMIN-only; both GET endpoints
  * additionally allow SERVICIOS_ESCOLARES — enforced by a more specific
  * matcher in {@code SecurityFilterConfig} declared before its blanket
  * {@code /users/**} rule. The caller id used for the mustChangePassword
@@ -69,16 +76,18 @@ public class UserController {
 	private final GetUserUseCase getUserUseCase;
 	private final RevokeRoleUseCase revokeRoleUseCase;
 	private final UnlockUserUseCase unlockUserUseCase;
+	private final AdminResetPasswordUseCase adminResetPasswordUseCase;
 
 	public UserController(CreateUserUseCase createUserUseCase, AssignRoleUseCase assignRoleUseCase,
 			ListUsersUseCase listUsersUseCase, GetUserUseCase getUserUseCase, RevokeRoleUseCase revokeRoleUseCase,
-			UnlockUserUseCase unlockUserUseCase) {
+			UnlockUserUseCase unlockUserUseCase, AdminResetPasswordUseCase adminResetPasswordUseCase) {
 		this.createUserUseCase = createUserUseCase;
 		this.assignRoleUseCase = assignRoleUseCase;
 		this.listUsersUseCase = listUsersUseCase;
 		this.getUserUseCase = getUserUseCase;
 		this.revokeRoleUseCase = revokeRoleUseCase;
 		this.unlockUserUseCase = unlockUserUseCase;
+		this.adminResetPasswordUseCase = adminResetPasswordUseCase;
 	}
 
 	@PostMapping
@@ -132,6 +141,22 @@ public class UserController {
 		UUID callerId = AuthenticatedCaller.currentUserId();
 		UnlockUserResult result = unlockUserUseCase.unlockUser(new UnlockUserCommand(callerId, id));
 		return ResponseEntity.ok(new UnlockUserResponse(result.userId(), result.status(), result.failedLoginAttempts()));
+	}
+
+	/**
+	 * Assigns a temporary password to a user who cannot self-serve (plan
+	 * {@code 2026-10-02-admin-reset-password.md}). No request body: the
+	 * credential is generated server-side so the policy cannot be bypassed from
+	 * the browser. {@code 201} rather than {@code 200} because the operation
+	 * creates the new credential, matching {@code POST /users}.
+	 */
+	@PostMapping("/{userId}/reset-password")
+	public ResponseEntity<AdminResetPasswordResponse> resetPassword(@PathVariable UUID userId) {
+		UUID callerId = AuthenticatedCaller.currentUserId();
+		AdminResetPasswordResult result = adminResetPasswordUseCase
+				.reset(new AdminResetPasswordCommand(callerId, userId));
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(new AdminResetPasswordResponse(result.userId(), result.username(), result.temporaryPassword()));
 	}
 
 	private static UserListItemResponse toItem(UserSummary summary) {

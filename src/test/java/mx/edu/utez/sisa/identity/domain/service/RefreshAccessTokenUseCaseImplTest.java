@@ -90,7 +90,7 @@ class RefreshAccessTokenUseCaseImplTest {
 	@Test
 	void refresh_revokedTokenIsRejected() {
 		RefreshToken token = tokenFor(ownerId, Instant.now().plusSeconds(3600));
-		token.setRevokedAt(Instant.now().minusSeconds(5));
+		token.revoke(Instant.now().minusSeconds(5));
 		when(refreshTokenRepository.findByTokenHash(TokenHashing.sha256(RAW_TOKEN))).thenReturn(Optional.of(token));
 
 		assertThatThrownBy(() -> useCase.refresh(new RefreshCommand(RAW_TOKEN)))

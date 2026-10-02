@@ -1,13 +1,17 @@
 package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import mx.edu.utez.sisa.identity.domain.model.RefreshToken;
 import mx.edu.utez.sisa.identity.domain.model.User;
 import mx.edu.utez.sisa.identity.domain.model.UserRole;
+import mx.edu.utez.sisa.identity.domain.model.UserStatus;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
+import mx.edu.utez.sisa.identity.domain.service.TokenHashing;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.RoleType;
@@ -17,12 +21,16 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -63,6 +71,9 @@ class UserManagementControllerIT {
 
 	@Autowired
 	private RoleRepository roleRepository;
+
+	@Autowired
+	private RefreshTokenRepository refreshTokenRepository;
 
 	// --- GET /users/{id} ---
 
@@ -240,6 +251,92 @@ class UserManagementControllerIT {
 		UUID targetId = newPlainUser("target14");
 
 		mockMvc.perform(patch("/users/{id}/unlock", targetId)).andExpect(status().isUnauthorized());
+	}
+
+	// --- POST /users/{userId}/reset-password ---
+
+	@Test
+	void adminResetIssuesACompliantTemporaryPasswordAndArmsTheChangeGate() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID targetId = newPlainUser("target20");
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
+				.header("Authorization", "Bearer " + token)).andExpect(status().isCreated())
+				.andExpect(jsonPath("$.userId").value(targetId.toString()))
+				.andExpect(jsonPath("$.temporaryPassword").value(matchesPattern(
+							"^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!#$%/*.\\-])[A-Za-z0-9!#$%/*.\\-]{8}$")));
+
+		User target = userRepository.findById(targetId).orElseThrow();
+		assertThat(target.isMustChangePassword()).isTrue();
+		assertThat(passwordHasher.matches("Sup3rSecret!1", target.getPasswordHash())).isFalse();
+	}
+
+	@Test
+	void adminResetUnlocksTheAccountAndClearsFailedAttempts() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID targetId = newPlainUser("target21");
+		User target = userRepository.findById(targetId).orElseThrow();
+		target.registerFailedLogin();
+		target.registerFailedLogin();
+		target.registerFailedLogin();
+		userRepository.save(target);
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
+				.header("Authorization", "Bearer " + token)).andExpect(status().isCreated());
+
+		User reloaded = userRepository.findById(targetId).orElseThrow();
+		assertThat(reloaded.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		assertThat(reloaded.getFailedLoginAttempts()).isZero();
+	}
+
+	@Test
+	void adminResetRevokesTheTargetsLiveSessions() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+		UUID targetId = newPlainUser("target22");
+		Instant expiresAt = Instant.now().plusSeconds(3600);
+		refreshTokenRepository.save(new RefreshToken(targetId, TokenHashing.sha256("live-token"), expiresAt));
+		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256("live-token"))).isPresent()
+				.hasValueSatisfying(token2 -> assertThat(token2.getRevokedAt()).isNull());
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
+				.header("Authorization", "Bearer " + token)).andExpect(status().isCreated());
+
+		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256("live-token"))).isPresent()
+				.hasValueSatisfying(token2 -> assertThat(token2.getRevokedAt()).isNotNull());
+	}
+
+	@Test
+	void otherRoleIsForbiddenOnAdminReset() throws Exception {
+		String token = tokenFor(RoleType.DOCENTE);
+		UUID targetId = newPlainUser("target23");
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
+				.header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void serviciosEscolaresIsForbiddenOnAdminReset() throws Exception {
+		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
+		UUID targetId = newPlainUser("target24");
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
+				.header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unauthenticatedAdminResetReturns401() throws Exception {
+		UUID targetId = newPlainUser("target25");
+
+		mockMvc.perform(post("/users/{userId}/reset-password", targetId))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void adminResetWithUnknownIdReturns404() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(post("/users/{userId}/reset-password", UUID.randomUUID())
+				.header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
 	}
 
 	private static String uniqueCurp() {
