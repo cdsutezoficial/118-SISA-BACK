@@ -235,8 +235,14 @@ public class SecurityFilterConfig {
 							"/candidates/*/payments/release")
 					.permitAll()
 						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
-.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
-					.permitAll()
+						// Staff candidate list. Exact "/candidates" — NOT covered by the
+						// public "/candidates/*" matcher above (a trailing "/{segment}" is
+						// required), so it must be declared explicitly. ADMIN bypasses the
+						// fine-grained layer; SE/Director go through CANDIDATES_READ.
+						.requestMatchers(HttpMethod.GET, "/candidates")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
+						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
+						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.POST, "/roles").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.PUT, "/roles/**").hasRole("ADMIN")

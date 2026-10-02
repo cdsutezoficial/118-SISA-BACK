@@ -1,11 +1,18 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
+import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
+import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * JPA-backed {@link ProgramAdmissionConfigQueryPort} adapter: config lookup
@@ -51,5 +58,27 @@ public class ProgramAdmissionConfigQueryAdapter implements ProgramAdmissionConfi
 			return new AdmissionConfigInfo(config.getId(), config.getStatus(), config.getProgramId(), programName,
 					modality, periodName, config.getOpensAt(), config.getClosesAt(), config.getMaxCandidates());
 		});
+	}
+
+	@Override
+	public Map<UUID, ProgramRef> findProgramRefsByConfigIds(List<UUID> configIds) {
+		if (configIds == null || configIds.isEmpty()) {
+			return Map.of();
+		}
+		// Distinct because a page of candidates can repeat the same config.
+		List<ProgramAdmissionConfig> configs = configJpaRepository.findAllById(configIds.stream().distinct().toList());
+		Map<UUID, UUID> programIdByConfigId = configs.stream().filter(config -> config.getProgramId() != null)
+				.collect(Collectors.toMap(ProgramAdmissionConfig::getId, ProgramAdmissionConfig::getProgramId));
+		if (programIdByConfigId.isEmpty()) {
+			return Map.of();
+		}
+		Set<UUID> programIds = new HashSet<>(programIdByConfigId.values());
+		// A missing program row leaves a null name but keeps the program id: the
+		// filter still works off the id, and the row renders with no name rather
+		// than disappearing.
+		Map<UUID, String> nameByProgramId = programJpaRepository.findAllById(programIds).stream()
+				.collect(Collectors.toMap(AcademicProgram::getId, AcademicProgram::getName, (first, ignored) -> first));
+		return programIdByConfigId.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+				entry -> new ProgramRef(entry.getValue(), nameByProgramId.get(entry.getValue()))));
 	}
 }

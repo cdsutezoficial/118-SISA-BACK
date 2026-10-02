@@ -3,6 +3,9 @@ package mx.edu.utez.sisa.admission.infrastructure.persistence;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -50,5 +53,17 @@ public class CandidateRepositoryAdapter implements CandidateRepository {
 	@Override
 	public List<Candidate> findAllByPersonId(UUID personId) {
 		return jpaRepository.findAllByPersonId(personId);
+	}
+
+	@Override
+	public CandidateSearchPage search(CandidateSearchCriteria criteria) {
+		// Newest first, id as the tie-breaker so two fichas registered in the same
+		// instant keep a total order and cannot jump between pages on re-query.
+		PageRequest pageRequest = PageRequest.of(criteria.page(), criteria.size(),
+				Sort.by(Sort.Direction.DESC, "registeredAt").and(Sort.by(Sort.Direction.DESC, "id")));
+		String search = criteria.search() == null || criteria.search().isBlank() ? null : criteria.search().trim();
+		Page<Candidate> page = jpaRepository.search(criteria.status(), criteria.programId(), criteria.periodId(),
+				criteria.divisionId(), search, pageRequest);
+		return new CandidateSearchPage(page.getContent(), page.getTotalElements(), page.getTotalPages());
 	}
 }
