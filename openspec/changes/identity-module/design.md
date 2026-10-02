@@ -239,8 +239,30 @@ POST /auth/refresh ─→ AuthController ─→ RefreshAccessTokenUseCase ─→
 | `POST /auth/change-password` | Bearer | `{currentPassword, newPassword}` | 204 | 400 validation; 401 wrong current |
 | `POST /users` | Bearer, ROLE_ADMIN | `{personId, temporaryPassword}` | 201 `{userId, username, mustChangePassword:true}` | 400; 403 must-change caller; 409 person already has user / no email |
 | `POST /users/{userId}/roles` | Bearer, ROLE_ADMIN | `{roleId, divisionId?}` | 201 `{userRoleId, roleType, divisionId}` | 400 division rule; 403; 404 user |
+| `POST /auth/forgot-password` | public | `{username}` | 204 | 400 missing username |
+| `POST /auth/reset-password` | public | `{token, newPassword}` | 204 | 400 invalid/used/expired token, password validation |
+| `POST /users/{userId}/reset-password` | Bearer, ROLE_ADMIN | — | 201 `{userId, username, temporaryPassword}` | 403 must-change caller; 404 user |
 
 `ErrorResponse` body: `{timestamp, status, error, message, path}`.
+
+`POST /auth/forgot-password` answers 204 whether or not the username exists, so
+the endpoint cannot be used to enumerate accounts. The self-service pair is
+public because the holder of the mailbox is the only party that can authenticate
+at that point; `/auth/change-password` and `/auth/me` stay Bearer-protected,
+since they require a session the requester already holds.
+
+`POST /users/{userId}/reset-password` (plan
+`2026-10-02-admin-reset-password.md`) covers the case the self-service flow
+cannot: a user with no mailbox access. It takes no request body — the credential
+is generated server-side by `SecureRandomTemporaryPasswordGenerator` (exactly 8
+characters, at least one uppercase, lowercase, digit and special from
+`!#$%/*-.`) so the policy cannot be bypassed from the browser. The plaintext
+exists only in this response and in the SMTP mail; just the BCrypt hash is
+persisted. Side effects, in one transaction: `User#forceTemporaryPassword`
+re-arms `mustChangePassword` and unlocks the account, then
+`RefreshTokenRepository#revokeAllForUser` closes every live session minted under
+the previous password. Mail delivery is best-effort — a bounce is logged and the
+reset still succeeds, since the caller already holds the plaintext.
 
 ### Exception → HTTP mapping (`GlobalExceptionHandler`)
 
@@ -258,7 +280,8 @@ POST /auth/refresh ─→ AuthController ─→ RefreshAccessTokenUseCase ─→
 ### Security filter chain
 
 Stateless (`SessionCreationPolicy.STATELESS`), CSRF disabled. `permitAll`:
-`/auth/login`, `/auth/refresh`, `/h2-console/**` (dev). `/users/**` →
+`/auth/login`, `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`,
+`/h2-console/**` (dev). `/users/**` →
 `hasRole("ADMIN")`; everything else authenticated. `JwtAuthenticationFilter`
 runs before `UsernamePasswordAuthenticationFilter`: reads
 `Authorization: Bearer <t>`, validates via `JwtService`, maps each `roles` claim
