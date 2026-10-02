@@ -293,15 +293,16 @@ class UserManagementControllerIT {
 	void adminResetRevokesTheTargetsLiveSessions() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		UUID targetId = newPlainUser("target22");
+		String liveToken = "live-token-" + UUID.randomUUID();
 		Instant expiresAt = Instant.now().plusSeconds(3600);
-		refreshTokenRepository.save(new RefreshToken(targetId, TokenHashing.sha256("live-token"), expiresAt));
-		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256("live-token"))).isPresent()
+		refreshTokenRepository.save(new RefreshToken(targetId, TokenHashing.sha256(liveToken), expiresAt));
+		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256(liveToken))).isPresent()
 				.hasValueSatisfying(token2 -> assertThat(token2.getRevokedAt()).isNull());
 
 		mockMvc.perform(post("/users/{userId}/reset-password", targetId)
 				.header("Authorization", "Bearer " + token)).andExpect(status().isCreated());
 
-		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256("live-token"))).isPresent()
+		assertThat(refreshTokenRepository.findByTokenHash(TokenHashing.sha256(liveToken))).isPresent()
 				.hasValueSatisfying(token2 -> assertThat(token2.getRevokedAt()).isNotNull());
 	}
 
