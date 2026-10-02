@@ -44,6 +44,9 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 	@Override
 	@Transactional
 	public AcademicPlanResult createPlan(CreateAcademicPlanCommand command) {
+		String version = AcademicPlanTextNormalizer.required(command.version());
+		String validityPeriod = AcademicPlanTextNormalizer.required(command.validityPeriod());
+		String titulationKey = AcademicPlanTextNormalizer.required(command.titulationKey());
 		if (command.programId() == null || programRepository.findById(command.programId()).isEmpty()) {
 			throw new ProgramNotFoundException("Academic program not found: " + command.programId());
 		}
@@ -56,13 +59,13 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 			throw new InvalidPlanDataException("La calificación mínima aprobatoria debe estar entre 0 y 10: "
 					+ command.minPassingGrade());
 		}
-		if (planRepository.findByProgramIdAndVersion(command.programId(), command.version()).isPresent()) {
+		if (planRepository.findByProgramIdAndVersion(command.programId(), version).isPresent()) {
 			throw new DuplicatePlanVersionException(
-					"Plan version already in use for this program: " + command.version());
+					"Plan version already in use for this program: " + version);
 		}
 
-		AcademicPlan plan = new AcademicPlan(command.programId(), command.version(), command.validityPeriod(),
-				command.titulationKey(), command.effectiveFrom(), command.totalLevels(), command.minPassingGrade(),
+		AcademicPlan plan = new AcademicPlan(command.programId(), version, validityPeriod, titulationKey,
+				command.effectiveFrom(), command.totalLevels(), command.minPassingGrade(),
 				command.maxExtraordinaryExamsPerPeriod(), command.requiresSocialService(), null);
 		AcademicPlan saved = planRepository.save(plan);
 

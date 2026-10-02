@@ -55,13 +55,13 @@ public class AcademicPlan {
 	@Column(name = "program_id", nullable = false)
 	private UUID programId;
 
-	@Column(nullable = false)
+	@Column(nullable = false, length = 50)
 	private String version;
 
-	@Column(name = "validity_period", nullable = false)
+	@Column(name = "validity_period", nullable = false, length = 100)
 	private String validityPeriod;
 
-	@Column(name = "titulation_key", nullable = false)
+	@Column(name = "titulation_key", nullable = false, length = 100)
 	private String titulationKey;
 
 	@Column(name = "effective_from", nullable = false)

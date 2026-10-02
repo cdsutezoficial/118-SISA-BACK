@@ -3,6 +3,8 @@ package mx.edu.utez.sisa.academic_config.infrastructure.web.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,8 +20,11 @@ import java.util.UUID;
  * among the updatable fields with no exemption from its floor) — see
  * {@link CreateAcademicPlanRequest} for why {@code @Min} is used here.
  */
-public record UpdateAcademicPlanRequest(@NotBlank String version, @NotBlank String validityPeriod,
-		@NotBlank String titulationKey, @NotNull LocalDate effectiveFrom, int totalLevels,
+public record UpdateAcademicPlanRequest(
+		@NotBlank @Size(max = 50) @Pattern(regexp = "^[^\\p{Cc}]*$", message = "La versión contiene caracteres no válidos.") String version,
+		@NotBlank @Size(max = 100) @Pattern(regexp = "^[^\\p{Cc}]*$", message = "El periodo de vigencia contiene caracteres no válidos.") String validityPeriod,
+		@NotBlank @Size(max = 100) @Pattern(regexp = "^[^\\p{Cc}]*$", message = "La clave de titulación contiene caracteres no válidos.") String titulationKey,
+		@NotNull LocalDate effectiveFrom, int totalLevels,
 		@NotNull BigDecimal minPassingGrade, @Min(0) int maxExtraordinaryExamsPerPeriod, boolean requiresSocialService,
 		UUID socialServiceMinLevelId) {
 }
