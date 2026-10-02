@@ -11,43 +11,48 @@ import jakarta.persistence.Table;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Payment rate — Fase 2 of 4 of "Conceptos de Pago" (source:
- * {@code 02-config-academica.md} lines 254-267, plan:
- * {@code docs/plans/2026-07-28-payment-rate.md}). A single row in the
- * append-only pricing history of a {@link PaymentConcept} for one
- * {@code (conceptId, programId, level)} combination — {@code programId} and
- * {@code level} are both nullable and, when null, are treated as their OWN
- * value in that combination, never as a wildcard (plan section 2/4).
+ * Payment rate — one row in the pricing history of a {@link PaymentConcept} for
+ * a single {@code (conceptId, programId, level)} combination. {@code programId}
+ * and {@code level} are both nullable and, when null, are their OWN value in
+ * that combination, never a wildcard: the three-rung ladder the pricing lookups
+ * walk (exact program → the program's level → neither) reads that shape
+ * directly.
  *
  * <p>
- * Unlike every other child entity in this module ({@code PlanLevel},
- * {@code Subject}, {@code GradeScale}), this row is never edited nor deleted
- * — it is either the currently-active row for its combination or a
- * historical one closed by {@link #close(LocalDate)}. Two independent shapes
- * exist, both enforced by {@code SetPaymentRateUseCaseImpl}, not here (plan
- * section 2):
- * <ul>
- * <li><b>Continuous rate</b> ({@code periodId == null}): forms a
- * non-overlapping date-range chain per combination — creating a new one
- * closes the previous active row for the SAME combination.
- * <li><b>Period-scoped rate</b> ({@code periodId != null}): independent of
- * the continuous chain and of every other {@code periodId} — never closed by
- * anything, unique per exact
- * {@code (conceptId, programId, level, periodId)} combination.
- * </ul>
+ * Like {@code PlanLevel}, {@code Subject} and {@code GradeScale} — and unlike
+ * the catalog root aggregates — this row is never edited nor deleted. It is
+ * either the {@link PaymentRateStatus#ACTIVE} row for its combination or
+ * history. A changed amount does not overwrite: it {@link #deactivate()}s the
+ * row in force and inserts a new {@code ACTIVE} one, so the price a program
+ * was charged last year is still answerable.
  *
  * <p>
- * Owns its own JPA repository (plan section 5) rather than being encapsulated
- * inside {@link PaymentConcept} like {@code PlanLevel} is inside
- * {@code AcademicPlan} — the pricing history grows indefinitely over time
- * (never deleted), so loading the full collection through the aggregate root
- * on every read would not scale the way {@code PlanLevel} (bounded by
- * {@code totalLevels}) does.
+ * The row carries no validity window of its own — {@code availableFrom} /
+ * {@code availableUntil} live on {@link PaymentConcept} and are the only
+ * time-bounding in the catalog. The earlier {@code validFrom}/{@code validTo}
+ * pair on this table was removed because it duplicated that question in a
+ * second place with a second answer, and reconciling a whole set of rates
+ * against a moving date is a problem a status does not have.
+ *
+ * <p>
+ * {@code periodId} stays for the rate that prices one concrete
+ * {@link AcademicPeriod}, and MUST be {@code null} for a
+ * {@link PaymentConceptType#PERIODIC_QUOTA} concept: a recurring quota is
+ * priced per level and applies to every period of the cycle, so pinning one to
+ * a period would make it unreachable by the pricing lookups, which require
+ * {@code periodId IS NULL}.
+ *
+ * <p>
+ * Owns its own JPA repository rather than being encapsulated inside
+ * {@link PaymentConcept} like {@code PlanLevel} is inside {@code AcademicPlan} —
+ * the pricing history grows indefinitely and is never deleted, so loading it
+ * through the aggregate root on every read would not scale the way
+ * {@code PlanLevel} (bounded by {@code totalLevels}) does.
  */
 @Entity
 @Table(name = "payment_rate")
@@ -72,11 +77,17 @@ public class PaymentRate {
 	@Column(name = "period_id")
 	private UUID periodId;
 
-	@Column(name = "valid_from", nullable = false)
-	private LocalDate validFrom;
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false)
+	private PaymentRateStatus status;
 
-	@Column(name = "valid_to")
-	private LocalDate validTo;
+	/**
+	 * When this amount entered the history. Audit and ordering only — it is
+	 * never compared against a business date, so a price correction does not
+	 * need a plausible {@code validFrom} invented for it.
+	 */
+	@Column(name = "created_at", nullable = false)
+	private LocalDateTime createdAt;
 
 	protected PaymentRate() {
 		// JPA
@@ -84,38 +95,35 @@ public class PaymentRate {
 
 	/**
 	 * @param conceptId required — MUST reference an existing {@code PaymentConcept}, validated by
-	 *                  {@code SetPaymentRateUseCaseImpl}, not here
+	 *                  {@code ReconcilePaymentRatesUseCaseImpl}, not here
 	 * @param programId nullable — MUST reference an existing {@code AcademicProgram} when provided,
-	 *                  validated by {@code SetPaymentRateUseCaseImpl}, not here
+	 *                  validated by the use case, not here
 	 * @param level     nullable — part of the combination key, treated as its own value when null
-	 * @param amount    MUST be greater than zero, validated by {@code SetPaymentRateUseCaseImpl},
-	 *                  not here
+	 * @param amount    MUST be greater than zero, validated by the use case, not here
 	 * @param periodId  nullable — MUST reference an existing {@code AcademicPeriod} when provided,
-	 *                  validated by {@code SetPaymentRateUseCaseImpl}, not here; {@code null} means
-	 *                  this is a continuous rate, non-null means it is period-scoped
-	 * @param validFrom required, caller-supplied
+	 *                  validated by the use case, not here; MUST be {@code null} for a
+	 *                  {@code PERIODIC_QUOTA} concept
+	 * @param createdAt required — audit timestamp, server-supplied
 	 */
 	public PaymentRate(UUID conceptId, UUID programId, AcademicLevel level, BigDecimal amount, UUID periodId,
-			LocalDate validFrom) {
+			LocalDateTime createdAt) {
 		this.conceptId = conceptId;
 		this.programId = programId;
 		this.level = level;
 		this.amount = amount;
 		this.periodId = periodId;
-		this.validFrom = validFrom;
-		this.validTo = null;
+		this.status = PaymentRateStatus.ACTIVE;
+		this.createdAt = createdAt;
 	}
 
 	/**
-	 * Closes this row — sets {@link #validTo} to the day immediately before
-	 * {@code newValidFrom} (plan section 2/4: "validTo = nuevaValidFrom.minusDays(1)"),
-	 * so date ranges never overlap. Only ever invoked by
-	 * {@code SetPaymentRateUseCaseImpl} on the currently-active continuous row
-	 * ({@code periodId == null}) of the same combination as the new rate being
-	 * created — period-scoped rows are never closed.
+	 * Takes this row out of force. Idempotent — deactivating an
+	 * already-{@code INACTIVE} row is a no-op, same convention as every binary
+	 * ACTIVE/INACTIVE toggle in this module. Never deletes anything: the row
+	 * remains queryable so a reactivated program recovers its last price.
 	 */
-	public void close(LocalDate newValidFrom) {
-		this.validTo = newValidFrom.minusDays(1);
+	public void deactivate() {
+		this.status = PaymentRateStatus.INACTIVE;
 	}
 
 	public UUID getId() {
@@ -142,12 +150,12 @@ public class PaymentRate {
 		return periodId;
 	}
 
-	public LocalDate getValidFrom() {
-		return validFrom;
+	public PaymentRateStatus getStatus() {
+		return status;
 	}
 
-	public LocalDate getValidTo() {
-		return validTo;
+	public LocalDateTime getCreatedAt() {
+		return createdAt;
 	}
 
 	@Override
