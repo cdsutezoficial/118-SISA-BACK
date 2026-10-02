@@ -34,20 +34,23 @@ public class UpdateAcademicDivisionUseCaseImpl implements UpdateAcademicDivision
 		AcademicDivision division = divisionRepository.findById(command.divisionId())
 				.orElseThrow(() -> new AcademicDivisionNotFoundException(
 						"Academic division not found: " + command.divisionId()));
+		String name = AcademicDivisionTextNormalizer.name(command.name());
+		String code = AcademicDivisionTextNormalizer.code(command.code());
+		String description = AcademicDivisionTextNormalizer.description(command.description());
 
-		divisionRepository.findByName(command.name())
+		divisionRepository.findByName(name)
 				.filter(found -> !found.getId().equals(division.getId())).ifPresent(found -> {
-					throw new DuplicateDivisionNameException("Division name already in use: " + command.name());
+					throw new DuplicateDivisionNameException("Division name already in use: " + name);
 				});
-		divisionRepository.findByCode(command.code())
+		divisionRepository.findByCode(code)
 				.filter(found -> !found.getId().equals(division.getId())).ifPresent(found -> {
-					throw new DuplicateDivisionCodeException("Division code already in use: " + command.code());
+					throw new DuplicateDivisionCodeException("Division code already in use: " + code);
 				});
 		if (command.directorPersonId() != null && !personLookupPort.existsById(command.directorPersonId())) {
 			throw new DirectorNotFoundException("Director person not found: " + command.directorPersonId());
 		}
 
-		division.updateDetails(command.name(), command.code(), command.description(), command.directorPersonId());
+		division.updateDetails(name, code, description, command.directorPersonId());
 		AcademicDivision saved = divisionRepository.save(division);
 
 		return CreateAcademicDivisionUseCaseImpl.toResult(saved);
