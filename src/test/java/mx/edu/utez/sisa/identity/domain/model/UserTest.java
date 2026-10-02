@@ -95,6 +95,41 @@ class UserTest {
 		assertThat(user.getFailedLoginAttempts()).isZero();
 	}
 
+	@Test
+	void forceTemporaryPassword_reArmsTheFirstAccessGateAndSwapsTheHash() {
+		User user = newActiveUser();
+
+		user.forceTemporaryPassword("temp-hashed-pw");
+
+		assertThat(user.isMustChangePassword()).isTrue();
+		assertThat(user.getPasswordHash()).isEqualTo("temp-hashed-pw");
+	}
+
+	@Test
+	void forceTemporaryPassword_unlocksSoTheNewCredentialIsUsable() {
+		User user = newActiveUser();
+		user.registerFailedLogin();
+		user.registerFailedLogin();
+		user.registerFailedLogin();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.LOCKED);
+
+		user.forceTemporaryPassword("temp-hashed-pw");
+
+		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		assertThat(user.getFailedLoginAttempts()).isZero();
+	}
+
+	@Test
+	void forceTemporaryPassword_keepsTheAdminGateClosedEvenOnAnActiveAccount() {
+		User user = newActiveUser();
+		user.changePassword("chosen-hashed-pw");
+		assertThatCode(user::assertCanOperate).doesNotThrowAnyException();
+
+		user.forceTemporaryPassword("temp-hashed-pw");
+
+		assertThatThrownBy(user::assertCanOperate).isInstanceOf(MustChangePasswordException.class);
+	}
+
 	private User newActiveUser() {
 		return new User(UUID.randomUUID(), "jane.doe@utez.edu.mx", "hashed-pw");
 	}

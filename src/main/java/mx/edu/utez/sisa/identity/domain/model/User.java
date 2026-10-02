@@ -132,6 +132,26 @@ public class User {
 	}
 
 	/**
+	 * Replaces the credential on behalf of the account holder, as an ADMIN does
+	 * when resetting a forgotten password (plan
+	 * {@code 2026-10-02-admin-reset-password.md} —
+	 * {@code AdminResetPasswordUseCase}). The mirror image of
+	 * {@link #changePassword(String)}: instead of clearing the first-access
+	 * gate it <em>re-arms</em> it, because the holder did not choose this
+	 * password — they must change it on their next login.
+	 *
+	 * <p>Also unlocks the account. A {@code LOCKED} user authenticates against
+	 * {@code status} before their password is ever compared, so handing them a
+	 * fresh credential without lifting the lock would produce a password that
+	 * cannot be used.
+	 */
+	public void forceTemporaryPassword(String newPasswordHash) {
+		this.passwordHash = newPasswordHash;
+		this.mustChangePassword = true;
+		unlock();
+	}
+
+	/**
 	 * Reverses an account lock by an ADMIN (plan:
 	 * {@code docs/plans/2026-07-28-persons-and-user-management.md} —
 	 * {@code UnlockUserUseCase}): resets {@code status} to {@code ACTIVE} and

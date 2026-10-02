@@ -52,6 +52,7 @@ public final class PermissionRegistry {
 			e("POST", "/users/*/roles", "USERS_ASSIGN_ROLE"),
 			e("DELETE", "/users/*/roles/*", "USERS_REVOKE_ROLE"),
 			e("PATCH", "/users/*/unlock", "USERS_UNLOCK"),
+			e("POST", "/users/*/reset-password", "USERS_RESET_PASSWORD"),
 			// identity — persons
 			e("GET", "/persons/**", "PERSONS_READ"),
 			e("POST", "/persons", "PERSONS_CREATE"),

@@ -64,6 +64,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("USERS_ASSIGN_ROLE", "Asignar rol a usuario"),
 			permission("USERS_REVOKE_ROLE", "Revocar rol de usuario"),
 			permission("USERS_UNLOCK", "Desbloquear usuario"),
+			permission("USERS_RESET_PASSWORD", "Restablecer contraseña de usuario"),
 			permission("PERSONS_READ", "Consultar personas"),
 			permission("PERSONS_CREATE", "Crear persona"),
 			permission("DIVISIONS_READ", "Consultar divisiones"),
