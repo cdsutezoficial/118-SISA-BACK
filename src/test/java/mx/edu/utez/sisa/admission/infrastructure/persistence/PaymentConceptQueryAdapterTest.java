@@ -5,7 +5,7 @@ import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,7 +31,7 @@ class PaymentConceptQueryAdapterTest {
 
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
 
-	private static final LocalDate FROM = LocalDate.of(2026, 1, 1);
+	private static final LocalDateTime FROM = LocalDateTime.of(2026, 1, 1, 8, 0);
 
 	/** Bound to the program. */
 	private static PaymentRate forProgram(String amount) {
@@ -92,15 +92,15 @@ class PaymentConceptQueryAdapterTest {
 	}
 
 	@Test
-	void withinOneRungTheMostRecentlyOpenedRateWins() {
-		// SetPaymentRateUseCase closes the previous row when it opens a new one, so
-		// a clean catalog never has two open rows on the same rung. This pins what
-		// happens when it does: the later author had the last word, and picking
-		// arbitrarily between two open prices is not an option.
+	void withinOneRungTheMostRecentlyCreatedRateWins() {
+		// ReconcilePaymentRatesUseCase deactivates the previous row when it opens a new
+		// one, so a clean catalog never has two ACTIVE rows on the same rung. This pins
+		// what happens when it does: the later author had the last word, and picking
+		// arbitrarily between two active prices is not an option.
 		PaymentRate older = new PaymentRate(UUID.randomUUID(), PROGRAM_ID, null, new BigDecimal("1500.00"), null,
-				LocalDate.of(2026, 1, 1));
+				LocalDateTime.of(2026, 1, 1, 8, 0));
 		PaymentRate newer = new PaymentRate(UUID.randomUUID(), PROGRAM_ID, null, new BigDecimal("1578.00"), null,
-				LocalDate.of(2026, 9, 1));
+				LocalDateTime.of(2026, 9, 1, 8, 0));
 
 		assertThat(PaymentConceptQueryAdapter.pickAmount(List.of(older, newer)))
 				.contains(new BigDecimal("1578.00"));
@@ -114,9 +114,9 @@ class PaymentConceptQueryAdapterTest {
 		// program-specific rate from January must not lose to a general rate
 		// written yesterday.
 		PaymentRate olderSpecific = new PaymentRate(UUID.randomUUID(), PROGRAM_ID, null, new BigDecimal("1500.00"),
-				null, LocalDate.of(2026, 1, 1));
+				null, LocalDateTime.of(2026, 1, 1, 8, 0));
 		PaymentRate newerGeneral = new PaymentRate(UUID.randomUUID(), null, null, new BigDecimal("2000.00"), null,
-				LocalDate.of(2026, 9, 1));
+				LocalDateTime.of(2026, 9, 1, 8, 0));
 
 		assertThat(PaymentConceptQueryAdapter.pickAmount(List.of(newerGeneral, olderSpecific)))
 				.contains(new BigDecimal("1500.00"));

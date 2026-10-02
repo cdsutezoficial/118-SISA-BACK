@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,6 +49,8 @@ class PaymentConceptWindowQueryIT {
 
 	private static final LocalDate ON_DATE = LocalDate.of(2026, 9, 25);
 
+	private static final LocalDateTime CREATED_AT = LocalDateTime.of(2026, 1, 1, 8, 0);
+
 	private static final UUID PROGRAM = UUID.randomUUID();
 
 	private static final UUID OTHER_PROGRAM = UUID.randomUUID();
@@ -60,7 +64,7 @@ class PaymentConceptWindowQueryIT {
 	// ── the window-ignoring query: what makes "closed" distinguishable from "absent" ──
 
 	/**
-	 * The whole reason {@code findActiveTuitionForProgramIgnoringWindow} exists.
+	 * The whole reason {@code findActiveForProgramIgnoringWindow} exists.
 	 * The date-filtered query correctly returns nothing for a period that has
 	 * closed — but an empty list alone cannot tell the caller whether the
 	 * concept is gone or merely out of its window, and those two deserve
@@ -124,14 +128,14 @@ class PaymentConceptWindowQueryIT {
 	 * The behaviour change, pinned deliberately. The lookup used to require
 	 * {@code is_tuition}, so a program's other ACTIVE ADMISSION concepts (campus
 	 * fee, materials) stayed out of the ficha price and one extra concept could not
-	 * make it ambiguous. The flag is gone: an ADMISSION concept belonging to the
-	 * program is a candidate whatever the flag says, and "does this look like the
-	 * admission ticket" is now the TYPE's job alone.
+	 * make it ambiguous. The flag is gone: every ACTIVE ADMISSION concept reaching
+	 * the program is a candidate, and "does this look like the admission ticket"
+	 * is now the TYPE's job alone.
 	 */
 	@Test
-	void anAdmissionConceptIsIncludedWhateverTheTuitionFlagSays() {
-		repository.save(pricedConcept("Materiales", PaymentConceptType.ADMISSION, false, null, null));
-		repository.save(pricedConcept("Inscripción", PaymentConceptType.ADMISSION, true, null, null));
+	void everyAdmissionConceptThatReachesTheProgramIsACandidate() {
+		repository.save(pricedConcept("Materiales", PaymentConceptType.ADMISSION, null, null));
+		repository.save(pricedConcept("Inscripción", PaymentConceptType.ADMISSION, null, null));
 
 		assertThat(withoutWindow()).extracting(PaymentConcept::getName)
 				.containsExactlyInAnyOrder("Materiales", "Inscripción");
@@ -147,16 +151,16 @@ class PaymentConceptWindowQueryIT {
 	 * tuition predicate gone, nothing else stands between the two.
 	 */
 	@Test
-	void aTuitionOfTheEnrollmentTypeIsNotTheAdmissionFee() {
-		repository.save(pricedConcept("Inscripción semestre", PaymentConceptType.ENROLLMENT, true, null, null));
+	void anEnrollmentConceptIsNotTheAdmissionFee() {
+		repository.save(pricedConcept("Inscripción semestre", PaymentConceptType.ENROLLMENT, null, null));
 
 		assertThat(withoutWindow()).isEmpty();
 		assertThat(dateFiltered(ON_DATE)).isEmpty();
 	}
 
 	@Test
-	void aTuitionOfAnotherTypeIsExcluded() {
-		repository.save(pricedConcept("Reinscripción", PaymentConceptType.REINSCRIPTION, true, null, null));
+	void aConceptOfAnotherTypeIsExcluded() {
+		repository.save(pricedConcept("Reinscripción", PaymentConceptType.REINSCRIPTION, null, null));
 
 		assertThat(withoutWindow()).isEmpty();
 	}
@@ -179,39 +183,48 @@ class PaymentConceptWindowQueryIT {
 	 */
 	@Test
 	void aConceptWhoseOnlyRatesPointElsewhereDoesNotApply() {
-		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "Descripcion", "Politicas",
-				PaymentConceptType.ADMISSION, true, false, 1, 2, true, null, null, null, null, false, null, false,
-				false, null, List.of()));
-		rateFor(concept, OTHER_PROGRAM, null, LocalDate.of(2000, 1, 1));
-		rateFor(concept, null, AcademicLevel.POSGRADO, LocalDate.of(2000, 1, 1));
+		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "ADM-OTRAS", "Descripcion",
+				"Politicas", PaymentConceptType.ADMISSION, null, false, 1, 2, true, null, null, null, null, false, null,
+				false, false, null, List.of()));
+		rateFor(concept, OTHER_PROGRAM, null);
+		rateFor(concept, null, AcademicLevel.POSGRADO);
 
 		assertThat(withoutWindow()).isEmpty();
 		assertThat(dateFiltered(ON_DATE)).isEmpty();
 
 		// the same concept, now with a rate that does reach this program
-		rateFor(concept, PROGRAM, null, LocalDate.of(2000, 1, 1));
+		rateFor(concept, PROGRAM, null);
 		assertThat(withoutWindow()).hasSize(1);
 	}
 
 	/**
-	 * A rate that has expired, or not opened yet, does not make the concept
-	 * apply on that date. The window-ignoring query drops the date predicates
-	 * too, so it still sees the concept — which is what lets the resolver say
-	 * "the ficha exists but its price is not valid today" instead of the vaguer
-	 * "there is no ficha for this career".
+	 * A rate carries no dates any more, so there is no per-rate range to fall
+	 * outside of: "which rows are in force" is {@code status = ACTIVE}, and the
+	 * concept drops out of BOTH queries once its only rate is deactivated.
+	 *
+	 * <p>
+	 * Note what this means for the reason the window-ignoring query exists. It
+	 * still distinguishes "closed" from "absent" — that is the concept's
+	 * {@code availableFrom}/{@code availableUntil}, tested above — but it does not
+	 * rescue a concept whose price was withdrawn. A deactivation is the catalog
+	 * saying the ficha no longer applies, so "no ficha for this career" is the
+	 * honest answer, not a vaguer one.
 	 */
 	@Test
-	void aRateOutOfItsOwnDateRangeDoesNotApplyOnThatDate() {
-		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "Descripcion", "Politicas",
-				PaymentConceptType.ADMISSION, true, false, 1, 2, true, null, null, null, null, false, null, false,
-				false, null, List.of()));
-		rateFor(concept, PROGRAM, null, ON_DATE.plusDays(10));
-
-		assertThat(dateFiltered(ON_DATE)).isEmpty();
+	void aRateLeftInactiveStopsTheConceptApplying() {
+		PaymentConcept concept = repository.save(new PaymentConcept("Inscripción", "ADM-INACTIVA", "Descripcion",
+				"Politicas", PaymentConceptType.ADMISSION, null, false, 1, 2, true, null, null, null, null, false, null,
+				false, false, null, List.of()));
+		PaymentRate retired = rates.save(new PaymentRate(concept.getId(), PROGRAM, null, new BigDecimal("500.00"),
+				null, CREATED_AT));
+		assertThat(dateFiltered(ON_DATE)).hasSize(1);
 		assertThat(withoutWindow()).hasSize(1);
 
-		// the bounds are inclusive, so the first day of the rate's own range counts
-		assertThat(dateFiltered(ON_DATE.plusDays(10))).hasSize(1);
+		retired.deactivate();
+		rates.save(retired);
+
+		assertThat(dateFiltered(ON_DATE)).isEmpty();
+		assertThat(withoutWindow()).isEmpty();
 	}
 
 	/**
@@ -239,39 +252,40 @@ class PaymentConceptWindowQueryIT {
 	}
 
 	private List<PaymentConcept> withoutWindow() {
-		return repository.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE,
-				PaymentConceptType.ADMISSION, PROGRAM);
+		return repository.findActiveForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE,
+				PaymentConceptType.ADMISSION, PROGRAM, PaymentRateStatus.ACTIVE);
 	}
 
 	private List<PaymentConcept> dateFiltered(LocalDate onDate) {
-		return repository.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
-				PROGRAM, onDate);
+		return repository.findActiveForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
+				PROGRAM, onDate, PaymentRateStatus.ACTIVE);
 	}
 
 	/**
-	 * An ADMISSION concept with the tuition flag on, saved together with the
-	 * general rate that makes it apply to {@link #PROGRAM}. The flag is left on
-	 * deliberately in most tests: it must not change the answer.
+	 * An ADMISSION concept, saved together with the general rate that makes it
+	 * apply to {@link #PROGRAM}.
 	 */
 	private PaymentConcept admission(String name, LocalDate from, LocalDate until) {
-		return pricedConcept(name, PaymentConceptType.ADMISSION, true, from, until);
+		return pricedConcept(name, PaymentConceptType.ADMISSION, from, until);
 	}
 
 	/**
-	 * Saves the concept and a general (neither program nor level) continuous
-	 * rate covering every date, which is the minimum for a concept to apply to
-	 * a program. Tests that care about scope use {@code rateFor} directly.
+	 * Saves the concept and a general (neither program nor level) ACTIVE rate,
+	 * which is the minimum for a concept to apply to a program. Tests that care
+	 * about scope use {@code rateFor} directly.
 	 */
-	private PaymentConcept pricedConcept(String name, PaymentConceptType type, boolean isTuition, LocalDate from,
-			LocalDate until) {
-		PaymentConcept concept = repository.save(new PaymentConcept(name, "Descripcion", "Politicas", type, isTuition,
-				false, 1, 2, true, from, until, null, null, false, null, false, false, null, List.of()));
-		rateFor(concept, null, null, LocalDate.of(2000, 1, 1));
+	private PaymentConcept pricedConcept(String name, PaymentConceptType type, LocalDate from, LocalDate until) {
+		// code is unique, and several tests save two concepts at once, so it is
+		// derived from the name rather than hardcoded.
+		PaymentConcept concept = repository.save(new PaymentConcept(name, name.replace(" ", "-").toUpperCase(),
+				"Descripcion", "Politicas", type, null, false, 1, 2, true, from, until, null, null, false, null, false,
+				false, null, List.of()));
+		rateFor(concept, null, null);
 		return concept;
 	}
 
-	/** A continuous rate, as the ladder requires: {@code periodId} stays null. */
-	private void rateFor(PaymentConcept concept, UUID programId, AcademicLevel level, LocalDate validFrom) {
-		rates.save(new PaymentRate(concept.getId(), programId, level, new BigDecimal("500.00"), null, validFrom));
+	/** A continuous, ACTIVE rate, as the ladder requires: {@code periodId} stays null. */
+	private void rateFor(PaymentConcept concept, UUID programId, AcademicLevel level) {
+		rates.save(new PaymentRate(concept.getId(), programId, level, new BigDecimal("500.00"), null, CREATED_AT));
 	}
 }
