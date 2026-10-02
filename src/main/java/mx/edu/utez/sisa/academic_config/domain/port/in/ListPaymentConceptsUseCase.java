@@ -17,7 +17,7 @@ public interface ListPaymentConceptsUseCase {
 
 	/**
 	 * @param status optional — matches the concept's current status
-	 * @param search optional free-text match against {@code name}
+	 * @param search optional free-text match against {@code name} or {@code code}
 	 * @param page   zero-based page index; negative values are normalized to 0
 	 * @param size   page size; normalized to a minimum of 1 and capped at {@link #MAX_PAGE_SIZE}
 	 */
@@ -32,7 +32,12 @@ public interface ListPaymentConceptsUseCase {
 			int size) {
 	}
 
-	record PaymentConceptSummary(UUID id, String name, PaymentConceptType type, boolean isTuition,
+	/**
+	 * {@code levelNumber} is carried into the listing because a recurring quota is
+	 * only identifiable by its level — ten concepts of the same type differing
+	 * only in price is not something a list can usefully show without it.
+	 */
+	record PaymentConceptSummary(UUID id, String name, String code, PaymentConceptType type, Integer levelNumber,
 			boolean isStandalone, PaymentConceptStatus status) {
 	}
 }

@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.academic_config.domain.port.out;
 
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 
 import java.util.List;
 import java.util.Optional;
@@ -9,9 +10,9 @@ import java.util.UUID;
 
 /**
  * Persistence out-port for {@link PaymentConcept}, mirroring
- * {@code SubjectClassificationRepository}'s shape. No {@code findByCode} /
- * {@code findByName} — this aggregate has no unique business key to look up
- * by (plan section 4).
+ * {@code SubjectClassificationRepository}'s shape. {@code findByCode} exists
+ * because {@code code} is a required unique business key;
+ * {@code name} stays non-unique.
  */
 public interface PaymentConceptRepository {
 
@@ -22,6 +23,21 @@ public interface PaymentConceptRepository {
 	 * {@code SubjectClassificationRepository#findById}.
 	 */
 	Optional<PaymentConcept> findById(UUID id);
+
+	/**
+	 * Case-insensitive lookup backing the create/update {@code code} uniqueness
+	 * check. {@code excludingId} excludes the concept being edited so an
+	 * unchanged re-save is not treated as a collision with itself.
+	 */
+	Optional<PaymentConcept> findByCode(String code, UUID excludingId);
+
+	/**
+	 * Backs the "one ACTIVE recurring quota per level" rule — see
+	 * {@code DuplicatePaymentQuotaLevelException} for why two are refused
+	 * rather than disambiguated.
+	 */
+	Optional<PaymentConcept> findActiveByTypeAndLevelNumber(PaymentConceptType type, Integer levelNumber,
+			UUID excludingId);
 
 	/**
 	 * Filterable, paginated query backing {@code ListPaymentConceptsUseCase}.
