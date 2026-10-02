@@ -22,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,6 +72,23 @@ class UpdateAcademicDivisionUseCaseImplTest {
 				.updateDivision(new UpdateAcademicDivisionCommand(divisionAId, "Diseno", "DSC", "nueva desc", null));
 
 		assertThat(result.name()).isEqualTo("Diseno");
+	}
+
+	@Test
+	void updateDivision_normalizesTextBeforeCheckingAndSaving() {
+		when(divisionRepository.findById(divisionAId)).thenReturn(Optional.of(divisionA));
+		when(divisionRepository.findByName("Ingenieria")).thenReturn(Optional.empty());
+		when(divisionRepository.findByCode("ING")).thenReturn(Optional.empty());
+		when(divisionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		AcademicDivisionResult result = useCase.updateDivision(new UpdateAcademicDivisionCommand(
+				divisionAId, "  Ingenieria  ", " ing ", "  nueva desc  ", null));
+
+		assertThat(result.name()).isEqualTo("Ingenieria");
+		assertThat(result.code()).isEqualTo("ING");
+		assertThat(result.description()).isEqualTo("nueva desc");
+		verify(divisionRepository).findByName("Ingenieria");
+		verify(divisionRepository).findByCode("ING");
 	}
 
 	@Test
