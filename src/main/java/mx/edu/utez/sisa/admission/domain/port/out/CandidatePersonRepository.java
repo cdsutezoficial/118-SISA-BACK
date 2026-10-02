@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.admission.domain.port.out;
 
 import mx.edu.utez.sisa.shared.model.Person;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,4 +25,12 @@ public interface CandidatePersonRepository {
 	Optional<Person> findByCurp(String curp);
 
 	Optional<Person> findById(UUID id);
+
+	/**
+	 * Batch-loads the {@code Person} rows behind a page of candidates in ONE
+	 * query, so {@code ListCandidatesUseCase} can render full name and CURP
+	 * without one lookup per row. Ids with no matching person are simply absent
+	 * from the result (the list still renders the row, with a null name).
+	 */
+	List<Person> findByIds(List<UUID> ids);
 }

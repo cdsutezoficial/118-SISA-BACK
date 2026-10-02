@@ -4,6 +4,8 @@ import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatu
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,6 +40,28 @@ public interface ProgramAdmissionConfigQueryPort {
 	 * is the cost of the program's {@code ADMISSION} concept, Fase 11).
 	 */
 	Optional<AdmissionConfigInfo> findById(UUID id);
+
+	/**
+	 * Batch lookup of {@code admissionConfigId → (programId, programName)}
+	 * backing the candidate list, which must not issue one config/program query
+	 * per row. Configs absent from the table — or whose {@code programId} is
+	 * null — are simply missing from the returned map; the list still renders
+	 * those rows, with a null program id/name rather than dropping the
+	 * candidate.
+	 */
+	Map<UUID, ProgramRef> findProgramRefsByConfigIds(List<UUID> configIds);
+
+	/**
+	 * The program behind one admission config, as the candidate list needs it.
+	 *
+	 * <p>{@code programId} is the {@code AcademicProgram}'s id — deliberately
+	 * NOT the config's own id — so the row's {@code programId} and the list's
+	 * {@code programId} filter are the same value and can round-trip. Exposing
+	 * the config id here would make the "Programa Solicitado" filter match
+	 * nothing (the filter matches {@code cfg.programId = :programId}).
+	 */
+	record ProgramRef(UUID programId, String programName) {
+	}
 
 	/**
 	 * @param programId the chosen program's id (also used to resolve the
