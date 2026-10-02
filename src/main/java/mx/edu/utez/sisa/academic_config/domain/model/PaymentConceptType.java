@@ -18,14 +18,41 @@ package mx.edu.utez.sisa.academic_config.domain.model;
  * fee" with "the semester enrollment quota" and made the admission vocabulary
  * unreachable from the catalog UI.
  *
- * <p>{@link #ENROLLMENT} and {@link #REINSCRIPTION} remain for the semester
- * quotas, which is what {@code isTuition} is for.
+ * <p>{@link #PERIODIC_QUOTA} is the recurring per-term charge — "colegiatura".
+ * It carries {@code levelNumber} (the {@code PlanLevel.levelNumber} it applies
+ * to), which is what a previously free-standing {@code isTuition} boolean used
+ * to say. The flag was retired for two reasons: it made the admission flow
+ * light "cuota cuatrimestral" just to sell a ficha (see
+ * {@code PaymentConceptLookupJpaRepository}'s "No {@code is_tuition} predicate"
+ * note), and it left "which semester does this charge apply to" unanswerable,
+ * because a single recurring quota is a different price at first and second
+ * year. Folding the meaning into a type keeps one axis instead of a type plus a
+ * flag that half-overlapped it.
+ *
+ * <p>At most one ACTIVE {@link #PERIODIC_QUOTA} concept may exist per
+ * {@code levelNumber}, and it must price every ACTIVE program — otherwise a
+ * student's tuition would be either unpriceable or ambiguous.
+ *
+ * <p>{@link #ENROLLMENT} and {@link #REINSCRIPTION} are now only the
+ * administrative enrollment/re-enrollment charge, paid once per cycle, which is
+ * a different thing from the recurring quota they used to double for.
  */
 public enum PaymentConceptType {
 	ADMISSION,
 	ENROLLMENT,
 	REINSCRIPTION,
+	PERIODIC_QUOTA,
 	EXTRAORDINARY,
 	DOCUMENT,
-	OTHER
+	OTHER;
+
+	/**
+	 * Whether this type requires {@code PaymentConcept.levelNumber}. The
+	 * invariant is bidirectional on purpose: the level is meaningless without
+	 * the recurring quota, and a recurring quota without a level has no price
+	 * to look up.
+	 */
+	public boolean requiresLevelNumber() {
+		return this == PERIODIC_QUOTA;
+	}
 }

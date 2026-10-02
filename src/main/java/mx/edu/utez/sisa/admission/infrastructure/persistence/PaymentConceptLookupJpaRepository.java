@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.infrastructure.persistence;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -57,8 +58,7 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 			      SELECT r FROM PaymentRate r
 			      WHERE r.conceptId = c.id
 			        AND r.periodId IS NULL
-			        AND r.validFrom <= :onDate
-			        AND (r.validTo IS NULL OR r.validTo >= :onDate)
+			        AND r.status = :rateStatus
 			        AND (r.programId = :programId
 			             OR (r.programId IS NULL AND r.level = (
 			                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
@@ -67,12 +67,12 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 			  AND (c.availableFrom IS NULL OR c.availableFrom <= :onDate)
 			  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
 			""")
-	List<PaymentConcept> findActiveTuitionForProgram(@Param("status") PaymentConceptStatus status,
+	List<PaymentConcept> findActiveForProgram(@Param("status") PaymentConceptStatus status,
 			@Param("type") PaymentConceptType type, @Param("programId") UUID programId,
-			@Param("onDate") LocalDate onDate);
+			@Param("onDate") LocalDate onDate, @Param("rateStatus") PaymentRateStatus rateStatus);
 
 	/**
-	 * Identical to {@link #findActiveTuitionForProgram} minus the two
+	 * Identical to {@link #findActiveForProgram} minus the two
 	 * {@code availableFrom}/{@code availableUntil} predicates.
 	 *
 	 * <p>Kept as a separate method rather than a nullable {@code onDate} on the
@@ -90,12 +90,14 @@ public interface PaymentConceptLookupJpaRepository extends JpaRepository<Payment
 			      SELECT r FROM PaymentRate r
 			      WHERE r.conceptId = c.id
 			        AND r.periodId IS NULL
+			        AND r.status = :rateStatus
 			        AND (r.programId = :programId
 			             OR (r.programId IS NULL AND r.level = (
 			                  SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
 			             OR (r.programId IS NULL AND r.level IS NULL))
 			      )
 			""")
-	List<PaymentConcept> findActiveTuitionForProgramIgnoringWindow(@Param("status") PaymentConceptStatus status,
-			@Param("type") PaymentConceptType type, @Param("programId") UUID programId);
+	List<PaymentConcept> findActiveForProgramIgnoringWindow(@Param("status") PaymentConceptStatus status,
+			@Param("type") PaymentConceptType type, @Param("programId") UUID programId,
+			@Param("rateStatus") PaymentRateStatus rateStatus);
 }

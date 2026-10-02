@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.admission.infrastructure.persistence;
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicDivision;
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,7 +13,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,16 +29,21 @@ import static org.assertj.core.api.Assertions.assertThat;
  * candidates are in hand, but it hands that test a list it built itself. This
  * class covers the half that list cannot: that the query parses at all (it
  * correlates a subquery inside a {@code WHERE}, which Hibernate validates only
- * when it is executed) and that its three {@code OR}ed alternatives really do
- * match the right rows. A mocked repository returns whatever it was told to
- * return and would pass happily against a query that filters on the wrong
- * column, or does not compile into the SQL anyone thought it did.
+ * when it is executed) and that its alternatives really do match the right rows.
+ * A mocked repository returns whatever it was told to return and would pass
+ * happily against a query that filters on the wrong column.
  *
  * <p>The subquery is the reason this test exists rather than a unit test: the
  * level rung compares {@code r.level} against {@code (SELECT p.level FROM
  * academic_program p WHERE p.id = :programId)}, and whether that resolves as a
  * correlated scalar subquery or is quietly rewritten is only knowable by
  * running it.
+ *
+ * <p>There is no date parameter any more. "Which rows are in force" is
+ * {@code status = ACTIVE}, so the tests that used to check range edges became
+ * tests that check status — and the ones below that name a rate "superseded" are
+ * now literally that: an INACTIVE row sitting next to the ACTIVE one that
+ * replaced it.
  *
  * <h2>Warning: this class recreates the schema it points at</h2>
  * {@code ddl-auto=create-drop} means whatever database {@code DB_URL} names is
@@ -55,7 +61,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class PaymentRateLookupJpaRepositoryIT {
 
-	private static final LocalDate ON_DATE = LocalDate.of(2026, 9, 25);
+	private static final LocalDateTime CREATED_AT = LocalDateTime.of(2026, 1, 1, 8, 0);
+
+	private static final LocalDateTime LATER = LocalDateTime.of(2026, 9, 1, 8, 0);
 
 	@Autowired
 	private PaymentRateLookupJpaRepository repository;
@@ -77,7 +85,7 @@ class PaymentRateLookupJpaRepositoryIT {
 
 	/** The candidates the query returns, as the adapter would order them. */
 	private List<PaymentRate> candidatesFor(UUID programId) {
-		return repository.findRatesPricableForProgram(conceptId, programId, ON_DATE);
+		return repository.findRatesPricableForProgram(conceptId, programId, PaymentRateStatus.ACTIVE);
 	}
 
 	private Optional<BigDecimal> priceFor(UUID programId) {
@@ -92,7 +100,7 @@ class PaymentRateLookupJpaRepositoryIT {
 	 * cause.
 	 */
 	private PaymentRate rate(UUID programId, AcademicLevel level, String amount) {
-		return new PaymentRate(conceptId, programId, level, new BigDecimal(amount), null, LocalDate.of(2026, 1, 1));
+		return new PaymentRate(conceptId, programId, level, new BigDecimal(amount), null, CREATED_AT);
 	}
 
 	@BeforeEach
@@ -185,29 +193,38 @@ class PaymentRateLookupJpaRepositoryIT {
 	@Test
 	void aRateOfAnotherConceptIsNotACandidate() {
 		repository.save(new PaymentRate(UUID.randomUUID(), tsuProgramId, null, new BigDecimal("1578.00"), null,
-				LocalDate.of(2026, 1, 1)));
+				CREATED_AT));
 
 		assertThat(candidatesFor(tsuProgramId)).isEmpty();
 	}
 
+	/**
+	 * The replacement test. A superseded price keeps its row forever and is
+	 * excluded by status alone; nothing about it depends on a date, which is why
+	 * this can be asserted without naming one.
+	 */
 	@Test
-	void aClosedRateIsNotACandidate() {
-		// Superseded by a later rate for the same combination, so its date range
-		// no longer contains ON_DATE.
+	void aSupersededRateIsNotACandidate() {
 		PaymentRate superseded = repository.save(rate(tsuProgramId, null, "1500.00"));
-		repository.save(rate(tsuProgramId, null, "1578.00"));
-		superseded.close(LocalDate.of(2026, 9, 1));
+		superseded.deactivate();
 		repository.save(superseded);
+		repository.save(rate(tsuProgramId, null, "1578.00"));
 
 		assertThat(priceFor(tsuProgramId)).contains(new BigDecimal("1578.00"));
 	}
 
+	/**
+	 * And the other direction: asking for INACTIVE returns history, not prices.
+	 * This is what the rates editor reads.
+	 */
 	@Test
-	void aRateThatHasNotOpenedYetIsNotACandidate() {
-		repository.save(new PaymentRate(UUID.randomUUID(), tsuProgramId, null, new BigDecimal("1578.00"), null,
-				ON_DATE.plusDays(1)));
+	void inactiveRowsAreReachableWhenTheyAreTheOnesAskedFor() {
+		PaymentRate superseded = repository.save(rate(tsuProgramId, null, "1500.00"));
+		superseded.deactivate();
+		repository.save(superseded);
 
-		assertThat(candidatesFor(tsuProgramId)).isEmpty();
+		assertThat(repository.findRatesPricableForProgram(conceptId, tsuProgramId, PaymentRateStatus.INACTIVE))
+				.extracting(PaymentRate::getAmount).containsExactly(new BigDecimal("1500.00"));
 	}
 
 	@Test
@@ -215,31 +232,22 @@ class PaymentRateLookupJpaRepositoryIT {
 		// A period rate prices a period, not an admission ticket. If it were
 		// allowed in, registering a ficha would pick up a tuition-period price.
 		repository.save(new PaymentRate(UUID.randomUUID(), tsuProgramId, null, new BigDecimal("1578.00"),
-				UUID.randomUUID(), LocalDate.of(2026, 1, 1)));
+				UUID.randomUUID(), CREATED_AT));
 
 		assertThat(candidatesFor(tsuProgramId)).isEmpty();
 	}
 
+	/**
+	 * Two ACTIVE rows on the same rung is a catalog the reconciliation cannot
+	 * produce, but if it exists the tiebreak has to be deterministic: the later
+	 * author had the last word. This used to be a test about inclusive date
+	 * edges; it is now the only thing that keeps the comparator from being
+	 * arbitrary.
+	 */
 	@Test
-	void bothRateEdgesAreInclusive() {
-		// A range of exactly one day that IS the day being priced. `validTo` is set
-		// to the day before a replacement opens, so a range ending on ON_DATE still
-		// covers it — otherwise a superseded price would silently keep charging for
-		// one extra day, and a rate starting today would not price today.
-		repository.save(new PaymentRate(conceptId, tsuProgramId, null, new BigDecimal("1578.00"), null, ON_DATE));
-		PaymentRate endingToday = new PaymentRate(conceptId, tsuProgramId, null, new BigDecimal("1500.00"), null,
-				ON_DATE.minusDays(1));
-		endingToday.close(ON_DATE.plusDays(1));
-		repository.save(endingToday);
-
-		// Both rows contain ON_DATE, so the tiebreak decides: the most recently
-		// opened one is the one that had the later say.
-		assertThat(priceFor(tsuProgramId)).contains(new BigDecimal("1578.00"));
-	}
-
-	@Test
-	void aRateWhoseOnlyDayIsTheOneBeingPricedIsACandidate() {
-		repository.save(new PaymentRate(conceptId, tsuProgramId, null, new BigDecimal("1578.00"), null, ON_DATE));
+	void twoActiveRowsOnTheSameRungAreBrokenByTheMostRecentOne() {
+		repository.save(new PaymentRate(conceptId, tsuProgramId, null, new BigDecimal("1500.00"), null, CREATED_AT));
+		repository.save(new PaymentRate(conceptId, tsuProgramId, null, new BigDecimal("1578.00"), null, LATER));
 
 		assertThat(priceFor(tsuProgramId)).contains(new BigDecimal("1578.00"));
 	}

@@ -16,26 +16,30 @@ public interface PaymentRateRepository {
 	PaymentRate save(PaymentRate rate);
 
 	/**
-	 * Backs the continuous-rate closing logic (plan section 2/4): finds the
-	 * currently-active continuous rate ({@code periodId IS NULL},
-	 * {@code validTo IS NULL}) for the EXACT {@code (conceptId, programId,
-	 * level)} combination — {@code null} {@code programId}/{@code level} are
-	 * matched as their own value in the combination, never as a wildcard.
+	 * The row in force for the EXACT
+	 * {@code (conceptId, programId, level, periodId)} combination — every
+	 * nullable key column is matched as its own value, never as a wildcard.
 	 */
-	Optional<PaymentRate> findActiveContinuousRate(UUID conceptId, UUID programId, AcademicLevel level);
+	Optional<PaymentRate> findActive(UUID conceptId, UUID programId, AcademicLevel level, UUID periodId);
 
 	/**
-	 * Backs the period-scoped uniqueness check (plan section 2/4): {@code true}
-	 * if a rate already exists for the EXACT
-	 * {@code (conceptId, programId, level, periodId)} combination.
-	 */
-	boolean existsByExactCombination(UUID conceptId, UUID programId, AcademicLevel level, UUID periodId);
-
-	/**
-	 * Full, unpaginated pricing history for a {@code conceptId} (plan section
-	 * 4 — no pagination, low expected volume per concept), ordered by
-	 * {@code programId}, {@code level}, {@code periodId} ascending, then
-	 * {@code validFrom} descending.
+	 * Every row for a {@code conceptId}, current and historical, in an order
+	 * that puts each destination's current price first.
 	 */
 	List<PaymentRate> findHistoryByConceptId(UUID conceptId);
+
+	/**
+	 * Only the rows currently in force for a {@code conceptId}, with no ordering
+	 * guarantee beyond the database's.
+	 *
+	 * <p>
+	 * Separate from {@link #findHistoryByConceptId} rather than a flag on it
+	 * because the two callers want opposite things: the editor and the rate
+	 * endpoint want the whole history to render, while the type-change guard in
+	 * {@code UpdatePaymentConceptUseCaseImpl} needs to answer "which careers does
+	 * this concept price right now" and must not have to filter out superseded
+	 * rows itself — a caller that forgot the filter would count a retired price as
+	 * coverage and pass a check it should have failed.
+	 */
+	List<PaymentRate> findActiveByConceptId(UUID conceptId);
 }

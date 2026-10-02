@@ -9,12 +9,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Real-DB (H2) coverage for {@link PaymentConceptRepositoryAdapter#search},
@@ -72,6 +75,10 @@ class PaymentConceptRepositoryAdapterSearchIT {
 		assertThat(secondPage.content()).hasSize(2);
 	}
 
+	/**
+	 * Names stayed free when {@code code} became the unique key, so two records
+	 * may carry the same name — they just cannot share a code.
+	 */
 	@Test
 	void allowsDuplicateNamesAcrossDifferentRecords() {
 		jpaRepository.save(newConcept("Inscripcion"));
@@ -80,6 +87,15 @@ class PaymentConceptRepositoryAdapterSearchIT {
 		PaymentConceptSearchPage page = adapter.search(new PaymentConceptSearchCriteria(null, "Inscripcion", 0, 20));
 
 		assertThat(page.totalElements()).isEqualTo(2L);
+	}
+
+	@Test
+	void rejectsASecondConceptWithTheSameCodeRegardlessOfCase() {
+		PaymentConcept first = jpaRepository.save(newConcept("Inscripcion"));
+
+		assertThatThrownBy(() -> jpaRepository
+				.saveAndFlush(newConcept("Reinscripcion", first.getCode().toLowerCase())))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -119,8 +135,14 @@ class PaymentConceptRepositoryAdapterSearchIT {
 		assertThat(adapter.findById(UUID.randomUUID())).isEmpty();
 	}
 
+	private static final AtomicInteger CODE_SEQ = new AtomicInteger();
+
 	private static PaymentConcept newConcept(String name) {
-		return new PaymentConcept(name, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true, false, 1, 2,
-				true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return newConcept(name, "INS-" + CODE_SEQ.incrementAndGet());
+	}
+
+	private static PaymentConcept newConcept(String name, String code) {
+		return new PaymentConcept(name, code, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null, false,
+				1, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 }

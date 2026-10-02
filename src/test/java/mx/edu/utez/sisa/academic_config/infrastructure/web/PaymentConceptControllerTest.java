@@ -97,14 +97,16 @@ class PaymentConceptControllerTest {
 	void createPaymentConceptReturns201WithBody() throws Exception {
 		UUID conceptId = UUID.randomUUID();
 		when(createPaymentConceptUseCase.createPaymentConcept(any())).thenReturn(
-				new PaymentConceptResult(conceptId, "Inscripcion", "Descripcion", "Politicas",
-						PaymentConceptType.ENROLLMENT, true, false, 1, 2, true, LocalDate.of(2026, 1, 1),
-						LocalDate.of(2026, 12, 31), PaymentConceptStatus.ACTIVE));
+				new PaymentConceptResult(conceptId, "Inscripcion", "INS-1", "Descripcion", "Politicas",
+						PaymentConceptType.ENROLLMENT, null, true, 1, 2, true, LocalDate.of(2026, 1, 1),
+						LocalDate.of(2026, 12, 31), PaymentConceptStatus.ACTIVE, null, null, false, null, false, false,
+						null, List.of()));
 
 		mockMvc.perform(post("/payment-concepts").contentType("application/json")
 				.content(objectMapper.writeValueAsString(validBody("Inscripcion"))))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.id").value(conceptId.toString()))
+				.andExpect(jsonPath("$.code").value("INS-1"))
 				.andExpect(jsonPath("$.name").value("Inscripcion"))
 				.andExpect(jsonPath("$.type").value("ENROLLMENT"))
 				.andExpect(jsonPath("$.status").value("ACTIVE"));
@@ -137,8 +139,8 @@ class PaymentConceptControllerTest {
 	@Test
 	void listPaymentConceptsReturns200WithItemsAndPaginationMetadata() throws Exception {
 		UUID conceptId = UUID.randomUUID();
-		PaymentConceptSummary summary = new PaymentConceptSummary(conceptId, "Inscripcion",
-				PaymentConceptType.ENROLLMENT, true, false, PaymentConceptStatus.ACTIVE);
+		PaymentConceptSummary summary = new PaymentConceptSummary(conceptId, "Inscripcion", "INS-1",
+				PaymentConceptType.ENROLLMENT, null, true, PaymentConceptStatus.ACTIVE);
 		when(listPaymentConceptsUseCase.listPaymentConcepts(
 				new ListPaymentConceptsQuery(PaymentConceptStatus.ACTIVE, "insc", 0, 20)))
 				.thenReturn(new ListPaymentConceptsResult(List.of(summary), 1L, 1, 0, 20));
@@ -174,9 +176,10 @@ class PaymentConceptControllerTest {
 	void getPaymentConceptReturns200WithBodyWhenFound() throws Exception {
 		UUID conceptId = UUID.randomUUID();
 		when(getPaymentConceptUseCase.getById(conceptId)).thenReturn(
-				new PaymentConceptResult(conceptId, "Inscripcion", "Descripcion", "Politicas",
-						PaymentConceptType.ENROLLMENT, true, false, 1, 2, true, LocalDate.of(2026, 1, 1),
-						LocalDate.of(2026, 12, 31), PaymentConceptStatus.ACTIVE));
+				new PaymentConceptResult(conceptId, "Inscripcion", "INS-1", "Descripcion", "Politicas",
+						PaymentConceptType.ENROLLMENT, null, true, 1, 2, true, LocalDate.of(2026, 1, 1),
+						LocalDate.of(2026, 12, 31), PaymentConceptStatus.ACTIVE, null, null, false, null, false, false,
+						null, List.of()));
 
 		mockMvc.perform(get("/payment-concepts/{id}", conceptId)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(conceptId.toString()))
@@ -196,9 +199,10 @@ class PaymentConceptControllerTest {
 	void updatePaymentConceptReturns200WithBody() throws Exception {
 		UUID conceptId = UUID.randomUUID();
 		when(updatePaymentConceptUseCase.updatePaymentConcept(any())).thenReturn(
-				new PaymentConceptResult(conceptId, "Reinscripcion", "Descripcion", "Politicas",
-						PaymentConceptType.REINSCRIPTION, false, true, 3, 4, false, LocalDate.of(2027, 1, 1),
-						LocalDate.of(2027, 6, 30), PaymentConceptStatus.ACTIVE));
+				new PaymentConceptResult(conceptId, "Reinscripcion", "REI-2027", "Descripcion", "Politicas",
+						PaymentConceptType.REINSCRIPTION, null, true, 3, 4, false, LocalDate.of(2027, 1, 1),
+						LocalDate.of(2027, 6, 30), PaymentConceptStatus.ACTIVE, null, null, false, null, false, false,
+						null, List.of()));
 
 		mockMvc.perform(put("/payment-concepts/{id}", conceptId).contentType("application/json")
 				.content(objectMapper.writeValueAsString(validBody("Reinscripcion"))))
@@ -239,9 +243,10 @@ class PaymentConceptControllerTest {
 		UUID conceptId = UUID.randomUUID();
 		when(changePaymentConceptStatusUseCase.changeStatus(
 				new ChangeStatusCommand(callerId, conceptId, PaymentConceptStatus.INACTIVE))).thenReturn(
-				new PaymentConceptResult(conceptId, "Inscripcion", "Descripcion", "Politicas",
-						PaymentConceptType.ENROLLMENT, true, false, 1, 2, true, LocalDate.of(2026, 1, 1),
-						LocalDate.of(2026, 12, 31), PaymentConceptStatus.INACTIVE));
+				new PaymentConceptResult(conceptId, "Inscripcion", "INS-1", "Descripcion", "Politicas",
+						PaymentConceptType.ENROLLMENT, null, true, 1, 2, true, LocalDate.of(2026, 1, 1),
+						LocalDate.of(2026, 12, 31), PaymentConceptStatus.INACTIVE, null, null, false, null, false, false,
+						null, List.of()));
 
 		mockMvc.perform(patch("/payment-concepts/" + conceptId + "/status").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new ChangeStatusBody(PaymentConceptStatus.INACTIVE))))
@@ -263,17 +268,17 @@ class PaymentConceptControllerTest {
 	}
 
 	private static CreateConceptBody validBody(String name) {
-		return new CreateConceptBody(name, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true, false, 1,
-				2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return new CreateConceptBody(name, "INS-1", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null,
+				true, 1, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 
 	private static CreateConceptBody bodyWithName(String name) {
 		return validBody(name);
 	}
 
-	private record CreateConceptBody(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
-			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
+	private record CreateConceptBody(String name, String code, String description, String policies,
+			PaymentConceptType type, Integer levelNumber, boolean isStandalone, Integer maxPerStudent,
+			Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 	}
 
 	private record ChangeStatusBody(PaymentConceptStatus status) {

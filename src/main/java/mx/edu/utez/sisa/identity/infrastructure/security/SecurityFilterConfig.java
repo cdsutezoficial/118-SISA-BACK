@@ -112,15 +112,13 @@ import java.time.Instant;
  * is nested under {@code /payment-concepts}, same {@code ADMIN}/
  * {@code PERSONAL_FINANZAS} pair. The existing {@code GET /payment-concepts}
  * matcher already covers it (its pattern list includes the wildcarded
- * {@code "/payment-concepts/**"}), so no new GET matcher is needed. The
- * existing {@code POST /payment-concepts} matcher, however, is an EXACT
- * pattern with no wildcard (unlike GET/PUT/PATCH on this endpoint) — it does
- * NOT match the nested {@code POST .../rates} path, so a dedicated
- * {@code POST "/payment-concepts/{conceptId}/rates"} matcher is added right
- * after it.
- * There is no PUT/PATCH/DELETE on {@code PaymentRate} (no Update/Delete by
- * design — plan section 4, append-only history), so no matcher is added for
- * those verbs.
+ * {@code "/payment-concepts/**"}), so no new GET matcher is needed, and the
+ * wildcarded {@code PUT /payment-concepts/**} matcher covers the write side:
+ * prices are reconciled with {@code PUT} on the whole rate set, not posted one
+ * row at a time.
+ * There is no PATCH/DELETE on {@code PaymentRate} — withdrawing a price is done
+ * by omitting the destination from the set, which deactivates the row and keeps
+ * it in the history — so no matcher is added for those verbs.
  * {@code /payment-areas} (academic_config — companion catalog to
  * {@code PaymentConcept}, plan: {@code docs/plans/2026-09-19-payment-areas.md})
  * gets the identical GET/POST/PUT/PATCH four-matcher shape and the same
@@ -140,7 +138,7 @@ import java.time.Instant;
  * grants {@code DIRECTOR_DIVISION} (read-only visibility of the Admisión
  * module's configuration from the sidebar) — the mutating verbs stay
  * ADMIN/SERVICIOS_ESCOLARES. Placed right after the
- * {@code /payment-concepts/.../rates} matcher.
+ * {@code /payment-concepts/**} matchers.
  * {@code GET /program-admission-configs/options} (same plan, new for the
  * ficha de admisión — plan: {@code docs/plans/sisa-candidate-ficha.md}) is a
  * public reference picker listing the currently-{@code OPEN} configs with
@@ -314,11 +312,14 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.PUT, "/payment-concepts/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
-						.requestMatchers(HttpMethod.PATCH, "/payment-concepts/**")
-						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
-						.requestMatchers(HttpMethod.POST, "/payment-concepts/*/rates")
-						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
-						.requestMatchers(HttpMethod.GET, "/payment-areas/options").authenticated()
+					.requestMatchers(HttpMethod.PATCH, "/payment-concepts/**")
+					.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+					// No hay matcher para `POST /payment-concepts/*/rates`: ese verbo
+					// se retiró cuando las tarifas pasaron a escribirse como conjunto
+					// con `PUT`. Dejarlo autorizaba una ruta que ya no existe, y el
+					// filtro habría dado por bueno un 404 en vez del 403 que
+					// corresponde a un rol sin permiso.
+					.requestMatchers(HttpMethod.GET, "/payment-areas/options").authenticated()
 						.requestMatchers(HttpMethod.GET, "/payment-areas", "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.POST, "/payment-areas")

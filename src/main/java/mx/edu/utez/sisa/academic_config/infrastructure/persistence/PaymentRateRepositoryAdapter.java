@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.persistence;
 
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentRateRepository;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.springframework.stereotype.Component;
@@ -28,17 +29,17 @@ public class PaymentRateRepositoryAdapter implements PaymentRateRepository {
 	}
 
 	@Override
-	public Optional<PaymentRate> findActiveContinuousRate(UUID conceptId, UUID programId, AcademicLevel level) {
-		return jpaRepository.findActiveContinuousRate(conceptId, programId, level);
-	}
-
-	@Override
-	public boolean existsByExactCombination(UUID conceptId, UUID programId, AcademicLevel level, UUID periodId) {
-		return jpaRepository.existsByExactCombination(conceptId, programId, level, periodId);
+	public Optional<PaymentRate> findActive(UUID conceptId, UUID programId, AcademicLevel level, UUID periodId) {
+		return jpaRepository.findActive(conceptId, programId, level, periodId, PaymentRateStatus.ACTIVE);
 	}
 
 	@Override
 	public List<PaymentRate> findHistoryByConceptId(UUID conceptId) {
 		return jpaRepository.findHistoryByConceptId(conceptId);
+	}
+
+	@Override
+	public List<PaymentRate> findActiveByConceptId(UUID conceptId) {
+		return jpaRepository.findActiveByConceptId(conceptId, PaymentRateStatus.ACTIVE);
 	}
 }

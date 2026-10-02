@@ -1,11 +1,11 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,21 +15,27 @@ import java.util.UUID;
  * {@code PaymentConceptQueryAdapter} — same cross-context pattern as
  * {@link PaymentConceptLookupJpaRepository}.
  *
- * <p>Unlike {@code PaymentRateJpaRepository.findActiveContinuousRate}, which
- * matches ONE exact {@code (programId, level)} combination and is what
- * {@code SetPaymentRateUseCase} uses to close the row it supersedes, this
- * returns EVERY rate of a concept that could price a given program, so the
- * caller can pick between rungs of different specificity.
+ * <p>Unlike {@code PaymentRateJpaRepository.findActive}, which matches ONE exact
+ * {@code (programId, level, periodId)} combination and is what
+ * {@code ReconcilePaymentRatesUseCase} uses to find the row an incoming amount
+ * supersedes, this returns EVERY rate of a concept that could price a given
+ * program, so the caller can pick between rungs of different specificity.
  *
  * <p>The three rungs, all restricted to continuous rates
  * ({@code periodId == null} — a period-scoped row prices a period, not an
- * admission ticket) and to rows whose own date range contains
- * {@code onDate}:
+ * admission ticket) and to rows currently in force:
  * <ol>
  * <li>the row bound to that exact {@code programId};
  * <li>the row bound to the program's {@code academic_program.level};
  * <li>the row bound to neither.
  * </ol>
+ *
+ * <p>"In force" is {@code status = ACTIVE}, which replaced a
+ * {@code validFrom <= onDate <= validTo} range test. The price's validity
+ * window lives on the concept ({@code availableFrom}/{@code availableUntil}),
+ * which is filtered by the concept-level query; asking each rate row to restate
+ * a date range meant a price correction had to invent dates, and left the two
+ * dates free to disagree about when a concept applied.
  *
  * <p>The level is correlated rather than passed in, because it is a property of
  * the program and the caller only has the program: a subquery keeps the
@@ -48,13 +54,12 @@ public interface PaymentRateLookupJpaRepository extends JpaRepository<PaymentRat
 			SELECT r FROM PaymentRate r
 			WHERE r.conceptId = :conceptId
 			  AND r.periodId IS NULL
-			  AND r.validFrom <= :onDate
-			  AND (r.validTo IS NULL OR r.validTo >= :onDate)
+			  AND r.status = :status
 			  AND (r.programId = :programId
 			    OR (r.programId IS NULL AND r.level = (
 			         SELECT p.level FROM AcademicProgram p WHERE p.id = :programId))
 			    OR (r.programId IS NULL AND r.level IS NULL))
 			""")
 	List<PaymentRate> findRatesPricableForProgram(@Param("conceptId") UUID conceptId,
-			@Param("programId") UUID programId, @Param("onDate") LocalDate onDate);
+			@Param("programId") UUID programId, @Param("status") PaymentRateStatus status);
 }

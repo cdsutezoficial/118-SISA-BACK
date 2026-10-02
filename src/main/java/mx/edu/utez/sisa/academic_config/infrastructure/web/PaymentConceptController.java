@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ChangePaymentConceptStatu
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.CreatePaymentConceptCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.PaymentConceptResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase.PaymentRateDraft;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetPaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentConceptsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentConceptsUseCase.ListPaymentConceptsQuery;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -79,12 +81,15 @@ public class PaymentConceptController {
 	public ResponseEntity<PaymentConceptResponse> createPaymentConcept(
 			@Valid @RequestBody CreatePaymentConceptRequest request) {
 		PaymentConceptResult result = createPaymentConceptUseCase
-				.createPaymentConcept(new CreatePaymentConceptCommand(request.name(), request.description(),
-						request.policies(), request.type(), request.isTuition(), request.isStandalone(),
-						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
-						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
-						request.isExternal(), request.costExternal(), request.isAccumulable(),
-						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds()));
+				.createPaymentConcept(new CreatePaymentConceptCommand(request.name(), request.code(),
+						request.description(), request.policies(), request.type(), request.levelNumber(),
+						request.isStandalone(), request.maxPerStudent(), request.maxPerPeriod(),
+						request.requiresValidation(), request.availableFrom(), request.availableUntil(),
+						request.areaId(), request.cost(), request.isExternal(), request.costExternal(),
+						request.isAccumulable(), request.isMulticoncept(), request.quotaLimit(),
+						request.linkedConceptIds(),
+						request.rates() == null ? List.of()
+								: request.rates().stream().map(PaymentConceptController::toDraft).toList()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
 	}
 
@@ -92,12 +97,13 @@ public class PaymentConceptController {
 	public ResponseEntity<PaymentConceptResponse> updatePaymentConcept(@PathVariable UUID id,
 			@Valid @RequestBody UpdatePaymentConceptRequest request) {
 		PaymentConceptResult result = updatePaymentConceptUseCase
-				.updatePaymentConcept(new UpdatePaymentConceptCommand(id, request.name(), request.description(),
-						request.policies(), request.type(), request.isTuition(), request.isStandalone(),
-						request.maxPerStudent(), request.maxPerPeriod(), request.requiresValidation(),
-						request.availableFrom(), request.availableUntil(), request.areaId(), request.cost(),
-						request.isExternal(), request.costExternal(), request.isAccumulable(),
-						request.isMulticoncept(), request.quotaLimit(), request.linkedConceptIds()));
+				.updatePaymentConcept(new UpdatePaymentConceptCommand(id, request.name(), request.code(),
+						request.description(), request.policies(), request.type(), request.levelNumber(),
+						request.isStandalone(), request.maxPerStudent(), request.maxPerPeriod(),
+						request.requiresValidation(), request.availableFrom(), request.availableUntil(),
+						request.areaId(), request.cost(), request.isExternal(), request.costExternal(),
+						request.isAccumulable(), request.isMulticoncept(), request.quotaLimit(),
+						request.linkedConceptIds()));
 		return ResponseEntity.ok(toResponse(result));
 	}
 
@@ -138,16 +144,21 @@ public class PaymentConceptController {
 		return UUID.fromString(authentication.getName());
 	}
 
+	private static PaymentRateDraft toDraft(CreatePaymentConceptRequest.PaymentRateDraftRequest draft) {
+		return new PaymentRateDraft(draft.programId(), draft.level(), draft.amount(), draft.periodId());
+	}
+
 	private static PaymentConceptResponse toResponse(PaymentConceptResult result) {
-		return new PaymentConceptResponse(result.id(), result.name(), result.description(), result.policies(),
-				result.type(), result.isTuition(), result.isStandalone(), result.maxPerStudent(),
-				result.maxPerPeriod(), result.requiresValidation(), result.availableFrom(), result.availableUntil(),
-				result.status(), result.areaId(), result.cost(), result.isExternal(), result.costExternal(),
-				result.isAccumulable(), result.isMulticoncept(), result.quotaLimit(), result.linkedConceptIds());
+		return new PaymentConceptResponse(result.id(), result.name(), result.code(), result.description(),
+				result.policies(), result.type(), result.levelNumber(), result.isStandalone(),
+				result.maxPerStudent(), result.maxPerPeriod(), result.requiresValidation(), result.availableFrom(),
+				result.availableUntil(), result.status(), result.areaId(), result.cost(), result.isExternal(),
+				result.costExternal(), result.isAccumulable(), result.isMulticoncept(), result.quotaLimit(),
+				result.linkedConceptIds());
 	}
 
 	private static PaymentConceptListItemResponse toItem(PaymentConceptSummary summary) {
-		return new PaymentConceptListItemResponse(summary.id(), summary.name(), summary.type(),
-				summary.isTuition(), summary.isStandalone(), summary.status());
+		return new PaymentConceptListItemResponse(summary.id(), summary.name(), summary.code(), summary.type(),
+				summary.levelNumber(), summary.isStandalone(), summary.status());
 	}
 }

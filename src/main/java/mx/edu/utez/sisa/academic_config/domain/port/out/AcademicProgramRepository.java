@@ -33,6 +33,21 @@ public interface AcademicProgramRepository {
 	Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality);
 
 	/**
+	 * Every ACTIVE program, ordered by name. Backs the "a recurring quota must
+	 * price every active career" rule in {@code ReconcilePaymentRatesUseCase}.
+	 *
+	 * <p>
+	 * A reference projection rather than full entities because the
+	 * reconciliation needs to say "career X is missing" and nothing else about
+	 * it — it does not need descriptions, DGP codes or plan versions for a set
+	 * of programs that grows with the institution.
+	 */
+	List<AcademicProgramReference> findAllActive();
+
+	record AcademicProgramReference(UUID id, String name) {
+	}
+
+	/**
 	 * Filterable, paginated query backing {@code ListAcademicProgramsUseCase}.
 	 */
 	ProgramSearchPage search(ProgramSearchCriteria criteria);
