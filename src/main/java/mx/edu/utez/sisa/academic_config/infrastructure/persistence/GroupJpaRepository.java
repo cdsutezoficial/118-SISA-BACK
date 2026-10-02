@@ -48,5 +48,5 @@ public interface GroupJpaRepository extends JpaRepository<Group, UUID> {
 	 * assigned to one {@code periodId} — the dashboard's "grupos activos"
 	 * counter for the current period.
 	 */
-	long countByPeriodId(UUID periodId);
+	long countByPeriodIdAndStatus(UUID periodId, GroupStatus status);
 }
