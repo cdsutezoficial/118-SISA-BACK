@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.persistence;
 
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
+import mx.edu.utez.sisa.academic_config.domain.model.ProgramStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.data.domain.Page;
@@ -8,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,6 +46,12 @@ public class AcademicProgramRepositoryAdapter implements AcademicProgramReposito
 	@Override
 	public Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality) {
 		return jpaRepository.findByOfferNameAndModality(offerName, modality);
+	}
+
+	@Override
+	public List<AcademicProgramReference> findAllActive() {
+		return jpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE).stream()
+				.map(row -> new AcademicProgramReference(row.getId(), row.getName())).toList();
 	}
 
 	@Override

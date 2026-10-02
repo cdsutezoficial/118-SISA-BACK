@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import org.springframework.stereotype.Component;
 
@@ -18,8 +19,8 @@ import java.util.UUID;
  * JPA-backed {@link PaymentConceptQueryPort} adapter: finds the {@code ACTIVE}
  * {@code ADMISSION} concepts that price the ficha of a program, and resolves
  * how much that program is actually charged from the concept's
- * {@code PaymentRate} history. The {@code is_tuition} narrowing lives in
- * {@link PaymentConceptLookupJpaRepository#findActiveTuitionForProgram}; the
+ * {@code PaymentRate} history. The type narrowing lives in
+ * {@link PaymentConceptLookupJpaRepository#findActiveForProgram}; the
  * rate precedence lives in {@link #pickAmount}.
  */
 @Component
@@ -28,16 +29,16 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 	/**
 	 * Which of the three rungs a rate sits on, most specific first. Lower wins.
 	 *
-	 * <p>{@code SetPaymentRateUseCase} guarantees one open row per exact
+	 * <p>{@code ReconcilePaymentRatesUseCase} guarantees one ACTIVE row per exact
 	 * {@code (programId, level, periodId)} combination, so a well-formed catalog
-	 * never puts two rows on the same rung. The {@code validFrom} tiebreak below
+	 * never puts two rows on the same rung. The {@code createdAt} tiebreak below
 	 * is what keeps a dirty one from being ambiguous anyway: if two rows somehow
 	 * both price the program, the most recently opened one is the one whose
 	 * author had the later say.
 	 */
 	private static final Comparator<PaymentRate> PRECEDENCE = Comparator
 			.comparingInt(PaymentConceptQueryAdapter::rung)
-			.thenComparing(PaymentRate::getValidFrom, Comparator.reverseOrder());
+			.thenComparing(PaymentRate::getCreatedAt, Comparator.reverseOrder());
 
 	private final PaymentConceptLookupJpaRepository lookupJpaRepository;
 
@@ -52,22 +53,23 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 	@Override
 	public List<FichaConcept> findActiveEnrollmentForProgram(UUID programId, LocalDate onDate) {
 		return lookupJpaRepository
-				.findActiveTuitionForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
-						programId, onDate)
+				.findActiveForProgram(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
+						programId, onDate, PaymentRateStatus.ACTIVE)
 				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
 	}
 
 	@Override
 	public List<FichaConcept> findActiveEnrollmentForProgram(UUID programId) {
 		return lookupJpaRepository
-				.findActiveTuitionForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
-						programId)
+				.findActiveForProgramIgnoringWindow(PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
+						programId, PaymentRateStatus.ACTIVE)
 				.stream().map(PaymentConceptQueryAdapter::toFichaConcept).toList();
 	}
 
 	@Override
 	public Optional<BigDecimal> findActiveRateAmountFor(UUID conceptId, UUID programId, LocalDate onDate) {
-		return pickAmount(rateLookupJpaRepository.findRatesPricableForProgram(conceptId, programId, onDate));
+		return pickAmount(
+				rateLookupJpaRepository.findRatesPricableForProgram(conceptId, programId, PaymentRateStatus.ACTIVE));
 	}
 
 	/**

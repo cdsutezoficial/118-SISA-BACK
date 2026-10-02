@@ -14,12 +14,12 @@ import java.util.UUID;
  * "full post-operation state" convention.
  *
  * <p>No {@code programIds}. Which programs a concept charges for is answered by
- * {@code GET /payment-concepts/{id}/rates}, which is the same data the ficha
- * price is computed from — returning a second, differently-maintained copy here
- * is what let the two disagree.
+ * {@code GET /payment-concepts/{id}/rates}, which is the same data the price is
+ * computed from — returning a second, differently-maintained copy here is what
+ * let the two disagree.
  */
-public record PaymentConceptResponse(UUID id, String name, String description, String policies,
-		PaymentConceptType type, boolean isTuition, boolean isStandalone, Integer maxPerStudent,
+public record PaymentConceptResponse(UUID id, String name, String code, String description, String policies,
+		PaymentConceptType type, Integer levelNumber, boolean isStandalone, Integer maxPerStudent,
 		Integer maxPerPeriod, boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil,
 		PaymentConceptStatus status, UUID areaId, BigDecimal cost, boolean isExternal, BigDecimal costExternal,
 		boolean isAccumulable, boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {

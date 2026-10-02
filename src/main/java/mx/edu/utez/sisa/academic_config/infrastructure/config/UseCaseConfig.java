@@ -17,7 +17,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.GetProgramAdmissionConfig
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentRatesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListProgramAdmissionConfigsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.OpenProgramAdmissionUseCase;
-import mx.edu.utez.sisa.academic_config.domain.port.in.SetPaymentRateUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ReconcilePaymentRatesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateProgramAdmissionConfigUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicDivisionUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPeriodUseCase;
@@ -107,12 +107,15 @@ import mx.edu.utez.sisa.academic_config.domain.service.GetGroupUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetPaymentAreaUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetPaymentConceptUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListPaymentRatesUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.PaymentQuotaCoverageChecker;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangeProgramAdmissionConfigStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetProgramAdmissionConfigUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListProgramAdmissionConfigsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.OpenProgramAdmissionUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.UpdateProgramAdmissionConfigUseCaseImpl;
-import mx.edu.utez.sisa.academic_config.domain.service.SetPaymentRateUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.ReconcilePaymentRatesUseCaseImpl;
+
+import java.time.Clock;
 import mx.edu.utez.sisa.academic_config.domain.service.GetSubjectClassificationUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicDivisionsUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ListAcademicPeriodsUseCaseImpl;
@@ -415,14 +418,17 @@ public class UseCaseConfig {
 
 	@Bean
 	public CreatePaymentConceptUseCase createPaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository) {
-		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository);
+			PaymentAreaRepository paymentAreaRepository, ReconcilePaymentRatesUseCase reconcilePaymentRatesUseCase) {
+		return new CreatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
+				reconcilePaymentRatesUseCase);
 	}
 
 	@Bean
 	public UpdatePaymentConceptUseCase updatePaymentConceptUseCase(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository) {
-		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository);
+			PaymentAreaRepository paymentAreaRepository, PaymentRateRepository paymentRateRepository,
+			PaymentQuotaCoverageChecker coverageChecker) {
+		return new UpdatePaymentConceptUseCaseImpl(paymentConceptRepository, paymentAreaRepository,
+				paymentRateRepository, coverageChecker);
 	}
 
 	@Bean
@@ -437,8 +443,10 @@ public class UseCaseConfig {
 
 	@Bean
 	public ChangePaymentConceptStatusUseCase changePaymentConceptStatusUseCase(
-			PaymentConceptRepository paymentConceptRepository) {
-		return new ChangePaymentConceptStatusUseCaseImpl(paymentConceptRepository);
+			PaymentConceptRepository paymentConceptRepository, PaymentRateRepository paymentRateRepository,
+			PaymentQuotaCoverageChecker coverageChecker) {
+		return new ChangePaymentConceptStatusUseCaseImpl(paymentConceptRepository, paymentRateRepository,
+				coverageChecker);
 	}
 
 	@Bean
@@ -467,11 +475,11 @@ public class UseCaseConfig {
 	}
 
 	@Bean
-	public SetPaymentRateUseCase setPaymentRateUseCase(PaymentRateRepository paymentRateRepository,
+	public ReconcilePaymentRatesUseCase reconcilePaymentRatesUseCase(PaymentRateRepository paymentRateRepository,
 			PaymentConceptRepository paymentConceptRepository, AcademicProgramRepository programRepository,
-			AcademicPeriodRepository periodRepository) {
-		return new SetPaymentRateUseCaseImpl(paymentRateRepository, paymentConceptRepository, programRepository,
-				periodRepository);
+			AcademicPeriodRepository periodRepository, PaymentQuotaCoverageChecker coverageChecker, Clock clock) {
+		return new ReconcilePaymentRatesUseCaseImpl(paymentRateRepository, paymentConceptRepository,
+				programRepository, periodRepository, coverageChecker, clock);
 	}
 
 	@Bean

@@ -20,7 +20,10 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassification
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaNameException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentConceptCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentQuotaLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentRateException;
+import mx.edu.utez.sisa.academic_config.shared.exception.IncompletePaymentRateSetException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
@@ -235,6 +238,38 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handlePaymentRateConflict(DuplicatePaymentRateException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, "Ya existe una tarifa vigente con la información proporcionada.", request);
+	}
+
+	@ExceptionHandler(DuplicatePaymentConceptCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicatePaymentConceptCode(DuplicatePaymentConceptCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un concepto de pago con ese código.", request);
+	}
+
+	/**
+	 * 409 rather than 400 on purpose: the request itself is well-formed, it just
+	 * collides with a rule that spans records — "one active recurring quota per
+	 * level". 400 would tell the user to fix their input, and there is nothing in
+	 * the input to fix.
+	 */
+	@ExceptionHandler(DuplicatePaymentQuotaLevelException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicatePaymentQuotaLevel(DuplicatePaymentQuotaLevelException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe una cuota periódica activa para ese nivel.", request);
+	}
+
+	/**
+	 * Also 409 rather than 400, for the same reason as the level collision: the
+	 * payload parsed and validated, and the refusal is about catalog state. The
+	 * message is deliberately about the rule rather than echoing the missing
+	 * program names, because the fix is "open the quota editor, which reloads the
+	 * active careers", not "retype the list".
+	 */
+	@ExceptionHandler(IncompletePaymentRateSetException.class)
+	public ResponseEntity<ErrorResponse> handleIncompletePaymentRateSet(IncompletePaymentRateSetException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Una cuota periódica debe tener tarifa para todas las carreras activas.",
+				request);
 	}
 
 	@ExceptionHandler(ProgramAdmissionConfigNotFoundException.class)
