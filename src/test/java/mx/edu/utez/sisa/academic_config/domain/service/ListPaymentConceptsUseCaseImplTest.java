@@ -87,7 +87,7 @@ class ListPaymentConceptsUseCaseImplTest {
 	}
 
 	private static PaymentConcept newConcept(String name) {
-		return new PaymentConcept(name, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true, false, 1, 2,
+		return new PaymentConcept(name, "COD-1", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null, false, 1, 2,
 				true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 }

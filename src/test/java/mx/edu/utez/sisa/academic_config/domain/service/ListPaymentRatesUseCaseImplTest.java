@@ -1,7 +1,8 @@
 package mx.edu.utez.sisa.academic_config.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentRate;
-import mx.edu.utez.sisa.academic_config.domain.port.in.SetPaymentRateUseCase.PaymentRateResult;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentRateStatus;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ReconcilePaymentRatesUseCase.PaymentRateResult;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentRateRepository;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,7 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,9 +36,9 @@ class ListPaymentRatesUseCaseImplTest {
 	void listRates_returnsTheFullHistoryInRepositoryOrder() {
 		UUID conceptId = UUID.randomUUID();
 		PaymentRate older = new PaymentRate(conceptId, null, null, BigDecimal.valueOf(1000), null,
-				LocalDate.of(2025, 1, 1));
+				LocalDateTime.of(2025, 1, 1, 8, 0));
 		PaymentRate newer = new PaymentRate(conceptId, null, null, BigDecimal.valueOf(1500), null,
-				LocalDate.of(2026, 1, 1));
+				LocalDateTime.of(2026, 1, 1, 8, 0));
 		when(paymentRateRepository.findHistoryByConceptId(conceptId)).thenReturn(List.of(newer, older));
 
 		List<PaymentRateResult> result = useCase.listRates(conceptId);
@@ -58,12 +59,12 @@ class ListPaymentRatesUseCaseImplTest {
 	}
 
 	@Test
-	void listRates_mapsAllFieldsIncludingValidTo() {
+	void listRates_mapsAllFieldsIncludingStatusAndCreatedAt() {
 		UUID conceptId = UUID.randomUUID();
 		UUID programId = UUID.randomUUID();
 		UUID periodId = UUID.randomUUID();
 		PaymentRate rate = new PaymentRate(conceptId, programId, AcademicLevel.TSU, BigDecimal.valueOf(800), periodId,
-				LocalDate.of(2026, 1, 1));
+				LocalDateTime.of(2026, 1, 1, 8, 0));
 		when(paymentRateRepository.findHistoryByConceptId(conceptId)).thenReturn(List.of(rate));
 
 		PaymentRateResult result = useCase.listRates(conceptId).get(0);
@@ -72,6 +73,7 @@ class ListPaymentRatesUseCaseImplTest {
 		assertThat(result.programId()).isEqualTo(programId);
 		assertThat(result.level()).isEqualTo(AcademicLevel.TSU);
 		assertThat(result.periodId()).isEqualTo(periodId);
-		assertThat(result.validTo()).isNull();
+		assertThat(result.status()).isEqualTo(PaymentRateStatus.ACTIVE);
+		assertThat(result.createdAt()).isEqualTo(LocalDateTime.of(2026, 1, 1, 8, 0));
 	}
 }

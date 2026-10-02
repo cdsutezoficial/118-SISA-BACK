@@ -531,15 +531,15 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	 * agreement assertion below would fail for the wrong reason.
 	 */
 	private void saveTuitionConceptFor(ProgramAdmissionConfig config, LocalDate availableUntil) {
-		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
-				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(30), availableUntil,
+		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "", "",
+				PaymentConceptType.ADMISSION, null, false, null, null, false, TODAY.minusDays(30), availableUntil,
 				null, new BigDecimal("1578.00"), false, null, false, false, null, List.of());
 		concept.activate();
 		concept = paymentConceptJpaRepository.save(concept);
 		// A rate bound to this exact program: the most specific rung of the ladder,
 		// so the concept applies no matter what the program's level is.
 		paymentRateJpaRepository.save(new PaymentRate(concept.getId(), config.getProgramId(), null,
-				new BigDecimal("1578.00"), null, TODAY.minusDays(30)));
+				new BigDecimal("1578.00"), null, TODAY.minusDays(30).atStartOfDay()));
 	}
 
 	private void saveFicha(UUID admissionConfigId, boolean paid) {
