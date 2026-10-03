@@ -241,6 +241,10 @@ public class SecurityFilterConfig {
 						// fine-grained layer; SE/Director go through CANDIDATES_READ.
 						.requestMatchers(HttpMethod.GET, "/candidates")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
+						// Staff candidate detail. Two segments deep, so the public
+						// "/candidates/*" matcher above does not reach it either.
+						.requestMatchers(HttpMethod.GET, "/candidates/*/detail")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")

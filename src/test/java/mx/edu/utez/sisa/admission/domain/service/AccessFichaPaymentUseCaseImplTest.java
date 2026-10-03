@@ -153,7 +153,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo configInfo() {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
 				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ing. en Tecnologías de la Información",
-				ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES);
+				null, ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES);
 	}
 
 	@Test
@@ -289,7 +289,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo configClosingOn(LocalDate closesOn) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
 				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ing. en Tecnologías de la Información",
-				ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN,
+				null, ProgramModality.PRESENCIAL, "2026-1", WINDOW_OPEN,
 				closesOn.atStartOfDay(ZONE).plusHours(23).toInstant(), MAX_CANDIDATES);
 	}
 

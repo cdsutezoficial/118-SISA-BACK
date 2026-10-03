@@ -1,7 +1,9 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
+import mx.edu.utez.sisa.academic_config.domain.model.AcademicDivision;
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
+import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicDivisionJpaRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.stereotype.Component;
@@ -32,14 +34,18 @@ public class ProgramAdmissionConfigQueryAdapter implements ProgramAdmissionConfi
 
 	private final AcademicProgramNameLookupJpaRepository programJpaRepository;
 
+	private final AcademicDivisionJpaRepository divisionJpaRepository;
+
 	private final AcademicPeriodNameLookupJpaRepository periodJpaRepository;
 
 	public ProgramAdmissionConfigQueryAdapter(
 			ProgramAdmissionConfigLookupJpaRepository configJpaRepository,
 			AcademicProgramNameLookupJpaRepository programJpaRepository,
+			AcademicDivisionJpaRepository divisionJpaRepository,
 			AcademicPeriodNameLookupJpaRepository periodJpaRepository) {
 		this.configJpaRepository = configJpaRepository;
 		this.programJpaRepository = programJpaRepository;
+		this.divisionJpaRepository = divisionJpaRepository;
 		this.periodJpaRepository = periodJpaRepository;
 	}
 
@@ -47,16 +53,22 @@ public class ProgramAdmissionConfigQueryAdapter implements ProgramAdmissionConfi
 	public Optional<AdmissionConfigInfo> findById(UUID id) {
 		return configJpaRepository.findById(id).map(config -> {
 			String programName = null;
+			String divisionName = null;
 			ProgramModality modality = null;
 			if (config.getProgramId() != null) {
-				var program = programJpaRepository.findById(config.getProgramId());
+				Optional<AcademicProgram> program = programJpaRepository.findById(config.getProgramId());
 				programName = program.map(p -> p.getName()).orElse(null);
+				divisionName = program.map(AcademicProgram::getDivisionId)
+						.flatMap(divisionJpaRepository::findById)
+						.map(AcademicDivision::getName)
+						.orElse(null);
 				modality = program.map(p -> p.getModality()).orElse(null);
 			}
 			String periodName = config.getPeriodId() == null ? null
 					: periodJpaRepository.findById(config.getPeriodId()).map(p -> p.getName()).orElse(null);
 			return new AdmissionConfigInfo(config.getId(), config.getStatus(), config.getProgramId(), programName,
-					modality, periodName, config.getOpensAt(), config.getClosesAt(), config.getMaxCandidates());
+					divisionName, modality, periodName, config.getOpensAt(), config.getClosesAt(),
+					config.getMaxCandidates());
 		});
 	}
 

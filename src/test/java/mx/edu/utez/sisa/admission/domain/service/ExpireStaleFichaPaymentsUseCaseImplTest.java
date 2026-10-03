@@ -61,7 +61,7 @@ class ExpireStaleFichaPaymentsUseCaseImplTest {
 
 	private static AdmissionConfigInfo config(UUID id, LocalDate closesOn) {
 		return new AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN, UUID.randomUUID(), "Ing. en TIC",
-				ProgramModality.PRESENCIAL, "2027-I", TODAY.minusDays(60).atStartOfDay(ZONE).toInstant(),
+				null, ProgramModality.PRESENCIAL, "2027-I", TODAY.minusDays(60).atStartOfDay(ZONE).toInstant(),
 				closesOn.atStartOfDay(ZONE).toInstant(), 120);
 	}
 

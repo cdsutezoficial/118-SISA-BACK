@@ -29,6 +29,7 @@ import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateStaffDetailResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessRequest;
@@ -275,6 +276,15 @@ public class CandidateController {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
 		return ResponseEntity.ok(CandidateFichaResponse.from(ficha));
+	}
+
+	@GetMapping("/{id}/detail")
+	public ResponseEntity<CandidateStaffDetailResponse> getStaffDetail(@PathVariable UUID id) {
+		FichaData ficha = getCandidateFichaUseCase.get(id);
+		if (ficha == null) {
+			throw new CandidateNotFoundException("No existe el candidato: " + id);
+		}
+		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
 	}
 
 	@GetMapping("/{id}/ficha.pdf")

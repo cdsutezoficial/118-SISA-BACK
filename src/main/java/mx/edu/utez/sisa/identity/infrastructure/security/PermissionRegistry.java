@@ -106,6 +106,7 @@ public final class PermissionRegistry {
 			e("PATCH", "/program-admission-configs/**", "PROGRAM_ADMISSION_CONFIGS_CHANGE_STATUS"),
 			// admission — candidates (exact path: /candidates/{id} stays public)
 			e("GET", "/candidates", "CANDIDATES_READ"),
+			e("GET", "/candidates/*/detail", "CANDIDATES_READ"),
 			// admission — outreach channels
 			e("GET", "/outreach-channels/**", "OUTREACH_CHANNELS_READ"),
 			e("POST", "/outreach-channels", "OUTREACH_CHANNELS_CREATE"),

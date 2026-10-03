@@ -164,7 +164,7 @@ class RegisterCandidateUseCaseImplTest {
 	 */
 	private static AdmissionConfigInfo configIn(UUID configId, Instant opensAt, Instant closesAt, int maxCandidates) {
 		return new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
-				"Ingeniería en Sistemas", null, null, opensAt, closesAt, maxCandidates);
+				"Ingeniería en Sistemas", null, null, null, opensAt, closesAt, maxCandidates);
 	}
 
 	/**

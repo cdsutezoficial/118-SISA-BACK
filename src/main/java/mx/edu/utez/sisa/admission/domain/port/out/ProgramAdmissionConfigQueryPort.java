@@ -76,6 +76,7 @@ public interface ProgramAdmissionConfigQueryPort {
 	 *                      count behind it lives in {@code admission}.
 	 */
 	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
-			ProgramModality modality, String periodName, Instant opensAt, Instant closesAt, int maxCandidates) {
+			String divisionName, ProgramModality modality, String periodName, Instant opensAt, Instant closesAt,
+			int maxCandidates) {
 	}
 }
