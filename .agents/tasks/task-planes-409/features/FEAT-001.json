@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Backend: separar el handler combinado handlePlanConflict (que agrupa 6 excepciones con mensaje genérico) en 6 handlers individuales con mensaje específico. Actualizar el test existente setGradeScaleWithDuplicateClassificationReturns409 para verificar $.message, y agregar 5 tests nuevos en AcademicPlanControllerTest.",
+  "status": "completed",
+  "steps": [
+    "Leer GlobalExceptionHandler.java en /home/cris/Escritorio/sisa/118-SISA-BACK/src/main/java/mx/edu/utez/sisa/academic_config/infrastructure/web/GlobalExceptionHandler.java",
+    "Reemplazar el bloque @ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class, DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class, PlanLevelInUseException.class, DuplicateGradeScaleException.class }) por 6 métodos individuales siguiendo el estilo de handleDuplicateDivisionName/handleDuplicateDivisionCode ya existentes en el mismo archivo. Mensajes exactos: DuplicatePlanVersionException → 'Ya existe un plan de estudios con esa versión para esta carrera.' | DuplicateLevelNumberException → 'Ya existe un nivel con ese número en este plan de estudios.' | DuplicateSubjectCodeException → 'Ya existe una materia con ese código en este plan de estudios.' | DuplicateGradeScaleException → 'Ya existe un rango de calificación con esa clasificación en este plan.' | PlanLevelHasSubjectsException → 'No se puede eliminar el nivel porque tiene materias asignadas.' | PlanLevelInUseException → 'No se puede eliminar el nivel porque está en uso.'",
+    "Leer AcademicPlanControllerTest.java en /home/cris/Escritorio/sisa/118-SISA-BACK/src/test/java/mx/edu/utez/sisa/academic_config/infrastructure/web/AcademicPlanControllerTest.java",
+    "Actualizar el test setGradeScaleWithDuplicateClassificationReturns409 agregando .andExpect(jsonPath('$.message').value('Ya existe un rango de calificación con esa clasificación en este plan.'))",
+    "Agregar 5 tests nuevos en AcademicPlanControllerTest: (1) createPlanWithDuplicateVersionReturns409 — mock createAcademicPlanUseCase.createPlan(any()).thenThrow(DuplicatePlanVersionException) → POST /plans → 409 con message exacto. (2) addLevelWithDuplicateNumberReturns409 — mock addPlanLevelUseCase.addLevel(any()).thenThrow(DuplicateLevelNumberException) → POST /plans/{id}/levels → 409 con message exacto. (3) addSubjectWithDuplicateCodeReturns409 — mock addSubjectToPlanUseCase.addSubject(any()).thenThrow(DuplicateSubjectCodeException) → POST /plans/{id}/levels/{levelId}/subjects → 409 con message exacto. (4) removeLevelWithSubjectsReturns409 — mock removePlanLevelUseCase.removeLevel(any()).thenThrow(PlanLevelHasSubjectsException) → DELETE /plans/{id}/levels/{levelId} → 409 con message exacto. (5) removeLevelInUseReturns409 — mock removePlanLevelUseCase.removeLevel(any()).thenThrow(PlanLevelInUseException) → DELETE /plans/{id}/levels/{levelId} → 409 con message exacto. Importar las excepciones necesarias. Los mocks ya existen como @MockitoBean en la clase.",
+    "Confirmar que createAcademicPlanUseCase tiene un método llamado createPlan leyendo AcademicPlanController.java si hay duda sobre el nombre del método del use case invocado en POST /plans",
+    "Commit: 'fix(planes): separar handlers 409 por excepción y agregar tests de mensaje'"
+  ],
+  "acceptance_criteria": [
+    "El bloque @ExceptionHandler combinado de 6 excepciones ya no existe en GlobalExceptionHandler.java",
+    "Existen 6 métodos @ExceptionHandler individuales, uno por excepción, todos retornando HttpStatus.CONFLICT con el mensaje exacto del plan",
+    "cd 118-SISA-BACK && ./mvnw test -pl . -Dtest=AcademicPlanControllerTest -q pasa sin errores",
+    "El test setGradeScaleWithDuplicateClassificationReturns409 verifica jsonPath('$.message') con el mensaje exacto",
+    "Los 5 tests nuevos existen y pasan"
+  ],
+  "verification": [
+    "cd /home/cris/Escritorio/sisa/118-SISA-BACK && ./mvnw compile -q",
+    "cd /home/cris/Escritorio/sisa/118-SISA-BACK && ./mvnw test -pl . -Dtest=AcademicPlanControllerTest -q"
+  ],
+  "blocked_reason": null,
+  "findings": "El método del use case invocado en POST /plans es createAcademicPlanUseCase.createPlan(CreateAcademicPlanCommand). POST /plans/{id}/levels usa addPlanLevelUseCase.addLevel(AddPlanLevelCommand). POST /plans/{id}/levels/{levelId}/subjects usa addSubjectToPlanUseCase.addSubject(AddSubjectCommand). DELETE /plans/{id}/levels/{levelId} usa removePlanLevelUseCase.removeLevel(RemovePlanLevelCommand). Todos los 6 handlers individuales se agregaron correctamente y los tests pasan. Los mensajes exactos implementados coinciden con los definidos en FEAT-001."
+}
