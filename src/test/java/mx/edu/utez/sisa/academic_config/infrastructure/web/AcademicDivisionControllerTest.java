@@ -136,7 +136,8 @@ class AcademicDivisionControllerTest {
 
 		mockMvc.perform(post("/divisions").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateDivisionBody("Name", "ISW", "desc", null))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("La clave de la división ya está en uso."));
 	}
 
 	@Test
@@ -146,7 +147,8 @@ class AcademicDivisionControllerTest {
 
 		mockMvc.perform(post("/divisions").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateDivisionBody("Name", "ISW", "desc", null))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("El nombre de la división ya está en uso."));
 	}
 
 	@Test
