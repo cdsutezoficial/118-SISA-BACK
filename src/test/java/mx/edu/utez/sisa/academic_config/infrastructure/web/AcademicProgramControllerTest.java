@@ -163,7 +163,8 @@ class AcademicProgramControllerTest {
 				.content(objectMapper.writeValueAsString(new CreateProgramBody(divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
 						"desc"))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("La clave de la carrera ya está en uso."));
 	}
 
 	@Test
@@ -175,7 +176,8 @@ class AcademicProgramControllerTest {
 				.content(objectMapper.writeValueAsString(new CreateProgramBody(divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
 						"desc"))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe una carrera con el mismo nombre de oferta y modalidad."));
 	}
 
 	@Test
