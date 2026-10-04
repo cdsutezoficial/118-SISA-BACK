@@ -85,9 +85,16 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró la división académica solicitada.", request);
 	}
 
-	@ExceptionHandler({ DuplicateDivisionCodeException.class, DuplicateDivisionNameException.class })
-	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe una división académica con la información proporcionada.", request);
+	@ExceptionHandler(DuplicateDivisionNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateDivisionName(DuplicateDivisionNameException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "El nombre de la división ya está en uso.", request);
+	}
+
+	@ExceptionHandler(DuplicateDivisionCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateDivisionCode(DuplicateDivisionCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "La clave de la división ya está en uso.", request);
 	}
 
 	@ExceptionHandler(DirectorNotFoundException.class)
@@ -102,9 +109,16 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró la carrera solicitada.", request);
 	}
 
-	@ExceptionHandler({ DuplicateProgramCodeException.class, DuplicateOfferNameModalityException.class })
-	public ResponseEntity<ErrorResponse> handleProgramConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe una carrera con la información proporcionada.", request);
+	@ExceptionHandler(DuplicateProgramCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateProgramCode(DuplicateProgramCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "La clave de la carrera ya está en uso.", request);
+	}
+
+	@ExceptionHandler(DuplicateOfferNameModalityException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateOfferNameModality(DuplicateOfferNameModalityException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe una carrera con el mismo nombre de oferta y modalidad.", request);
 	}
 
 	@ExceptionHandler(DivisionNotFoundException.class)
