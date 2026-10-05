@@ -12,6 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
  * deliberately NOT validated for uniqueness, per the domain doc. Date-range
  * validation and the {@code CONFIGURATION} default status are enforced by
  * the {@link AcademicPeriod} constructor itself.
+ *
+ * <p>{@code name} is normalized by {@link AcademicPeriodTextNormalizer} before
+ * persisting. This is hygiene, not correctness: the duplicate key is
+ * {@code (year, periodNumber)}, and neither of those two fields is text, so
+ * nothing here can make a 409 fire or miss. What it does guarantee is that no row
+ * ever stores a run of spaces or a leading/trailing one.
  */
 public class CreateAcademicPeriodUseCaseImpl implements CreateAcademicPeriodUseCase {
 
@@ -29,9 +35,9 @@ public class CreateAcademicPeriodUseCaseImpl implements CreateAcademicPeriodUseC
 					"A period already exists for year " + command.year() + " and periodNumber " + command.periodNumber());
 		}
 
-		AcademicPeriod period = new AcademicPeriod(command.name(), command.year(), command.periodNumber(),
-				command.type(), command.startDate(), command.endDate(), command.enrollmentStart(),
-				command.enrollmentEnd());
+		AcademicPeriod period = new AcademicPeriod(AcademicPeriodTextNormalizer.name(command.name()), command.year(),
+				command.periodNumber(), command.type(), command.startDate(), command.endDate(),
+				command.enrollmentStart(), command.enrollmentEnd());
 		AcademicPeriod saved = periodRepository.save(period);
 
 		return toResult(saved);

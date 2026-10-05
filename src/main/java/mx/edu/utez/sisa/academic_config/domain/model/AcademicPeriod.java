@@ -78,7 +78,12 @@ public class AcademicPeriod {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false)
+	// `length` replica el `@Size(max = …)` del DTO, para que el techo no viva
+	// sólo en la validación de entrada (mismo criterio que `AcademicDivision`,
+	// `AcademicProgram` y `SubjectClassification`). `ddl-auto: update` no encoge
+	// columnas existentes, así que bajarlo de 255 no toca los registros ya
+	// guardados.
+	@Column(nullable = false, length = 150)
 	private String name;
 
 	/**
