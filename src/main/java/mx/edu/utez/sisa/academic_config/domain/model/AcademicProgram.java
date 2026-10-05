@@ -56,7 +56,7 @@ public class AcademicProgram {
 	@Column
 	private UUID continuityProgramId;
 
-	@Column
+	@Column(length = 100)
 	private String dgpCode;
 
 	@Column(length = 500)
