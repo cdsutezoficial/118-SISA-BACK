@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListHighSchoolTypesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListOutreachChannelsUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
@@ -23,6 +24,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -49,6 +51,7 @@ import mx.edu.utez.sisa.admission.domain.service.InitiateFichaPaymentUseCaseImpl
 import mx.edu.utez.sisa.admission.domain.service.ReleaseFichaPaymentSlotUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.ListCandidatesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.OrderIdBuilder;
 import mx.edu.utez.sisa.admission.domain.service.RegisterCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateHighSchoolTypeUseCaseImpl;
@@ -141,6 +144,15 @@ public class UseCaseConfig {
 	public ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase(
 			HighSchoolTypeRepository highSchoolTypeRepository) {
 		return new ChangeHighSchoolTypeStatusUseCaseImpl(highSchoolTypeRepository);
+	}
+
+	@Bean
+	public ListCandidatesUseCase listCandidatesUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			CallerDivisionScopePort callerDivisionScopePort) {
+		return new ListCandidatesUseCaseImpl(candidateRepository, candidatePersonRepository,
+				programAdmissionConfigQueryPort, callerDivisionScopePort);
 	}
 
 	/**

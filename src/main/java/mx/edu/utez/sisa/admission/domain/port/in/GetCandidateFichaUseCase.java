@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.port.in;
 
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 
@@ -48,13 +49,17 @@ public interface GetCandidateFichaUseCase {
 	 * when it differs from {@code registrationDeadline}.
 	 */
 	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
-			UUID admissionConfigId, String programName, String curp, String firstName, String lastName1,
+			UUID admissionConfigId, String programName, String divisionName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
 			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
 			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
-			AntecedentesEscolares antecedentesEscolares) {
+			AntecedentesEscolares antecedentesEscolares, PaymentData inductionPayment) {
+
+		public record PaymentData(AdmissionPaymentConcept concept, BigDecimal amount, String referenceNumber,
+				AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {
+		}
 
 		/** Datos Generales (Paso 1) — identity facts resolved to display labels where catalog-led. */
 		public record DatosGenerales(LocalDate birthDate, Gender gender, String nationality, String birthStateName,

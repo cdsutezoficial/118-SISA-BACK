@@ -7,14 +7,49 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Guards the (HTTP method, Ant pattern) → permission-key mapping, whose two
- * failure modes are silent: a pattern that matches nothing leaves the route
- * governed only by the coarse role matchers, and a broad pattern declared
- * before a narrow one shadows it (roles-permisos.md §3.3 — first match wins).
+ * Guards the (HTTP method, Ant pattern) → permission-key mapping, whose failure
+ * modes are silent: a pattern that matches nothing leaves the route governed
+ * only by the coarse role matchers, a broad pattern declared before a narrow one
+ * shadows it (roles-permisos.md §3.3 — first match wins), and an exact path can
+ * be swallowed by its own nested sibling ("/candidates/*" does NOT cover
+ * "/candidates"). Each of those was a real bug here, so each is pinned below.
  */
 class PermissionRegistryTest {
 
 	private static final String USER_ID = "8f14e45f-ceea-467a-9ba9-1c1b1a3f4e2d";
+
+	// ── candidate list ────────────────────────────────────────────────────────
+
+	@Test
+	void candidateListMapsToCandidatesRead() {
+		assertThat(PermissionRegistry.resolve("GET", "/candidates")).contains("CANDIDATES_READ");
+	}
+
+	@Test
+	void candidateDetailStaysUnregisteredBecauseItIsPublic() {
+		assertThat(PermissionRegistry.resolve("GET", "/candidates/2f1c0e2e-0000-0000-0000-000000000000")).isEmpty();
+	}
+
+	// ── matching rules ────────────────────────────────────────────────────────
+
+	@Test
+	void referenceClassPathsAreNeverGovernedByTheFineGrainedLayer() {
+		assertThat(PermissionRegistry.resolve("GET", "/programs/options")).isEmpty();
+		assertThat(PermissionRegistry.resolve("GET", "/programs/available")).isEmpty();
+	}
+
+	@Test
+	void moreSpecificNestedPatternWinsOverItsBroaderSibling() {
+		assertThat(PermissionRegistry.resolve("PUT", "/roles/abc/permissions")).contains("ROLES_ASSIGN_PERMISSIONS");
+		assertThat(PermissionRegistry.resolve("POST", "/periods/advance-by-date")).contains("PERIODS_ADVANCE_BY_DATE");
+	}
+
+	@Test
+	void unregisteredRouteFallsBackToTheCoarseLayerAlone() {
+		assertThat(PermissionRegistry.resolve("DELETE", "/does-not-exist")).isEmpty();
+	}
+
+	// ── admin password reset ──────────────────────────────────────────────────
 
 	@Test
 	void adminPasswordResetResolvesToItsOwnPermission() {

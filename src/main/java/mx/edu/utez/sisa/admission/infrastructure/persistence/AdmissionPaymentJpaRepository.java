@@ -1,10 +1,8 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
-import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,6 +26,8 @@ public interface AdmissionPaymentJpaRepository
 		extends JpaRepository<AdmissionPayment, UUID>, AdmissionPaymentOccupancyQueries {
 
 	Optional<AdmissionPayment> findByCandidateId(UUID candidateId);
+
+	Optional<AdmissionPayment> findByCandidateIdAndConcept(UUID candidateId, AdmissionPaymentConcept concept);
 
 	/**
 	 * Backs {@code AdmissionPaymentRepository#countPaidByAdmissionConfigId} — the

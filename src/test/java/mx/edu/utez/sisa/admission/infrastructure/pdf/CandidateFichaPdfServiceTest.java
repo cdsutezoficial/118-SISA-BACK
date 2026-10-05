@@ -285,6 +285,7 @@ class CandidateFichaPdfServiceTest {
 				Instant.parse("2026-01-20T12:00:00Z"),
 				UUID.fromString("22222222-2222-2222-2222-222222222222"),
 				"Licenciatura en Enfermería",
+				"División de Ciencias de la Salud",
 				"SASC930515MJCLNN09",
 				"Ana",
 				"Salas",
@@ -316,7 +317,8 @@ new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 					new BigDecimal("6500.00"), "Ferretería López", "Cajero", LocalTime.of(9, 0), LocalTime.of(18, 0)),
 				new SeleccionCarrera("Mixta", "Amigo que estudia aquí", true, "Enero – Abril 2026"),
 				new AntecedentesEscolares("CBTis 121", "Bachillerato General", true, "Michoacán de Ocampo", "Jiquilpan",
-						null, null, new BigDecimal("8.90"), "16DCT0121B"));
+						null, null, new BigDecimal("8.90"), "16DCT0121B"),
+				null);
 	}
 
 	private static FichaData minimalFicha() {
@@ -325,6 +327,7 @@ new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 				"ADM-2026-000099",
 				CandidateStatus.REGISTERED,
 				Instant.parse("2026-01-20T12:00:00Z"),
+				null,
 				null,
 				null,
 				"",
@@ -349,6 +352,7 @@ new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 						false, false),
 				new Ingresos(null, false, null, "", null, "", "", null, null),
 				new SeleccionCarrera("", "", false, ""),
-				new AntecedentesEscolares("", "", true, "", "", null, "", null, ""));
+				new AntecedentesEscolares("", "", true, "", "", null, "", null, ""),
+				null);
 	}
 }

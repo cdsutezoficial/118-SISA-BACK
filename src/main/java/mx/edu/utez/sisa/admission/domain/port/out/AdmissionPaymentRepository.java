@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.port.out;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -17,6 +18,8 @@ public interface AdmissionPaymentRepository {
 	AdmissionPayment save(AdmissionPayment payment);
 
 	Optional<AdmissionPayment> findByCandidateId(UUID candidateId);
+
+	Optional<AdmissionPayment> findByCandidateIdAndConcept(UUID candidateId, AdmissionPaymentConcept concept);
 
 	/**
 	 * How many fichas of the given admission config have actually been

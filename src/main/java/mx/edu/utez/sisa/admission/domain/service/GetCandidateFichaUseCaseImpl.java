@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
@@ -97,10 +98,16 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 	}
 
 	private java.util.Optional<FichaData> assemble(Candidate candidate) {
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidate.getId()).orElse(null);
+		AdmissionPayment payment = admissionPaymentRepository
+				.findByCandidateIdAndConcept(candidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA)
+				.orElse(null);
 		if (payment == null) {
 			return java.util.Optional.empty();
 		}
+		FichaData.PaymentData inductionPayment = admissionPaymentRepository
+				.findByCandidateIdAndConcept(candidate.getId(), AdmissionPaymentConcept.INDUCTION_COURSE)
+				.map(this::toPaymentData)
+				.orElse(null);
 		Person person = candidatePersonRepository.findById(candidate.getPersonId()).orElse(null);
 		if (person == null) {
 			return java.util.Optional.empty();
@@ -133,7 +140,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 				: config.closesAt().atZone(clock.getZone()).toLocalDate();
 		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
 		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName, person.getCurp(),
+				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
+				config == null ? null : config.divisionName(), person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
 				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(),
 				liveAmount(config, payment), payment.getRegistrationDeadline(), paymentClosesOn, paymentDeadline,
@@ -171,7 +179,13 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								resolveSchoolType(school.getSchoolTypeId()), school.isStudiedInMexico(),
 								resolveState(school.getSchoolStateId()),
 								resolveMunicipality(school.getSchoolMunicipalityId()), school.getForeignCountry(),
-								school.getSchoolCity(), school.getGpa(), school.getCct())));
+								school.getSchoolCity(), school.getGpa(), school.getCct()),
+				inductionPayment));
+	}
+
+	private FichaData.PaymentData toPaymentData(AdmissionPayment payment) {
+		return new FichaData.PaymentData(payment.getConcept(), payment.getAmount(), payment.getReferenceNumber(),
+				payment.getPaymentStatus(), payment.getReceiptNumber(), payment.getPaidAt(), payment.getOrderId());
 	}
 
 	/**

@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.service.FichaPaymentWindow;
@@ -48,6 +49,11 @@ public class AdmissionPaymentRepositoryAdapter implements AdmissionPaymentReposi
 	@Override
 	public Optional<AdmissionPayment> findByCandidateId(UUID candidateId) {
 		return jpaRepository.findByCandidateId(candidateId);
+	}
+
+	@Override
+	public Optional<AdmissionPayment> findByCandidateIdAndConcept(UUID candidateId, AdmissionPaymentConcept concept) {
+		return jpaRepository.findByCandidateIdAndConcept(candidateId, concept);
 	}
 
 	@Override

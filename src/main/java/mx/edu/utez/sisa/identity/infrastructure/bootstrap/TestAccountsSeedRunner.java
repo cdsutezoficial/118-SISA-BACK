@@ -32,9 +32,13 @@ import java.util.UUID;
  * its role doesn't exist yet (checked per role via
  * {@link UserRoleRepository#existsByRoleId(UUID)}), and the whole runner
  * skips when the shared password property is blank. Roles are seeded with
- * {@code divisionId = null} — the DIRECTOR_DIVISION UI isn't division-scoped
- * yet, so a null division is sufficient for exercising the role-based
- * frontend.
+ * {@code divisionId = null} because this module cannot see which divisions
+ * exist — {@code academic_config} owns that catalog. The one grant that needs
+ * a scope, {@code DIRECTOR_DIVISION}, is backfilled right after this runner by
+ * {@code academic_config.TestDirectorScopeSeedRunner} ({@code @Order(15)});
+ * until then the null scope simply hides the seeded Director from the
+ * division-filtered lists, which is why that follow-up exists rather than
+ * being optional.
  */
 @Component
 @Order(10)

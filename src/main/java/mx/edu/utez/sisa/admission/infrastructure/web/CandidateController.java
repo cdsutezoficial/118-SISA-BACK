@@ -2,11 +2,16 @@ package mx.edu.utez.sisa.admission.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.CandidateListItem;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesQuery;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
@@ -21,7 +26,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaD
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateStaffDetailResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessRequest;
@@ -39,11 +47,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -96,6 +106,8 @@ public class CandidateController {
 
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
+	private final ListCandidatesUseCase listCandidatesUseCase;
+
 	private final CandidateFichaMailService fichaMailService;
 
 	private final CandidateFichaPdfService fichaPdfService;
@@ -107,7 +119,8 @@ public class CandidateController {
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase,
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
 			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
-			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
+			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
+			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
@@ -115,9 +128,37 @@ public class CandidateController {
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
 		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
+		this.listCandidatesUseCase = listCandidatesUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
+	}
+
+	/**
+	 * Staff-facing candidate list ("Candidatos" screen). Every filter is optional
+	 * and the whole query is scoped server-side from the JWT: a
+	 * {@code DIRECTOR_DIVISION} caller is restricted to their own division's
+	 * programs (RN-ADM-004), so {@code divisionId} is deliberately NOT a
+	 * request parameter. Unlike the public ficha endpoints, this one requires a
+	 * session ({@code SecurityFilterConfig}) and its permission
+	 * ({@code CANDIDATES_READ}, {@code PermissionRegistry}).
+	 *
+	 * @param status    optional — exact {@link CandidateStatus}
+	 * @param programId optional — filter by chosen program
+	 * @param periodId  optional — filter by the config's destination period
+	 * @param search    optional — matches folio, CURP or name
+	 */
+	@GetMapping
+	public ResponseEntity<CandidateListResponse> listCandidates(@RequestParam(required = false) CandidateStatus status,
+			@RequestParam(required = false) UUID programId, @RequestParam(required = false) UUID periodId,
+			@RequestParam(required = false) String search, @RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size, Authentication authentication) {
+		UUID callerId = UUID.fromString(authentication.getName());
+		ListCandidatesResult result = listCandidatesUseCase
+				.listCandidates(new ListCandidatesQuery(callerId, status, programId, periodId, search, page, size));
+		return ResponseEntity.ok(new CandidateListResponse(
+				result.items().stream().map(CandidateController::toItem).toList(), result.totalElements(),
+				result.totalPages(), result.page(), result.size()));
 	}
 
 	@PostMapping
@@ -235,6 +276,15 @@ public class CandidateController {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
 		return ResponseEntity.ok(CandidateFichaResponse.from(ficha));
+	}
+
+	@GetMapping("/{id}/detail")
+	public ResponseEntity<CandidateStaffDetailResponse> getStaffDetail(@PathVariable UUID id) {
+		FichaData ficha = getCandidateFichaUseCase.get(id);
+		if (ficha == null) {
+			throw new CandidateNotFoundException("No existe el candidato: " + id);
+		}
+		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
 	}
 
 	@GetMapping("/{id}/ficha.pdf")
@@ -383,6 +433,11 @@ public class CandidateController {
 
 	private static String normalize(String value) {
 		return value.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private static CandidateListItemResponse toItem(CandidateListItem item) {
+		return new CandidateListItemResponse(item.id(), item.folio(), item.fullName(), item.curp(), item.programId(),
+				item.programName(), item.status(), item.registeredAt());
 	}
 
 	private static String fullName(FichaData ficha) {

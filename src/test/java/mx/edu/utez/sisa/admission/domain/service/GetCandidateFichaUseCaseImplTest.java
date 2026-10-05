@@ -139,7 +139,7 @@ class GetCandidateFichaUseCaseImplTest {
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
-						ProgramModality.PRESENCIAL, "2026-2", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
+						null, ProgramModality.PRESENCIAL, "2026-2", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
 
 		// The payment window is read live, so the PDF's "Fecha límite de pago" can
 		// differ from the registration window and a test can tell them apart.
