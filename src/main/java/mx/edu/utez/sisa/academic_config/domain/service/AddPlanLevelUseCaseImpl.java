@@ -34,7 +34,8 @@ public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 					+ plan.getTotalLevels() + "): " + command.levelNumber());
 		}
 
-		plan.addLevel(command.levelNumber(), command.type(), command.description());
+		plan.addLevel(command.levelNumber(), command.type(),
+				AcademicPlanTextNormalizer.levelDescription(command.description()));
 		AcademicPlan saved = planRepository.save(plan);
 
 		/*

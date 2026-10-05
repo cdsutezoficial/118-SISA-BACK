@@ -30,7 +30,10 @@ public class AddSubjectToPlanUseCaseImpl implements AddSubjectToPlanUseCase {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
 
-		plan.addSubject(command.planLevelId(), command.code(), command.name(), command.credits(),
+		String code = AcademicPlanTextNormalizer.subjectCode(command.code());
+		String name = AcademicPlanTextNormalizer.subjectName(command.name());
+
+		plan.addSubject(command.planLevelId(), code, name, command.credits(),
 				command.weeklyHours(), command.evaluationUnits(), command.displayOrder(), command.type(),
 				command.isRetakeable(), command.classificationId());
 		AcademicPlan saved = planRepository.save(plan);
@@ -39,10 +42,16 @@ public class AddSubjectToPlanUseCaseImpl implements AddSubjectToPlanUseCase {
 		 * Re-fetched from the SAVED plan by code (unique within the plan),
 		 * not the in-memory reference returned by addSubject() above — same
 		 * apply-phase discovery/rationale as AddPlanLevelUseCaseImpl.
+		 *
+		 * Compared against the *normalized* code, not `command.code()`: the
+		 * subject was just persisted under the normalized, upper-cased form, so
+		 * matching the raw input would find nothing and throw
+		 * IllegalStateException. Comparison is also case-insensitive, mirroring
+		 * AcademicPlan#hasSubjectCode.
 		 */
 		Subject savedSubject = saved.getLevels().stream().flatMap(level -> level.getSubjects().stream())
-				.filter(candidate -> candidate.getCode().equals(command.code())).findFirst()
-				.orElseThrow(() -> new IllegalStateException("Added subject disappeared: " + command.code()));
+				.filter(candidate -> candidate.getCode().equalsIgnoreCase(code)).findFirst()
+				.orElseThrow(() -> new IllegalStateException("Added subject disappeared: " + code));
 
 		return CreateAcademicPlanUseCaseImpl.toSubjectResult(savedSubject);
 	}

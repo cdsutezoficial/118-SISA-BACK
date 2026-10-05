@@ -44,9 +44,9 @@ public class CreateAcademicPlanUseCaseImpl implements CreateAcademicPlanUseCase 
 	@Override
 	@Transactional
 	public AcademicPlanResult createPlan(CreateAcademicPlanCommand command) {
-		String version = AcademicPlanTextNormalizer.required(command.version());
-		String validityPeriod = AcademicPlanTextNormalizer.required(command.validityPeriod());
-		String titulationKey = AcademicPlanTextNormalizer.required(command.titulationKey());
+		String version = AcademicPlanTextNormalizer.version(command.version());
+		String validityPeriod = AcademicPlanTextNormalizer.validityPeriod(command.validityPeriod());
+		String titulationKey = AcademicPlanTextNormalizer.titulationKey(command.titulationKey());
 		if (command.programId() == null || programRepository.findById(command.programId()).isEmpty()) {
 			throw new ProgramNotFoundException("Academic program not found: " + command.programId());
 		}

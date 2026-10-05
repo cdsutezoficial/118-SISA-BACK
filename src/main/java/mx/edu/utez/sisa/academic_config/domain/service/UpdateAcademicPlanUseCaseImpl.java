@@ -42,9 +42,9 @@ public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase 
 	public AcademicPlanResult updatePlan(UpdateAcademicPlanCommand command) {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
-		String version = AcademicPlanTextNormalizer.required(command.version());
-		String validityPeriod = AcademicPlanTextNormalizer.required(command.validityPeriod());
-		String titulationKey = AcademicPlanTextNormalizer.required(command.titulationKey());
+		String version = AcademicPlanTextNormalizer.version(command.version());
+		String validityPeriod = AcademicPlanTextNormalizer.validityPeriod(command.validityPeriod());
+		String titulationKey = AcademicPlanTextNormalizer.titulationKey(command.titulationKey());
 
 		if (command.minPassingGrade() == null || command.minPassingGrade().compareTo(MIN_PASSING_GRADE_FLOOR) < 0
 				|| command.minPassingGrade().compareTo(MIN_PASSING_GRADE_CEILING) > 0) {
