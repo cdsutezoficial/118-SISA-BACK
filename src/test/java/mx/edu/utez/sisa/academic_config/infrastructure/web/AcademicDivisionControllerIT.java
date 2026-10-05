@@ -46,13 +46,15 @@ class AcademicDivisionControllerIT {
 	@Test
 	void adminHasFullCrudAccess() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
-		exerciseFullCrud(token, "ISW-ADMIN", "Ingeniería en Software (Admin)");
+		// Código sólo con letras y nombre sin paréntesis: ambos formatos los exige
+		// `CreateAcademicDivisionRequest` desde la regla del 2026-10-04.
+		exerciseFullCrud(token, "ISWADM", "Ingeniería en Software Admin");
 	}
 
 	@Test
 	void serviciosEscolaresHasFullCrudAccess() throws Exception {
 		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
-		exerciseFullCrud(token, "ISW-SE", "Ingeniería en Software (SE)");
+		exerciseFullCrud(token, "ISWSE", "Ingeniería en Software Servicios Escolares");
 	}
 
 	@Test

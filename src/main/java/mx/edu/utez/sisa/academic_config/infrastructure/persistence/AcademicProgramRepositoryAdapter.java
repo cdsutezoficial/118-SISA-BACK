@@ -40,12 +40,12 @@ public class AcademicProgramRepositoryAdapter implements AcademicProgramReposito
 
 	@Override
 	public Optional<AcademicProgram> findByCode(String code) {
-		return jpaRepository.findByCode(code);
+		return jpaRepository.findByCodeIgnoreCase(code);
 	}
 
 	@Override
 	public Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality) {
-		return jpaRepository.findByOfferNameAndModality(offerName, modality);
+		return jpaRepository.findByOfferNameIgnoreCaseAndModality(offerName, modality);
 	}
 
 	@Override

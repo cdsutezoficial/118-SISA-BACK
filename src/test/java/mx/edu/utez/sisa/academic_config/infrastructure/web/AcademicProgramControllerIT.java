@@ -65,14 +65,14 @@ class AcademicProgramControllerIT {
 	void adminHasFullCrudAccess() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		exerciseFullCrud(token, "ISW-ADMIN-" + UUID.randomUUID().toString().substring(0, 6),
-				"Ingeniería en Software (Admin)");
+				"Ingeniería en Software Admin");
 	}
 
 	@Test
 	void serviciosEscolaresHasFullCrudAccess() throws Exception {
 		String token = tokenFor(RoleType.SERVICIOS_ESCOLARES);
 		exerciseFullCrud(token, "ISW-SE-" + UUID.randomUUID().toString().substring(0, 6),
-				"Ingeniería en Software (SE)");
+				"Ingeniería en Software Servicios Escolares");
 	}
 
 	@Test

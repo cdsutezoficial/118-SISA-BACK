@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -20,8 +19,19 @@ public interface AcademicPlanJpaRepository extends JpaRepository<AcademicPlan, U
 	/**
 	 * Backs the {@code version} uniqueness-within-{@code programId} check
 	 * (spec: "version MUST be unique within the same programId").
+	 *
+	 * <p>Case-insensitive on purpose, and returning a {@code List} rather than a
+	 * single result so a database that somehow holds two case-variant versions
+	 * does not blow up with {@code IncorrectResultSizeDataAccessException}. The
+	 * reason for ignoring case: the {@code unique (program_id, version)}
+	 * constraint is evaluated by the database using the column collation, which
+	 * on MySQL is case-insensitive by default. An exact-match query in the
+	 * application would therefore accept {@code "2024-1"} when {@code "2024-1"}
+	 * already exists, and the user would get a generic 400 from the constraint
+	 * violation instead of the intended 409 "Ya existe un plan de estudios con
+	 * esa versión para esta carrera."
 	 */
-	Optional<AcademicPlan> findByProgramIdAndVersion(UUID programId, String version);
+	List<AcademicPlan> findByProgramIdAndVersionIgnoreCase(UUID programId, String version);
 
 	/**
 	 * Backs {@code ListAcademicPlansUseCase}. {@code programId} is a plain

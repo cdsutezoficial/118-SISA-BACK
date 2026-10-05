@@ -85,9 +85,16 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró la división académica solicitada.", request);
 	}
 
-	@ExceptionHandler({ DuplicateDivisionCodeException.class, DuplicateDivisionNameException.class })
-	public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe una división académica con la información proporcionada.", request);
+	@ExceptionHandler(DuplicateDivisionNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateDivisionName(DuplicateDivisionNameException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "El nombre de la división ya está en uso.", request);
+	}
+
+	@ExceptionHandler(DuplicateDivisionCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateDivisionCode(DuplicateDivisionCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "La clave de la división ya está en uso.", request);
 	}
 
 	@ExceptionHandler(DirectorNotFoundException.class)
@@ -102,9 +109,16 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró la carrera solicitada.", request);
 	}
 
-	@ExceptionHandler({ DuplicateProgramCodeException.class, DuplicateOfferNameModalityException.class })
-	public ResponseEntity<ErrorResponse> handleProgramConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe una carrera con la información proporcionada.", request);
+	@ExceptionHandler(DuplicateProgramCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateProgramCode(DuplicateProgramCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "La clave de la carrera ya está en uso.", request);
+	}
+
+	@ExceptionHandler(DuplicateOfferNameModalityException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateOfferNameModality(DuplicateOfferNameModalityException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe una carrera con el mismo nombre de oferta y modalidad.", request);
 	}
 
 	@ExceptionHandler(DivisionNotFoundException.class)
@@ -129,11 +143,40 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
 	}
 
-	@ExceptionHandler({ DuplicatePlanVersionException.class, DuplicateLevelNumberException.class,
-			DuplicateSubjectCodeException.class, PlanLevelHasSubjectsException.class,
-			PlanLevelInUseException.class, DuplicateGradeScaleException.class })
-	public ResponseEntity<ErrorResponse> handlePlanConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "No se puede completar la operación porque la información ya existe o está en uso.", request);
+	@ExceptionHandler(DuplicatePlanVersionException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicatePlanVersion(DuplicatePlanVersionException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un plan de estudios con esa versión para esta carrera.", request);
+	}
+
+	@ExceptionHandler(DuplicateLevelNumberException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateLevelNumber(DuplicateLevelNumberException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un nivel con ese número en este plan de estudios.", request);
+	}
+
+	@ExceptionHandler(DuplicateSubjectCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateSubjectCode(DuplicateSubjectCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe una materia con ese código en este plan de estudios.", request);
+	}
+
+	@ExceptionHandler(DuplicateGradeScaleException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateGradeScale(DuplicateGradeScaleException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un rango de calificación con esa clasificación en este plan.", request);
+	}
+
+	@ExceptionHandler(PlanLevelHasSubjectsException.class)
+	public ResponseEntity<ErrorResponse> handlePlanLevelHasSubjects(PlanLevelHasSubjectsException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "No se puede eliminar el nivel porque tiene materias asignadas.", request);
+	}
+
+	@ExceptionHandler(PlanLevelInUseException.class)
+	public ResponseEntity<ErrorResponse> handlePlanLevelInUse(PlanLevelInUseException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "No se puede eliminar el nivel porque está en uso.", request);
 	}
 
 	@ExceptionHandler(DuplicateClassificationCodeException.class)

@@ -28,7 +28,10 @@ public class UpdateSubjectUseCaseImpl implements UpdateSubjectUseCase {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
 
-		plan.updateSubject(command.subjectId(), command.code(), command.name(), command.credits(),
+		String code = AcademicPlanTextNormalizer.subjectCode(command.code());
+		String name = AcademicPlanTextNormalizer.subjectName(command.name());
+
+		plan.updateSubject(command.subjectId(), code, name, command.credits(),
 				command.weeklyHours(), command.evaluationUnits(), command.displayOrder(), command.type(),
 				command.isRetakeable(), command.classificationId());
 		AcademicPlan saved = planRepository.save(plan);

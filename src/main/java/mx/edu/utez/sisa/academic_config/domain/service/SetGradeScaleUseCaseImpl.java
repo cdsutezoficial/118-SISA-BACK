@@ -72,9 +72,15 @@ public class SetGradeScaleUseCaseImpl implements SetGradeScaleUseCase {
 	}
 
 	static List<GradeScaleEntryData> toEntryData(List<GradeScaleEntryCommand> entries) {
+		// `letter`/`description` are compacted and trimmed before they reach the
+		// columns: they are free text (unlike the numeric bounds, which are
+		// compared and stored as-is), and without this a description sent as
+		// " Competente" would be persisted with its leading space and would not
+		// match the same description typed without it.
 		return entries.stream()
-				.map(entry -> new GradeScaleEntryData(entry.fromValue(), entry.toValue(), entry.letter(),
-						entry.description(), entry.passed()))
+				.map(entry -> new GradeScaleEntryData(entry.fromValue(), entry.toValue(),
+						AcademicPlanTextNormalizer.entryLetter(entry.letter()),
+						AcademicPlanTextNormalizer.entryDescription(entry.description()), entry.passed()))
 				.toList();
 	}
 }

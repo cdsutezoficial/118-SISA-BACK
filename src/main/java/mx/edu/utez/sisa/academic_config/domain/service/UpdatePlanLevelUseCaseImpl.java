@@ -37,7 +37,8 @@ public class UpdatePlanLevelUseCaseImpl implements UpdatePlanLevelUseCase {
 					+ plan.getTotalLevels() + "): " + command.levelNumber());
 		}
 
-		plan.updateLevel(command.levelId(), command.levelNumber(), command.type(), command.description());
+		plan.updateLevel(command.levelId(), command.levelNumber(), command.type(),
+				AcademicPlanTextNormalizer.levelDescription(command.description()));
 		AcademicPlan saved = planRepository.save(plan);
 
 		PlanLevel updatedLevel = saved.getLevels().stream().filter(level -> command.levelId().equals(level.getId()))

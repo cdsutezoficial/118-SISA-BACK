@@ -23,14 +23,14 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 	 * across all programs"). No case-insensitivity requirement for this
 	 * aggregate — unlike {@code AcademicDivisionJpaRepository#findByCodeIgnoreCase}.
 	 */
-	Optional<AcademicProgram> findByCode(String code);
+	Optional<AcademicProgram> findByCodeIgnoreCase(String code);
 
 	/**
 	 * Backs the {@code (offerName, modality)} composite uniqueness check
 	 * (spec: "The pair (offerName, modality) MUST be unique across all
 	 * programs").
 	 */
-	Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality);
+	Optional<AcademicProgram> findByOfferNameIgnoreCaseAndModality(String offerName, ProgramModality modality);
 
 	/**
 	 * Backs {@code ListAcademicProgramsUseCase}. {@code divisionId} is a plain
