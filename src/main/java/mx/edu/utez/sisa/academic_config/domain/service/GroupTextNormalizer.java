@@ -27,6 +27,16 @@ import java.util.Locale;
  * {@code ^\d+\p{L}+$} no admite espacios internos de todas formas. Compactarlos
  * a un solo espacio los dejaría igual de inválidos, sólo que más difícil de
  * diagnosticar.
+ *
+ * <p>
+ * El prefijo numérico se <em>canonicaliza</em> quitándole los ceros a la
+ * izquierda: {@code 03A} se guarda como {@code 3A}. Sin esto los dos valores
+ * conviven sin chocar — {@code (generationId, code)} compara literal —, así que
+ * el nivel 3 tendría dos "A": una escrita {@code 3A} y otra {@code 03A}, y la
+ * segunda se colaría además por la comprobación de unicidad en Java. Se hace
+ * aquí, antes de {@code requireUniqueCode} y antes de comparar contra el número
+ * de nivel, para que los dos caminos (crear y editar) converjan en el mismo
+ * valor normalizado. Ver {@code CreateGroupUseCaseImpl#requireCodeMatchesLevel}.
  */
 final class GroupTextNormalizer {
 
@@ -34,15 +44,16 @@ final class GroupTextNormalizer {
 	}
 
 	/**
-	 * Recorta, quita el BOM y los espacios, y pasa a mayúsculas con
-	 * {@link Locale#ROOT}. Devuelve el valor tal cual si es {@code null}, para no
-	 * mover el problema del campo ausente al normalizador: eso es trabajo de
-	 * {@code @NotNull}.
+	 * Recorta, quita el BOM y los espacios, pasa a mayúsculas con
+	 * {@link Locale#ROOT} y quita los ceros a la izquierda del prefijo numérico.
+	 * Devuelve el valor tal cual si es {@code null}, para no mover el problema
+	 * del campo ausente al normalizador: eso es trabajo de {@code @NotNull}.
 	 */
 	static String code(String value) {
 		if (value == null) {
 			return null;
 		}
-		return value.replace("\uFEFF", "").replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+		return value.replace("\uFEFF", "").replaceAll("\\s+", "").toUpperCase(Locale.ROOT)
+				.replaceFirst("^0+(?=\\p{N})", "");
 	}
 }

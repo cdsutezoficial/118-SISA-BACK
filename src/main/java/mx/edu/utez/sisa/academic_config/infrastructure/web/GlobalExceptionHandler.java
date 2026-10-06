@@ -29,6 +29,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeExc
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GroupCodeLevelMismatchException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GroupNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPeriodStatusTransitionException;
@@ -105,6 +106,16 @@ public class GlobalExceptionHandler {
 	 * el copy de cada uno habla de su cosa.
 	 */
 	public static final String CODE_PAYMENT_AREA_CODE_DUPLICATE = "PAYMENT_AREA_CODE_DUPLICATE";
+
+	/**
+	 * La clave del grupo no corresponde al nivel elegido (C1 de las incidencias
+	 * de la primera prueba manual). Va con código porque es el único 400 de
+	 * {@code POST/PUT /groups} que pertenece al campo {@code code}: los demás
+	 * 400 son campos ausentes o el binding del patrón, y el frontend ya los
+	 * resuelve en el form. Con un copy fijo y un código estable, {@code
+	 * GruposForm} pega el mensaje en {@code code} sin adivinar por texto.
+	 */
+	public static final String CODE_GROUP_CODE_LEVEL_MISMATCH = "GROUP_CODE_LEVEL_MISMATCH";
 
 	@ExceptionHandler(AcademicDivisionNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(AcademicDivisionNotFoundException ex,
@@ -259,6 +270,18 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleGroupConflict(DuplicateGroupCodeException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, "Ya existe un grupo con esa clave en la generación.", request);
+	}
+
+	/**
+	 * 400 cuando la clave del grupo no describe al nivel seleccionado (ej.
+	 * Nivel 3 con {@code 5A}). El copy trae el ejemplo a propósito: sin él, el
+	 * usuario ve una regla y no sabe qué escribir en su lugar.
+	 */
+	@ExceptionHandler(GroupCodeLevelMismatchException.class)
+	public ResponseEntity<ErrorResponse> handleGroupCodeLevelMismatch(GroupCodeLevelMismatchException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.BAD_REQUEST, CODE_GROUP_CODE_LEVEL_MISMATCH,
+				"La clave del grupo debe corresponder al nivel seleccionado (ej. 3A para el Nivel 3).", request);
 	}
 
 	/**
