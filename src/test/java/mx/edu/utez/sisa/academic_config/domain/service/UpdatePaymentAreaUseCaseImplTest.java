@@ -132,4 +132,57 @@ class UpdatePaymentAreaUseCaseImplTest {
 				.updatePaymentArea(new UpdatePaymentAreaCommand(areaId, "Colegiaturas", "", "Descripcion")))
 				.isInstanceOf(InvalidPaymentAreaDataException.class);
 	}
+
+	// ─── Fase 11: normalización antes de buscar y antes de guardar ─────────────
+
+	/**
+	 * La autoexclusión se evalúa contra el valor <b>normalizado</b>. Si el
+	 * usuario reenvía sus propios datos con otro recorte o en minúscula, el
+	 * registro que devuelve el lookup sigue siendo el suyo y no debe contar como
+	 * conflicto: es el caso de "abrir, no tocar nada y guardar".
+	 */
+	@Test
+	void updatePaymentArea_allowsKeepingOwnNameAndCodeWithDifferentCaseAndWhitespace() {
+		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.of(area));
+		when(paymentAreaRepository.findByName("Colegiaturas")).thenReturn(Optional.of(area));
+		when(paymentAreaRepository.findByCode("COL")).thenReturn(Optional.of(area));
+		when(paymentAreaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		PaymentAreaResult result = useCase
+				.updatePaymentArea(new UpdatePaymentAreaCommand(areaId, "  colegiaturas  ", " col ", "Descripcion 2"));
+
+		assertThat(result.name()).isEqualTo("Colegiaturas");
+		assertThat(result.code()).isEqualTo("COL");
+	}
+
+	/** Un nombre que sólo difiere del de otro área por los espacios sí colisiona. */
+	@Test
+	void updatePaymentArea_rejectsNameUsedByAnotherAreaIgnoringWhitespace() {
+		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.of(area));
+		PaymentArea other = new PaymentArea("Inscripcion", "INS", "Descripcion");
+		ReflectionTestUtils.setField(other, "id", UUID.randomUUID());
+		when(paymentAreaRepository.findByName("Inscripcion")).thenReturn(Optional.of(other));
+
+		assertThatThrownBy(() -> useCase
+				.updatePaymentArea(new UpdatePaymentAreaCommand(areaId, "  Inscripcion  ", "COL", "Descripcion")))
+				.isInstanceOf(DuplicatePaymentAreaNameException.class);
+
+		verify(paymentAreaRepository, never()).save(any());
+	}
+
+	/** Igual por la clave, tolerando la minúscula y el recorte. */
+	@Test
+	void updatePaymentArea_rejectsCodeUsedByAnotherAreaIgnoringCase() {
+		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.of(area));
+		PaymentArea other = new PaymentArea("Inscripcion", "INS", "Descripcion");
+		ReflectionTestUtils.setField(other, "id", UUID.randomUUID());
+		when(paymentAreaRepository.findByName("Otra")).thenReturn(Optional.empty());
+		when(paymentAreaRepository.findByCode("INS")).thenReturn(Optional.of(other));
+
+		assertThatThrownBy(() -> useCase
+				.updatePaymentArea(new UpdatePaymentAreaCommand(areaId, "Otra", " ins ", "Descripcion")))
+				.isInstanceOf(DuplicatePaymentAreaCodeException.class);
+
+		verify(paymentAreaRepository, never()).save(any());
+	}
 }

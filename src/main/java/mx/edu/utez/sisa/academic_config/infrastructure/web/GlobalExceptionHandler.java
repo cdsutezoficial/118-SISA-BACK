@@ -18,6 +18,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionExc
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaNameException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentConceptCodeException;
@@ -39,6 +40,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLev
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentAreaNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.NotEnoughGroupCodesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
@@ -50,6 +52,8 @@ import mx.edu.utez.sisa.academic_config.shared.exception.InvalidProgramAdmission
 import mx.edu.utez.sisa.academic_config.shared.exception.ProgramNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.SubjectNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -78,6 +82,29 @@ import java.time.Instant;
 @RestControllerAdvice
 @Component("academicConfigGlobalExceptionHandler")
 public class GlobalExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+	/**
+	 * Catálogo de áreas de pago: el nombre normalizado ya existe en otro área
+	 * (Fase 11).
+	 *
+	 * <p>Es un código aparte y no uno genérico de 409 porque {@code PaymentArea}
+	 * tiene <b>dos</b> claves de negocio únicas, y el frontend tiene que poder
+	 * pegarle el error al campo que corresponde sin adivinar. Con el handler
+	 * único que había antes ("Ya existe un área de facturación con la
+	 * información proporcionada."), {@code AreasForm} no tenía forma de saber si
+	 * el choque había sido por el nombre o por la clave, y lo pintaba como un
+	 * banner genérico; el usuario tenía que deducir por copy cuál de los dos
+	 * campos corregir.
+	 */
+	public static final String CODE_PAYMENT_AREA_NAME_DUPLICATE = "PAYMENT_AREA_NAME_DUPLICATE";
+	/**
+	 * Espejo de {@link #CODE_PAYMENT_AREA_NAME_DUPLICATE} para la clave del área.
+	 * Misma razón para no reusar aquel: son dos campos distintos del formulario y
+	 * el copy de cada uno habla de su cosa.
+	 */
+	public static final String CODE_PAYMENT_AREA_CODE_DUPLICATE = "PAYMENT_AREA_CODE_DUPLICATE";
 
 	@ExceptionHandler(AcademicDivisionNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(AcademicDivisionNotFoundException ex,
@@ -220,6 +247,34 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.CONFLICT, "Ya existe una generación con la información proporcionada.", request);
 	}
 
+	/**
+	 * 409 de grupos. El copy no menciona ningún campo a propósito: el frontend
+	 * lo atribuye a {@code code} sin mirar el texto (el 409 de
+	 * {@code POST/PUT /groups} sólo puede ser el duplicado de
+	 * {@code (generationId, code)}), y el mismo copy sirve para el 409 de la
+	 * creación masiva, donde el conflicto puede venir de otra transacción que
+	 * tomó las mismas letras.
+	 */
+	@ExceptionHandler(DuplicateGroupCodeException.class)
+	public ResponseEntity<ErrorResponse> handleGroupConflict(DuplicateGroupCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un grupo con esa clave en la generación.", request);
+	}
+
+	/**
+	 * 409 de la creacion masiva de grupos: no quedan letras libres en el rango
+	 * A-Z para esa cantidad, o bien otra transaccion se llevo las letras entre
+	 * la lectura y la escritura. Mismo status que
+	 * {@code DuplicateGroupCodeException} y copy distinto a proposito: uno es
+	 * "ya existe un grupo con esa clave" y este "no cabe la cantidad que pediste".
+	 */
+	@ExceptionHandler(NotEnoughGroupCodesException.class)
+	public ResponseEntity<ErrorResponse> handleNotEnoughGroupCodes(NotEnoughGroupCodesException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT,
+				"No hay suficientes claves de grupo libres en ese nivel para crear la cantidad solicitada.", request);
+	}
+
 	@ExceptionHandler({ PlanNotFoundException.class, PeriodNotFoundException.class })
 	public ResponseEntity<ErrorResponse> handleGenerationBadRequest(RuntimeException ex, HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, "El plan de estudios o periodo académico seleccionado no existe.", request);
@@ -248,9 +303,32 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, "No se encontró el área de facturación solicitada.", request);
 	}
 
-	@ExceptionHandler({ DuplicatePaymentAreaCodeException.class, DuplicatePaymentAreaNameException.class })
-	public ResponseEntity<ErrorResponse> handlePaymentAreaConflict(RuntimeException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, "Ya existe un área de facturación con la información proporcionada.", request);
+	/**
+	 * Área de pago duplicada por nombre normalizado (Fase 11). El mensaje de la
+	 * excepción ({@code "Payment area name already in use: ..."}) va al log y no
+	 * al cuerpo de la respuesta: es texto para el desarrollador, y el catálogo
+	 * necesita copy en español.
+	 */
+	@ExceptionHandler(DuplicatePaymentAreaNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicatePaymentAreaName(DuplicatePaymentAreaNameException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate payment area name rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_PAYMENT_AREA_NAME_DUPLICATE,
+				"El nombre del área ya está en uso.", request);
+	}
+
+	/**
+	 * Área de pago duplicada por clave normalizada (Fase 11). Separate handler —
+	 * not the same {@code @ExceptionHandler} with an array of exceptions as it was
+	 * before — precisely because the frontend branches on the code to attach the
+	 * message to the {@code code} field instead of the {@code name} one.
+	 */
+	@ExceptionHandler(DuplicatePaymentAreaCodeException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicatePaymentAreaCode(DuplicatePaymentAreaCodeException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate payment area code rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_PAYMENT_AREA_CODE_DUPLICATE,
+				"La clave del área ya está en uso.", request);
 	}
 
 	@ExceptionHandler(InvalidPaymentAreaDataException.class)
@@ -334,8 +412,23 @@ public class GlobalExceptionHandler {
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
+		return build(status, null, message, request);
+	}
+
+	/**
+	 * Builds the error body with a stable {@code code} alongside the
+	 * human-readable {@code message} (Fase 11).
+	 *
+	 * <p>Why both: {@code PaymentArea} has two unique business keys, and the form
+	 * has to tell "the name collides" from "the code collides" — two different
+	 * fields to highlight. Both arrive as 409, and the messages get reworded by
+	 * copy edits, so branching on the message is a trap. The code is the
+	 * contract; the message is for the user.
+	 */
+	private ResponseEntity<ErrorResponse> build(HttpStatus status, String code, String message,
+			HttpServletRequest request) {
 		ErrorResponse body = new ErrorResponse(Instant.now(), status.value(), statusLabel(status), message,
-				request.getRequestURI());
+				request.getRequestURI(), code);
 		return ResponseEntity.status(status).body(body);
 	}
 

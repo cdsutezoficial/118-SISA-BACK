@@ -8,12 +8,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Real-DB (H2) coverage for {@link HighSchoolTypeRepositoryAdapter#search},
+ * Real-DB coverage for {@link HighSchoolTypeRepositoryAdapter#search},
  * mirroring {@code OutreachChannelRepositoryAdapterSearchIT}'s style.
  */
 @DataJpaTest
@@ -68,19 +70,40 @@ class HighSchoolTypeRepositoryAdapterSearchIT {
 	}
 
 	@Test
-	void allowsDuplicateNames() {
-		jpaRepository.save(new HighSchoolType("Conalep"));
-		jpaRepository.save(new HighSchoolType("Conalep"));
+	void databaseRejectsDuplicateNames() {
+		// Antes este test insertaba dos filas con el mismo nombre y esperaba 2
+		// resultados. Desde que `name` lleva `uk_*_name`, eso es un error de
+		// integridad, y esta es la capa que lo atrapa aunque el caso de uso se
+		// saltara la comprobación: es la que cierra la carrera entre dos altas
+		// simultáneas, imposible de resolver en Java.
+		jpaRepository.saveAndFlush(new HighSchoolType("Conalep"));
 
-		HighSchoolTypeSearchPage page = adapter.search(new HighSchoolTypeSearchCriteria(null, "Conalep", 0, 20));
-
-		assertThat(page.totalElements()).isEqualTo(2L);
+		assertThatThrownBy(() -> jpaRepository.saveAndFlush(new HighSchoolType("Conalep")))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
-	void resultsAreSortedDeterministicallyAcrossRepeatedQueriesWhenNamesTie() {
-		jpaRepository.save(new HighSchoolType("Conalep"));
-		jpaRepository.save(new HighSchoolType("Conalep"));
+	void databaseRejectsDuplicateNamesIgnoringCaseAndTrailingSpace() {
+		// La misma regla del lado de la base: `utf8mb4_0900_ai_ci` no distingue
+		// mayúsculas, y el `NO PAD` de la colación hace que el espacio final sí
+		// cuente, así que este caso lo cierra el normalizador del caso de uso y
+		// no el índice.
+		jpaRepository.saveAndFlush(new HighSchoolType("Conalep"));
+
+		assertThatThrownBy(() -> jpaRepository.saveAndFlush(new HighSchoolType("Conalep".toLowerCase())))
+				.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void resultsAreSortedDeterministicallyAcrossRepeatedQueries() {
+		// Antes este test creaba un empate a propósito guardando dos veces el
+		// mismo nombre, porque no había unicidad. Ya no se puede formar un empate
+		// (el índice único lo impide), así que lo que se afirma es la propiedad que
+		// queda: dos consultas seguidas devuelven el mismo orden. El desempate por
+		// `id` de la Sort chain del adapter se queda por si algún día se suelta la
+		// restricción.
+		jpaRepository.save(new "Conalep-orden");
+		jpaRepository.save(new "Bachillerato-orden");
 
 		HighSchoolTypeSearchPage firstCall = adapter.search(new HighSchoolTypeSearchCriteria(null, null, 0, 20));
 		HighSchoolTypeSearchPage secondCall = adapter.search(new HighSchoolTypeSearchCriteria(null, null, 0, 20));

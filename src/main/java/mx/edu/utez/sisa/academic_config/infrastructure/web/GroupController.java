@@ -1,12 +1,18 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import mx.edu.utez.sisa.academic_config.domain.model.GroupStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase.ChangeStatusCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase.CreateGroupCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase.GroupResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupsBulkUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupsBulkUseCase.CreateGroupsBulkCommand;
+import mx.edu.utez.sisa.academic_config.domain.port.in.PreviewGroupCodesUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.PreviewGroupCodesUseCase.PreviewGroupCodesQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.GroupSummary;
@@ -16,6 +22,8 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase.UpdateGroupCommand;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeGroupStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateGroupRequest;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateGroupsBulkRequest;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GroupCodesPreviewResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GroupListItemResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GroupListResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.GroupResponse;
@@ -32,8 +40,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -46,10 +56,13 @@ import java.util.UUID;
  * missing), {@code PUT /groups/{id}} (404 if missing, 400 on a bad FK), and
  * {@code PATCH /groups/{id}/status} (404 if missing — a simple OPEN/CLOSED
  * toggle, same shape as {@code GenerationController}'s ACTIVE/FINISHED
- * toggle). Role authorization (ADMIN or SERVICIOS_ESCOLARES) is enforced by
- * {@code identity.SecurityFilterConfig}'s {@code /groups} matchers, not here.
+ * toggle), plus the Fase 8 bulk pair: {@code POST /groups/bulk} and
+ * {@code GET /groups/next-codes}. Role authorization (ADMIN or SERVICIOS_
+ * ESCOLARES) is enforced by {@code identity.SecurityFilterConfig}'s
+ * {@code /groups} matchers, not here.
  */
 @RestController
+@Validated
 @RequestMapping("/groups")
 public class GroupController {
 
@@ -63,14 +76,21 @@ public class GroupController {
 
 	private final ChangeGroupStatusUseCase changeGroupStatusUseCase;
 
+	private final CreateGroupsBulkUseCase createGroupsBulkUseCase;
+
+	private final PreviewGroupCodesUseCase previewGroupCodesUseCase;
+
 	public GroupController(ListGroupsUseCase listGroupsUseCase, CreateGroupUseCase createGroupUseCase,
 			GetGroupUseCase getGroupUseCase, UpdateGroupUseCase updateGroupUseCase,
-			ChangeGroupStatusUseCase changeGroupStatusUseCase) {
+			ChangeGroupStatusUseCase changeGroupStatusUseCase, CreateGroupsBulkUseCase createGroupsBulkUseCase,
+			PreviewGroupCodesUseCase previewGroupCodesUseCase) {
 		this.listGroupsUseCase = listGroupsUseCase;
 		this.createGroupUseCase = createGroupUseCase;
 		this.getGroupUseCase = getGroupUseCase;
 		this.updateGroupUseCase = updateGroupUseCase;
 		this.changeGroupStatusUseCase = changeGroupStatusUseCase;
+		this.createGroupsBulkUseCase = createGroupsBulkUseCase;
+		this.previewGroupCodesUseCase = previewGroupCodesUseCase;
 	}
 
 	@PostMapping
@@ -78,6 +98,39 @@ public class GroupController {
 		GroupResult result = createGroupUseCase.createGroup(new CreateGroupCommand(request.generationId(),
 				request.periodId(), request.planLevelId(), request.code(), request.maxCapacity(), request.shift()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result));
+	}
+
+	/**
+	 * Bulk creation — the whole batch in one transaction, so a failure halfway
+	 * leaves no orphans. 201 with the created groups, not 200: rows were made.
+	 *
+	 * <p>
+	 * Mapped BEFORE {@code PUT /groups/{id}} would be, but it cannot collide:
+	 * Spring matches on the literal segment, and {@code /groups/bulk} is a fixed
+	 * path while {@code /groups/{id}} takes a single segment — and {@code UUID id}
+	 * would not parse "bulk" anyway, so even a mistyped mapping order is safe.
+	 */
+	@PostMapping("/bulk")
+	public ResponseEntity<List<GroupResponse>> createGroupsBulk(
+			@Valid @RequestBody CreateGroupsBulkRequest request) {
+		var result = createGroupsBulkUseCase.createGroupsBulk(new CreateGroupsBulkCommand(request.generationId(),
+				request.periodId(), request.planLevelId(), request.quantity(), request.maxCapacity(),
+				request.shift()));
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(result.created().stream().map(GroupController::toResponse).toList());
+	}
+
+	/**
+	 * Which codes a bulk creation would take, without creating anything. Requires
+	 * {@link Min}(1)/{@link Max}(26) on the params, which is why the class carries
+	 * {@code @Validated} — without it Spring silently ignores the annotations.
+	 */
+	@GetMapping("/next-codes")
+	public ResponseEntity<GroupCodesPreviewResponse> previewGroupCodes(@RequestParam UUID generationId,
+			@RequestParam UUID planLevelId, @RequestParam @Min(1) @Max(26) int quantity) {
+		var result = previewGroupCodesUseCase
+				.previewGroupCodes(new PreviewGroupCodesQuery(generationId, planLevelId, quantity));
+		return ResponseEntity.ok(new GroupCodesPreviewResponse(result.levelPrefix(), result.codes()));
 	}
 
 	@PutMapping("/{id}")

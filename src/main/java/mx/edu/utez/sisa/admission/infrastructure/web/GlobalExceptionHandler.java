@@ -5,10 +5,12 @@ import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptE
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.DuplicateOutreachChannelNameException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
+import mx.edu.utez.sisa.admission.shared.exception.DuplicateHighSchoolTypeNameException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -84,6 +86,23 @@ public class GlobalExceptionHandler {
 	public static final String CODE_CANDIDATE_ALREADY_EXISTS = "ADMISSION_CANDIDATE_ALREADY_EXISTS";
 	public static final String CODE_CANDIDATE_NOT_FOUND = "ADMISSION_CANDIDATE_NOT_FOUND";
 	public static final String CODE_CONFIG_NOT_FOUND = "ADMISSION_CONFIG_NOT_FOUND";
+	/**
+	 * Catálogo de canales de difusión: el nombre normalizado ya existe en otro
+	 * canal. Separate from {@link #CODE_CANDIDATE_ALREADY_EXISTS} even though
+	 * both are 409s: the recoveries differ. The applicant one sends the user to an
+	 * existing ficha; this one is a catalog validation error and belongs on the
+	 * name field of the form, so the modal can show it inline and keep the typed
+	 * name instead of bouncing to a banner.
+	 */
+	public static final String CODE_OUTREACH_CHANNEL_NAME_DUPLICATE = "OUTREACH_CHANNEL_NAME_DUPLICATE";
+	/**
+	 * Catálogo de tipos de bachillerato: el nombre normalizado ya existe. Espejo de
+	 * {@link #CODE_OUTREACH_CHANNEL_NAME_DUPLICATE} para el catálogo hermano, y
+	 * con la misma razón para ser un código aparte y no reusar aquel: el frontend
+	 * lo ramifica para pegarlo en el campo {@code name} del modal, y el copy de
+	 * cada catálogo habla de su propia cosa.
+	 */
+	public static final String CODE_HIGH_SCHOOL_TYPE_NAME_DUPLICATE = "HIGH_SCHOOL_TYPE_NAME_DUPLICATE";
 	public static final String CODE_CONCEPT_NOT_FOUND = "ADMISSION_CONCEPT_NOT_FOUND";
 	public static final String CODE_CONCEPT_AMBIGUOUS = "ADMISSION_CONCEPT_AMBIGUOUS";
 	public static final String CODE_ALREADY_PAID = "ADMISSION_ALREADY_PAID";
@@ -102,6 +121,19 @@ public class GlobalExceptionHandler {
 	 */
 	public static final String CODE_REGISTRATION_CONFLICT = "ADMISSION_REGISTRATION_CONFLICT";
 
+	/**
+	 * Tipo de bachillerato duplicado por nombre normalizado (Fase 10). Mismo
+	 * contrato que el 409 de los canales: {@code code} estable para que el frontend
+	 * ramifique sin leer el mensaje, y el texto de la excepción al log y no al
+	 * cuerpo de la respuesta.
+	 */
+	@ExceptionHandler(DuplicateHighSchoolTypeNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateHighSchoolTypeName(DuplicateHighSchoolTypeNameException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate high school type name rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_HIGH_SCHOOL_TYPE_NAME_DUPLICATE, "El nombre del tipo ya está en uso.", request);
+	}
+
 	@ExceptionHandler(HighSchoolTypeNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleHighSchoolTypeNotFound(HighSchoolTypeNotFoundException ex,
 			HttpServletRequest request) {
@@ -118,6 +150,26 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleOutreachChannelNotFound(OutreachChannelNotFoundException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+	}
+
+	/**
+	 * Canal de difusión duplicado por nombre normalizado (Fase 9). Lleva copy
+	 * propio y no el del {@link DuplicateKeyException} de abajo, que está escrito
+	 * para el registro de candidatos ("No pudimos completar tu registro…") y sería
+	 * el mensaje equivocado en un catálogo.
+	 *
+	 * <p>Emite {@link #CODE_OUTREACH_CHANNEL_NAME_DUPLICATE} para que el frontend
+	 * ramifique sobre el código y no sobre el texto, que es lo que pide el javadoc
+	 * de {@code ErrorResponse}: el mensaje se puede reescribir sin romper la
+	 * lógica. El mensaje de la excepción ({@code "Outreach channel name already in
+	 * use: Facebook"}) va al log y no al cuerpo de la respuesta, porque es texto
+	 * para el desarrollador y el catálogo necesita copy en español.
+	 */
+	@ExceptionHandler(DuplicateOutreachChannelNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateOutreachChannelName(DuplicateOutreachChannelNameException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate outreach channel name rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_OUTREACH_CHANNEL_NAME_DUPLICATE, "El nombre del canal ya está en uso.", request);
 	}
 
 	@ExceptionHandler(CandidateNotFoundException.class)

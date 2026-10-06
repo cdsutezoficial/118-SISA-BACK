@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -29,19 +30,41 @@ import java.util.UUID;
  * <p>
  * {@code description} is mapped as a {@code TEXT} column (same rationale as
  * {@code PaymentConcept#description}) since it is a free-form field.
+ *
+ * <p>
+ * <b>Las dos unicidades van como {@code @UniqueConstraint} nombradas y no como
+ * {@code @Column(unique = true)}</b> (Fase 11). Con {@code unique = true}
+ * Hibernate genera un índice con nombre autogenerado, y el mensaje de error que
+ * ve el desarrollador cuando una alta choca contra él cambia entre entornos. Con
+ * nombre fijo ({@code uk_payment_area_name} / {@code uk_payment_area_code}) el
+ * diagnóstico es el mismo en local, en pruebas y en producción, y coincide con
+ * la convención ya usada por {@code OutreachChannel} y
+ * {@code HighSchoolType}.
+ *
+ * <p>
+ * <b>Las longitudes son explícitas</b> por la misma razón: sin {@code length},
+ * {@code name} y {@code code} salían como {@code VARCHAR(255)} implícito. El
+ * {@code 150} de {@code name} es el mismo techo que usan los catálogos hermanos
+ * ({@code AcademicDivision}, {@code OutreachChannel}, {@code HighSchoolType}); el
+ * {@code 5} de {@code code} viene de la regla de negocio confirmada el
+ * 2026-10-05 (2 a 5 alfanuméricos en mayúscula). Los valores por defecto del
+ * DTO ({@code @Size}) deben coincidir carácter a carácter con estos
+ * {@code length}, o el backend aceptaría un valor que MySQL trunca.
  */
 @Entity
-@Table(name = "payment_area")
+@Table(name = "payment_area", uniqueConstraints = {
+		@UniqueConstraint(name = "uk_payment_area_name", columnNames = "name"),
+		@UniqueConstraint(name = "uk_payment_area_code", columnNames = "code") })
 public class PaymentArea {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false, unique = true)
+	@Column(name = "name", nullable = false, length = 150)
 	private String name;
 
-	@Column(nullable = false, unique = true)
+	@Column(name = "code", nullable = false, length = 5)
 	private String code;
 
 	@Column(columnDefinition = "TEXT")

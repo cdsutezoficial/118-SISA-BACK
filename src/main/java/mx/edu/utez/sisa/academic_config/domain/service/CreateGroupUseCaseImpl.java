@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GroupRepository;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,8 +66,16 @@ public class CreateGroupUseCaseImpl implements CreateGroupUseCase {
 		requireLevel(plan, command.planLevelId());
 		CreateGenerationUseCaseImpl.requirePeriod(command.periodId(), periodRepository);
 
+		// Normalizar ANTES de comprobar el duplicado, no después: la búsqueda es
+		// por igualdad sobre `code`, así que comparar contra el valor en
+		// minúsculas dejaria pasar un "3a" junto a un "3A" ya guardado, y el
+		// conflicto lo detectaria después la restricción única de la tabla, con un
+		// 500 en vez de un 409. Ver GroupTextNormalizer.
+		String code = GroupTextNormalizer.code(command.code());
+		requireUniqueCode(command.generationId(), code, groupRepository);
+
 		Group group = new Group(command.generationId(), command.periodId(), command.planLevelId(),
-				generation.getProgramId(), command.code(), command.maxCapacity(), command.shift());
+				generation.getProgramId(), code, command.maxCapacity(), command.shift());
 		Group saved = groupRepository.save(group);
 
 		return toResult(saved);
@@ -78,6 +87,21 @@ public class CreateGroupUseCaseImpl implements CreateGroupUseCase {
 		}
 		return generationRepository.findById(generationId)
 				.orElseThrow(() -> new GenerationReferenceNotFoundException("Generation not found: " + generationId));
+	}
+
+	/**
+	/**
+	 * Unicidad de {@code (generationId, code)}. Se comprueba en Java además de por
+	 * la restricción de la tabla: la restricción es la que resuelve la carrera
+	 * entre dos altas simultáneas —imposible de cerrar en Java, porque una
+	 * transacción no ve la fila no confirmada de la otra—, pero el mensaje del 409
+	 * tiene que ser el del módulo y no el de Hibernate, y eso lo da esta
+	 * comprobación.
+	 */
+	static void requireUniqueCode(UUID generationId, String code, GroupRepository groupRepository) {
+		if (groupRepository.findByGenerationIdAndCode(generationId, code).isPresent()) {
+			throw new DuplicateGroupCodeException("Group code already in use for this generation: " + code);
+		}
 	}
 
 	static void requireLevel(AcademicPlan plan, UUID planLevelId) {
