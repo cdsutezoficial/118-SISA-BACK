@@ -24,16 +24,28 @@ public class CreatePaymentAreaUseCaseImpl implements CreatePaymentAreaUseCase {
 	@Override
 	@Transactional
 	public PaymentAreaResult createPaymentArea(CreatePaymentAreaCommand command) {
+		// La validación va primero, sobre los valores crudos: es lo que detecta el
+		// null, y los normalizadores no aceptan null (`collapse` haría NPE). Un
+		// `"   "` también cae aquí, antes de que el trim lo convierta en "".
 		validate(command.name(), command.code());
 
-		if (paymentAreaRepository.findByName(command.name()).isPresent()) {
-			throw new DuplicatePaymentAreaNameException("Payment area name already in use: " + command.name());
+		// Normalizar ANTES de buscar duplicados y antes de guardar (Fase 11). Si se
+		// guardara el valor crudo y sólo se normalizara la búsqueda, el índice único
+		// compararía " Colegiaturas " contra "Colegiaturas" sin encontrar choque —
+		// la colación es NO PAD — y el alta reventaría después con un
+		// DuplicateKeyException sin manejar, que el usuario vería como un 500.
+		String name = PaymentAreaTextNormalizer.name(command.name());
+		String code = PaymentAreaTextNormalizer.code(command.code());
+		String description = PaymentAreaTextNormalizer.description(command.description());
+
+		if (paymentAreaRepository.findByName(name).isPresent()) {
+			throw new DuplicatePaymentAreaNameException("Payment area name already in use: " + name);
 		}
-		if (paymentAreaRepository.findByCode(command.code()).isPresent()) {
-			throw new DuplicatePaymentAreaCodeException("Payment area code already in use: " + command.code());
+		if (paymentAreaRepository.findByCode(code).isPresent()) {
+			throw new DuplicatePaymentAreaCodeException("Payment area code already in use: " + code);
 		}
 
-		PaymentArea area = new PaymentArea(command.name(), command.code(), command.description());
+		PaymentArea area = new PaymentArea(name, code, description);
 		PaymentArea saved = paymentAreaRepository.save(area);
 
 		return toResult(saved);

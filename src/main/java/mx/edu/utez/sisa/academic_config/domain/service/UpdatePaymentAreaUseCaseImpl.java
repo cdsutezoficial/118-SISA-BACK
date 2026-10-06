@@ -31,20 +31,27 @@ public class UpdatePaymentAreaUseCaseImpl implements UpdatePaymentAreaUseCase {
 				.orElseThrow(() -> new PaymentAreaNotFoundException(
 						"Payment area not found: " + command.paymentAreaId()));
 
+		// Mismo orden y mismo motivo que en CreatePaymentAreaUseCaseImpl: validar
+		// lo crudo (para no pasar null al normalizador) y normalizar antes de
+		// buscar duplicados y antes de guardar (Fase 11).
 		CreatePaymentAreaUseCaseImpl.validate(command.name(), command.code());
 
-		paymentAreaRepository.findByName(command.name())
+		String name = PaymentAreaTextNormalizer.name(command.name());
+		String code = PaymentAreaTextNormalizer.code(command.code());
+		String description = PaymentAreaTextNormalizer.description(command.description());
+
+		paymentAreaRepository.findByName(name)
 				.filter(found -> !found.getId().equals(area.getId())).ifPresent(found -> {
 					throw new DuplicatePaymentAreaNameException(
-							"Payment area name already in use: " + command.name());
+							"Payment area name already in use: " + name);
 				});
-		paymentAreaRepository.findByCode(command.code())
+		paymentAreaRepository.findByCode(code)
 				.filter(found -> !found.getId().equals(area.getId())).ifPresent(found -> {
 					throw new DuplicatePaymentAreaCodeException(
-							"Payment area code already in use: " + command.code());
+							"Payment area code already in use: " + code);
 				});
 
-		area.updateDetails(command.name(), command.code(), command.description());
+		area.updateDetails(name, code, description);
 		PaymentArea saved = paymentAreaRepository.save(area);
 
 		return CreatePaymentAreaUseCaseImpl.toResult(saved);

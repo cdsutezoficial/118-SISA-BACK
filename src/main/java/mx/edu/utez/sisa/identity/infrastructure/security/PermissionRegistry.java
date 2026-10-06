@@ -105,6 +105,16 @@ public final class PermissionRegistry {
 			e("POST", "/payment-concepts", "PAYMENT_CONCEPTS_CREATE"),
 			e("PUT", "/payment-concepts/**", "PAYMENT_CONCEPTS_UPDATE"),
 			e("PATCH", "/payment-concepts/**", "PAYMENT_CONCEPTS_CHANGE_STATUS"),
+			// academic_config — payment areas (Fase 11). Los cuatro permisos
+			// PAYMENT_AREAS_* ya estaban sembrados y asignados a ADMIN y
+			// PERSONAL_FINANZAS, pero faltaban estas entradas: sin ellas
+			// PermissionFilter no encontraba ninguna regla para /payment-areas y
+			// dejaba pasar POST/PUT/PATCH a cualquiera con el rol, saltándose el
+			// permiso fino. Es el mismo agujero que se cerró en /groups.
+			e("GET", "/payment-areas/**", "PAYMENT_AREAS_READ"),
+			e("POST", "/payment-areas", "PAYMENT_AREAS_CREATE"),
+			e("PUT", "/payment-areas/**", "PAYMENT_AREAS_UPDATE"),
+			e("PATCH", "/payment-areas/**", "PAYMENT_AREAS_CHANGE_STATUS"),
 			// academic_config — program admission configs
 			e("GET", "/program-admission-configs/**", "PROGRAM_ADMISSION_CONFIGS_READ"),
 			e("POST", "/program-admission-configs", "PROGRAM_ADMISSION_CONFIGS_CREATE"),
