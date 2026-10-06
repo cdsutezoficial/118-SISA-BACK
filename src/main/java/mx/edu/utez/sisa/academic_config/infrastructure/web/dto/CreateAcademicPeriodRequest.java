@@ -36,11 +36,14 @@ import java.time.LocalDate;
  * al año, así que un {@code @Max(3)} contradiría al dominio y dejaría fuera
  * registros que el propio sistema puede llegar a producir. Se decide con el
  * usuario el 2026-10-05.</li>
- * <li>Las <b>cuatro fechas son obligatorias</b>: inicio y fin del periodo, e
- * inicio y fin de las inscripciones. Esto <b>cambia</b> el requisito original de
- * la fase, que pedía hacer opcionales las dos últimas; la decisión del usuario
- * del 2026-10-05 es que las cuatro se llenan, y por eso aquí los cuatro
- * {@code @NotNull} se quedan.</li>
+ * <li>Inicio y fin del periodo son <b>obligatorios</b>; inicio y fin de las
+ * inscripciones son <b>opcionales</b>. La decisión del usuario del 2026-10-06
+ * revierte la del 2026-10-05, que exigía las cuatro: aquí sólo quedan dos
+ * {@code @NotNull} y los dos campos de inscripción viajan anulables. Si la
+ * ventana de inscripciones no se configura, la columna es anulable y la máquina
+ * de estados resuelve el paso {@code ENROLLMENT} contra {@code startDate} — ver
+ * {@code AcademicPeriod.validateDateRanges} y
+ * {@code AcademicPeriod.advanceByDate}.</li>
  * </ul>
  *
  * <p>El orden de las fechas no lo puede expresar una anotación, porque depende de
@@ -68,6 +71,6 @@ public record CreateAcademicPeriodRequest(@NotBlank(message = "El nombre del per
 		@NotNull(message = "Debes seleccionar el tipo de periodo.") PeriodType type,
 		@NotNull(message = "La fecha de inicio es requerida.") LocalDate startDate,
 		@NotNull(message = "La fecha de fin es requerida.") LocalDate endDate,
-		@NotNull(message = "La fecha de inicio de inscripciones es requerida.") LocalDate enrollmentStart,
-		@NotNull(message = "La fecha de fin de inscripciones es requerida.") LocalDate enrollmentEnd) {
+		LocalDate enrollmentStart,
+		LocalDate enrollmentEnd) {
 }
