@@ -114,10 +114,11 @@ class OutreachChannelControllerIT {
 	}
 
 	@Test
-	void duplicateNameIsAllowedAndReturns201Twice() throws Exception {
-		// name has NO uniqueness constraint on this aggregate (see
-		// OutreachChannel's javadoc) — unlike SubjectClassification's code,
-		// creating the same name twice must succeed both times.
+	void duplicateNameIsRejectedWith409() throws Exception {
+		// El nombre normalizado es único desde la fase que copyó OutreachChannel
+		// (antes este test afirmaba lo contrario: que el duplicado devolvía 201 dos
+		// veces). Se comprueba el `code` estable y no el texto, que es lo que pide
+		// el contrato de `ErrorResponse`.
 		String token = tokenFor(RoleType.ADMIN);
 
 		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
@@ -126,7 +127,24 @@ class OutreachChannelControllerIT {
 
 		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
 				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Instagram Dup"))))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("OUTREACH_CHANNEL_NAME_DUPLICATE"));
+	}
+
+	@Test
+	void duplicateNameIsRejectedIgnoringCaseAndSurroundingWhitespace() throws Exception {
+		// Los tres casos que la fase 9 nombró como criterio de aceptación:
+		// "X", "x" y " X " son el mismo outreach channel. La segunda y la terceradifieren
+		// sólo en mayúsculas y en espacios, y las tres deben dar 409.
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
+				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Instagram Dup"))))
 				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody("  instagram dup  "))))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("OUTREACH_CHANNEL_NAME_DUPLICATE"));
 	}
 
 	@Test
