@@ -1,11 +1,14 @@
 package mx.edu.utez.sisa.academic_config.infrastructure.web.dto;
 
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import mx.edu.utez.sisa.shared.web.validation.YearOnOrAfter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,9 +33,9 @@ public record UpdateAcademicPlanRequest(
 		@NotBlank(message = "La versión del plan es obligatoria.") @Size(max = 50, message = "La versión no puede superar 50 caracteres.") @Pattern(regexp = "^[^\\p{Cc}]*$", message = "La versión contiene caracteres no válidos.") String version,
 		@NotBlank(message = "El periodo de vigencia es obligatorio.") @Size(max = 100, message = "El periodo de vigencia no puede superar 100 caracteres.") @Pattern(regexp = "^[^\\p{Cc}]*$", message = "El periodo de vigencia contiene caracteres no válidos.") String validityPeriod,
 		@NotBlank(message = "La clave de titulación es obligatoria.") @Size(max = 100, message = "La clave de titulación no puede superar 100 caracteres.") @Pattern(regexp = "^[^\\p{Cc}]*$", message = "La clave de titulación contiene caracteres no válidos.") String titulationKey,
-		@NotNull(message = "La fecha de vigencia es requerida.") LocalDate effectiveFrom,
-		@Min(value = 1, message = "El total de niveles debe ser mayor o igual a 1.") int totalLevels,
+		@NotNull(message = "La fecha de vigencia es requerida.") @YearOnOrAfter(value = 2000, message = "La fecha de vigencia no puede ser anterior al 01/01/2000.") LocalDate effectiveFrom,
+		@Min(value = 1, message = "El total de niveles debe ser mayor o igual a 1.") @Max(value = 15, message = "El total de niveles no puede ser mayor a 15.") int totalLevels,
 		@NotNull(message = "La calificación mínima aprobatoria es obligatoria.") @Digits(integer = 2, fraction = 1, message = "La calificación mínima aprobatoria admite un decimal como máximo.") BigDecimal minPassingGrade,
-		@Min(value = 0, message = "Los exámenes extraordinarios por periodo no pueden ser menores que 0.") int maxExtraordinaryExamsPerPeriod,
+		@Min(value = 0, message = "Los exámenes extraordinarios por periodo no pueden ser menores que 0.") @Max(value = 5, message = "Los exámenes extraordinarios por periodo no pueden ser mayores que 5.") int maxExtraordinaryExamsPerPeriod,
 		boolean requiresSocialService, UUID socialServiceMinLevelId) {
 }

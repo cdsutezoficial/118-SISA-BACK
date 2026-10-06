@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.academic_config.domain.service;
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicPlan;
 import mx.edu.utez.sisa.academic_config.domain.model.Generation;
 import mx.edu.utez.sisa.academic_config.domain.model.Group;
+import mx.edu.utez.sisa.academic_config.domain.model.PlanLevel;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase.GroupResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository;
@@ -49,11 +50,12 @@ public class UpdateGroupUseCaseImpl implements UpdateGroupUseCase {
 
 		Generation generation = CreateGroupUseCaseImpl.requireGeneration(command.generationId(), generationRepository);
 		AcademicPlan plan = CreateGenerationUseCaseImpl.requirePlan(generation.getPlanId(), planRepository);
-		CreateGroupUseCaseImpl.requireLevel(plan, command.planLevelId());
+		PlanLevel planLevel = CreateGroupUseCaseImpl.requireLevel(plan, command.planLevelId());
 		CreateGenerationUseCaseImpl.requirePeriod(command.periodId(), periodRepository);
 
 		// Normalizar antes de comprobar, por el mismo motivo que en create.
 		String code = GroupTextNormalizer.code(command.code());
+		CreateGroupUseCaseImpl.requireCodeMatchesLevel(code, planLevel);
 		// La unicidad se revalida excluyendo esta misma fila: cambiar de
 		// generación puede traer un código que ya existe en la de destino, y
 		// quedarse en la misma puede no cambiar nada. Mismo autocambio que en

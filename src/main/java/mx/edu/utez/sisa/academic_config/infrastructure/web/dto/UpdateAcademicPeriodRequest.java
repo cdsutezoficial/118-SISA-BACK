@@ -18,9 +18,11 @@ import java.time.LocalDate;
  * {@link CreateAcademicPeriodRequest}, y por eso las expresiones y los límites se
  * mantienen iguales: {@code name} con letras Unicode, dígitos, espacios y
  * guiones hasta 150; {@code year} entre 1900 y 2100; {@code periodNumber} desde 1
- * sin tope; y las cuatro fechas obligatorias. No hay un motivo para que el
- * alta y la edición acepten cosas distintas —un usuario que no puede guardar un
- * periodo con un nombre no debería poder editarlo tampoco—.
+ * sin tope; inicio y fin del periodo obligatorios; inicio y fin de las
+ * inscripciones opcionales (decisión del usuario 2026-10-06, que revierte la
+ * del 2026-10-05). No hay un motivo para que el alta y la edición acepten cosas
+ * distintas —un usuario que no puede guardar un periodo con un nombre no
+ * debería poder editarlo tampoco—.
  *
  * <p>El mismo campo {@code name} con el mismo {@code @Pattern} que en el alta
  * implica la misma división de responsabilidades: el patrón acepta lo que
@@ -33,6 +35,6 @@ public record UpdateAcademicPeriodRequest(@NotBlank(message = "El nombre del per
 		@NotNull(message = "Debes seleccionar el tipo de periodo.") PeriodType type,
 		@NotNull(message = "La fecha de inicio es requerida.") LocalDate startDate,
 		@NotNull(message = "La fecha de fin es requerida.") LocalDate endDate,
-		@NotNull(message = "La fecha de inicio de inscripciones es requerida.") LocalDate enrollmentStart,
-		@NotNull(message = "La fecha de fin de inscripciones es requerida.") LocalDate enrollmentEnd) {
+		LocalDate enrollmentStart,
+		LocalDate enrollmentEnd) {
 }

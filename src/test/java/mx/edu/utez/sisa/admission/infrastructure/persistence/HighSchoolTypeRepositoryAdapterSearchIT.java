@@ -102,8 +102,8 @@ class HighSchoolTypeRepositoryAdapterSearchIT {
 		// queda: dos consultas seguidas devuelven el mismo orden. El desempate por
 		// `id` de la Sort chain del adapter se queda por si algún día se suelta la
 		// restricción.
-		jpaRepository.save(new "Conalep-orden");
-		jpaRepository.save(new "Bachillerato-orden");
+		jpaRepository.save(new HighSchoolType("Conalep-orden"));
+		jpaRepository.save(new HighSchoolType("Bachillerato-orden"));
 
 		HighSchoolTypeSearchPage firstCall = adapter.search(new HighSchoolTypeSearchCriteria(null, null, 0, 20));
 		HighSchoolTypeSearchPage secondCall = adapter.search(new HighSchoolTypeSearchCriteria(null, null, 0, 20));
