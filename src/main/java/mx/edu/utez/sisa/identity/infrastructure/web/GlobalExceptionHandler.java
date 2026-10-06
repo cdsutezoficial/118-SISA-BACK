@@ -10,6 +10,9 @@ import mx.edu.utez.sisa.identity.shared.exception.DuplicateRoleKeyException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidCredentialsException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidPasswordResetTokenException;
 import mx.edu.utez.sisa.identity.shared.exception.InvalidRefreshTokenException;
+import mx.edu.utez.sisa.identity.shared.exception.LlaveMxAccountNotLinkedException;
+import mx.edu.utez.sisa.identity.shared.exception.LlaveMxIntegrationException;
+import mx.edu.utez.sisa.identity.shared.exception.LlaveMxVerificationRequiredException;
 import mx.edu.utez.sisa.identity.shared.exception.MustChangePasswordException;
 import mx.edu.utez.sisa.identity.shared.exception.MissingInstitutionalEmailException;
 import mx.edu.utez.sisa.identity.shared.exception.PermissionNotFoundException;
@@ -91,6 +94,43 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleDivisionRuleViolation(DivisionRuleViolationException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.BAD_REQUEST, "Revisa la división académica seleccionada para este rol.", request);
+	}
+
+	/**
+	 * Llave Morelos is an upstream dependency the caller cannot fix, so its
+	 * failures are 502 BAD_GATEWAY, not 500. Distinct from
+	 * {@link InvalidCredentialsException} on purpose: a provider outage must
+	 * never reach the local failed-attempt counter, or a Morelos downtime would
+	 * LOCK every official trying to sign in.
+	 */
+	@ExceptionHandler(LlaveMxIntegrationException.class)
+	public ResponseEntity<ErrorResponse> handleLlaveMxIntegration(LlaveMxIntegrationException ex,
+			HttpServletRequest request) {
+		log.warn("LlaveMX integration failure on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.BAD_GATEWAY,
+				"No se pudo validar tu identidad con LlaveMX en este momento. Intenta de nuevo más tarde.", request);
+	}
+
+	/**
+	 * The official authenticated against Morelos but SISA has no usable account
+	 * for them: not linked, locked, or without an active role. 403, because the
+	 * identity was proven — refusing would be misleading.
+	 */
+	@ExceptionHandler(LlaveMxAccountNotLinkedException.class)
+	public ResponseEntity<ErrorResponse> handleLlaveMxNotLinked(LlaveMxAccountNotLinkedException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+	}
+
+	/**
+	 * The applicant submitted the registration form without a valid verification
+	 * ticket. 403, not 502: nothing upstream failed, the caller simply has not
+	 * proven their identity yet and the message tells them to go do it.
+	 */
+	@ExceptionHandler(LlaveMxVerificationRequiredException.class)
+	public ResponseEntity<ErrorResponse> handleLlaveMxVerificationRequired(LlaveMxVerificationRequiredException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
 	}
 
 	/**

@@ -24,6 +24,7 @@ import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.admission.shared.exception.TooManyPaymentAccessAttemptsException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.LlaveMxVerificationTicketService;
 import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -107,6 +108,15 @@ class CandidateControllerTest {
 	 */
 	@MockitoBean
 	private PaymentAccessRateLimiter paymentAccessRateLimiter;
+
+	/**
+	 * Also a plain {@code @Component}, mocked for the same reason. Its own
+	 * signing/verification behaviour is covered by
+	 * {@code LlaveMxVerificationTicketServiceTest}; what matters here is the
+	 * controller's reaction to a valid or an expired ticket.
+	 */
+	@MockitoBean
+	private LlaveMxVerificationTicketService verificationTicketService;
 
 	@MockitoBean
 	private JwtService jwtService;

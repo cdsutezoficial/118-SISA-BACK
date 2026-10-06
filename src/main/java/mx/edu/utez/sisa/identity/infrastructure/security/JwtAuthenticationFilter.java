@@ -49,7 +49,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		if (header != null && header.startsWith(BEARER_PREFIX)) {
 			String token = header.substring(BEARER_PREFIX.length());
 			try {
-				Claims claims = jwtService.parse(token);
+				// `parseAccessToken`, not `parse`: the bearer slot must only ever
+				// accept an access token, so another SISA-signed token family (the
+				// candidate verification ticket) cannot authenticate a request here.
+				Claims claims = jwtService.parseAccessToken(token);
 				SecurityContextHolder.getContext().setAuthentication(buildAuthentication(claims));
 			}
 			catch (JwtException | IllegalArgumentException ex) {

@@ -59,8 +59,8 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 				.toList();
 
 		return new UserDetailResult(target.getId(), target.getPersonId(), fullName(person), target.getUsername(),
-				target.getStatus(), target.isMustChangePassword(), target.getLastLoginAt(), target.getCreatedAt(),
-				roles);
+				target.getStatus(), target.isMustChangePassword(), target.isLlaveMxLinked(), target.getLastLoginAt(),
+				target.getCreatedAt(), roles);
 	}
 
 	/**

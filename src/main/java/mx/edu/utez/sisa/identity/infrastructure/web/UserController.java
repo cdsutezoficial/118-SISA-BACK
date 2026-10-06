@@ -169,8 +169,8 @@ public class UserController {
 
 	private static UserDetailResponse toDetailResponse(UserDetailResult result) {
 		return new UserDetailResponse(result.userId(), result.personId(), result.fullName(), result.username(),
-				result.status(), result.mustChangePassword(), result.lastLoginAt(), result.createdAt(),
-				result.roles().stream().map(role -> new UserRoleDetailItem(role.userRoleId(), role.roleId(),
-						role.roleKey(), role.roleName(), role.divisionId())).toList());
+				result.status(), result.mustChangePassword(), result.llaveMxLinked(), result.lastLoginAt(),
+				result.createdAt(), result.roles().stream().map(role -> new UserRoleDetailItem(role.userRoleId(),
+						role.roleId(), role.roleKey(), role.roleName(), role.divisionId())).toList());
 	}
 }

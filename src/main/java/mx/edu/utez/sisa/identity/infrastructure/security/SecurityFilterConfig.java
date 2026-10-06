@@ -247,6 +247,24 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
 						.permitAll()
+						// Llave Morelos OAuth (RF-AUTH-002 / RF-AUTH-003). Public by
+						// design: the whole point is that the caller has no SISA
+						// session yet — start begins the round and the provider's
+						// callback lands here with only an authorization code. The
+						// proof of identity is the PKCE verifier in the flow cookie
+						// plus the state round-trip, not a JWT.
+						// Linking is the one LlaveMX endpoint that is NOT public:
+						// unlike login (where the provider is the authenticator) and
+						// candidate verification (where no account is touched),
+						// this writes llave_mx_subject onto an existing User, so it
+						// answers only to a signed-in ADMIN — the same role the
+						// /usuarios/detalle screen that hosts the button already
+						// requires.
+						.requestMatchers(HttpMethod.POST, "/auth/llave-mx/link").hasRole("ADMIN")
+						.requestMatchers("/auth/llave-mx/start", "/auth/llave-mx/status",
+								"/auth/llave-mx/callback", "/oauth/llave/digital/callback",
+								"/SISAVA/oauth/llave/digital/callback")
+						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.POST, "/roles").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.PUT, "/roles/**").hasRole("ADMIN")

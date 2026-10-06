@@ -249,13 +249,14 @@ class UserControllerTest {
 		UUID divisionId = UUID.randomUUID();
 		UUID userRoleId = UUID.randomUUID();
 		UserDetailResult result = new UserDetailResult(userId, personId, "Ana García López", "ana.garcia@utez.edu.mx",
-				UserStatus.ACTIVE, false, null, java.time.Instant.now(),
+				UserStatus.ACTIVE, false, true, null, java.time.Instant.now(),
 				List.of(new UserRoleDetail(userRoleId, roleId, "DIRECTOR_DIVISION", "Director", divisionId)));
 		when(getUserUseCase.getUser(new GetUserQuery(callerId, userId))).thenReturn(result);
 
 		mockMvc.perform(get("/users/" + userId)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.userId").value(userId.toString()))
 				.andExpect(jsonPath("$.fullName").value("Ana García López"))
+				.andExpect(jsonPath("$.llaveMxLinked").value(true))
 				.andExpect(jsonPath("$.roles[0].userRoleId").value(userRoleId.toString()))
 				.andExpect(jsonPath("$.roles[0].roleKey").value("DIRECTOR_DIVISION"));
 	}
