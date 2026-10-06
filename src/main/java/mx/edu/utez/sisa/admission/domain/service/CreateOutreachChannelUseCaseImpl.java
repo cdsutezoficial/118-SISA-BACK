@@ -47,11 +47,13 @@ public class CreateOutreachChannelUseCaseImpl implements CreateOutreachChannelUs
 
 	/**
 	 * Unicidad del nombre normalizado. Se comprueba en Java además de por la
-	 * restricción de la tabla, y por dos razones distintas: un {@code UNIQUE}
-	 * normal es case-<i>sensitive</i> en H2 y Postgres, así que sólo cubre la
-	 * mitad de duplicados exactos (ver el javadoc de {@code OutreachChannel}); y
-	 * la comprobación en Java es la que produce el mensaje del 409 de este módulo
-	 * en vez del que arma Hibernate al vencer la restricción.
+	 * restricción de la tabla, y las dos hacen falta por razones distintas: la
+	 * restricción es la única que puede cerrar la carrera entre dos altas
+	 * simultáneas, y esto es la que produce el mensaje del 409 de este módulo en
+	 * vez del que arma Hibernate al vencer el índice. Lo que el índice de MySQL no
+	 * puede cubrir es el whitespace ya normalizado —ver el javadoc de
+	 * {@code OutreachChannel}— y esta comprobación corre sobre el valor
+	 * normalizado, así que cierra esa mitad.
 	 */
 	static void requireUniqueName(String name, OutreachChannelRepository channelRepository) {
 		if (channelRepository.findByName(name).isPresent()) {

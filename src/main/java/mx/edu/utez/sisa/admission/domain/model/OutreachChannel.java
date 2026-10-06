@@ -52,19 +52,27 @@ public class OutreachChannel {
 	 * name, and comfortably above any real channel ("Referido familiar" is 17).
 	 * It matches the {@code @Size} on the DTOs.
 	 *
-	 * <p><b>The constraint is case-sensitive, and that is not enough on its
-	 * own.</b> The acceptance criterion of this phase is that {@code "Facebook"},
-	 * {@code "facebook"} and {@code " Facebook "} are the same channel, and a
-	 * plain {@code UNIQUE (name)} only stops the exact-duplicate half of that.
-	 * The case-insensitive half rests on the Java check in
-	 * {@code CreateOutreachChannelUseCaseImpl#requireUniqueName}, which queries
-	 * with {@code IgnoreCase}. The column is not normalized to uppercase on
-	 * purpose — the name is shown to the user in the list and in the reference
-	 * pickers — so the two halves have to be split between the constraint and the
-	 * query. An alternative would be a functional index on {@code LOWER(name)},
-	 * which would make the database enforce the whole rule; not done because no
-	 * other catalog in the project carries one and a single hand-written index
-	 * would be the odd one out.
+	 * <p><b>The uniqueness of this column is whatever MySQL's collation makes
+	 * it</b> — the project runs MySQL 8.4 and pins no charset or collation in the
+	 * JDBC URL nor in {@code docker-compose.yml}, so the table inherits
+	 * {@code utf8mb4_0900_ai_ci}: case-insensitive <i>and</i> accent-insensitive.
+	 * Two consequences, both real and neither chosen by anyone here:
+	 * <ul>
+	 * <li>{@code "facebook"} and {@code "FACEBOOK"} collide at the index level, so
+	 * the constraint does cover the case-insensitive half of this phase's rule on
+	 * its own.</li>
+	 * <li>So do {@code "José"} and {@code "Jose"}. For a catalog of channel names
+	 * that is harmless, but it is why Fase 10 has to say so out loud for high
+	 * school types before copying this pattern.</li>
+	 * </ul>
+	 * What the index <i>cannot</i> see is the whitespace normalization: with a
+	 * {@code NO PAD} collation a trailing space is significant, and internal
+	 * doubles never compare equal. So {@code " Facebook "} would sail past the
+	 * constraint and land next to {@code "Facebook"}. That half is closed by
+	 * {@code OutreachChannelTextNormalizer} plus the Java check in
+	 * {@code CreateOutreachChannelUseCaseImpl#requireUniqueName}, which compare the
+	 * normalized value. The column is not uppercased on purpose — the name is shown
+	 * to the user in the list and in the reference pickers.
 	 */
 	@Column(nullable = false, length = 150)
 	private String name;
