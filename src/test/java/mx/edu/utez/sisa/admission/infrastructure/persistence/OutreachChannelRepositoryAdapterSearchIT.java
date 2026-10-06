@@ -102,8 +102,8 @@ class OutreachChannelRepositoryAdapterSearchIT {
 		// queda: dos consultas seguidas devuelven el mismo orden. El desempate por
 		// `id` de la Sort chain del adapter se queda por si algún día se suelta la
 		// restricción.
-		jpaRepository.save(new "Facebook-orden");
-		jpaRepository.save(new "Feria-orden");
+		jpaRepository.save(new OutreachChannel("Facebook-orden"));
+		jpaRepository.save(new OutreachChannel("Feria-orden"));
 
 		OutreachChannelSearchPage firstCall = adapter.search(new OutreachChannelSearchCriteria(null, null, 0, 20));
 		OutreachChannelSearchPage secondCall = adapter.search(new OutreachChannelSearchCriteria(null, null, 0, 20));
