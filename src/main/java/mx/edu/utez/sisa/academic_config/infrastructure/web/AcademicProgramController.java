@@ -20,8 +20,8 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicProgramLi
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.AcademicProgramResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ChangeProgramStatusRequest;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.CreateAcademicProgramRequest;
+import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramOptionResponse;
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateAcademicProgramRequest;
-import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -116,8 +116,10 @@ public class AcademicProgramController {
 	 * Reference-catalog read (transversal design: "Roles y Permisos — patrón
 	 * reference"). Unlike {@code GET /programs}, this is a **minimal
 	 * projection**: {@code ACTIVE} programs only, bare JSON array of
-	 * {@code { id, label, code }} with no pagination, no management fields
-	 * (description, dgpCode, status). It exists so pickers ("Programa" en
+	 * {@code { id, label, code, modality }} with no pagination, no management
+	 * fields (description, dgpCode, status). {@code modality} is what lets a
+	 * picker render "DSM — Desarrollo de Software (Presencial)" the same way
+	 * the management list does. It exists so pickers ("Programa" en
 	 * {@code PlanForm}, {@code GruposForm}, {@code ConfiguracionAdmisionForm})
 	 * can fill selects without pulling the full paged list. Read-only; no
 	 * role filter here — it is deliberately the "reference" class
@@ -126,12 +128,13 @@ public class AcademicProgramController {
 	 * the picker to one division.
 	 */
 	@GetMapping("/options")
-	public ResponseEntity<List<OptionResponse>> listProgramOptions(
+	public ResponseEntity<List<ProgramOptionResponse>> listProgramOptions(
 			@RequestParam(required = false) UUID divisionId) {
-		List<OptionResponse> items = (divisionId == null
+		List<ProgramOptionResponse> items = (divisionId == null
 				? academicProgramJpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE)
 				: academicProgramJpaRepository.findByStatusAndDivisionIdOrderByNameAsc(ProgramStatus.ACTIVE, divisionId))
-				.stream().map(p -> new OptionResponse(p.getId(), p.getName(), p.getCode())).toList();
+				.stream()
+				.map(p -> new ProgramOptionResponse(p.getId(), p.getName(), p.getCode(), p.getModality())).toList();
 		return ResponseEntity.ok(items);
 	}
 

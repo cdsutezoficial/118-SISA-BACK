@@ -11,14 +11,29 @@ import java.util.UUID;
  * Persistence out-port for {@link Group} — same shape as
  * {@code GenerationRepository}: {@link #save}, {@link #findById}, and a
  * filterable paginated {@link #search(GroupSearchCriteria)}. Unlike
- * {@code GenerationRepository}, there is no uniqueness-lookup method — the
- * plan's resolved design carries no uniqueness rule for {@code Group.code}.
+ * {@code GenerationRepository}, plus the two lookups the Fase 8 uniqueness rule
+ * needs: {@link #findByGenerationIdAndCode} for the duplicate check and
+ * {@link #findCodesByGenerationId} for the bulk-creation letter allocator.
  */
 public interface GroupRepository {
 
 	Group save(Group group);
 
 	Optional<Group> findById(UUID id);
+
+	/**
+	 * The {@code (generationId, code)} uniqueness probe. {@code programId} is
+	 * absent from the key on purpose — it is functionally dependent on
+	 * {@code generationId} (see {@code DuplicateGroupCodeException}).
+	 */
+	Optional<Group> findByGenerationIdAndCode(UUID generationId, String code);
+
+	/**
+	 * Every {@code code} already in use within one generation, for the bulk
+	 * creation letter allocator. Codes only: the allocator reads one column and
+	 * does not need the rows.
+	 */
+	List<String> findCodesByGenerationId(UUID generationId);
 
 	/**
 	 * Filterable, paginated query backing {@code ListGroupsUseCase}.

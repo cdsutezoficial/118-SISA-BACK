@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.port.in;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -55,17 +56,30 @@ public interface AccessFichaPaymentUseCase {
 	 * already-paid ficha still sees her confirmation date and receipt folio
 	 * without having to open the full ficha.
 	 *
-	 * <p>Two dates, no single "deadline": {@code registrationDeadline} is the
-	 * sales window's closing day as it was when the ficha was issued, and
-	 * {@code paymentClosesOn} is the tuition concept's {@code availableUntil} read
-	 * live. Only the second one still constrains anything, and it is the one the
-	 * payment path enforces — so a screen that shows it is showing the real
-	 * deadline. {@code paymentClosesOn} is {@code null} when the catalog sets no
-	 * closing date, which the screen must render as an absence rather than as a
-	 * placeholder.
+	 * <p>Three dates, no single "deadline". {@code registrationDeadline} is the
+	 * sales window's closing day as it was when the ficha was issued;
+	 * {@code paymentClosesOn} is the tuition concept's {@code availableUntil},
+	 * read live and kept only as an engine-side boundary. The one the screen
+	 * shows as "Fecha límite de pago" is {@code paymentDeadline}: the earlier of
+	 * {@code registrationDeadline} and the ficha's own {@code registeredAt} +
+	 * N-day plazo. {@code paymentClosesOn} is {@code null} when the catalog sets
+	 * no closing date, which the screen must render as an absence rather than as
+	 * a placeholder.
+	 *
+	 * <p>{@code candidateStatus} and {@code paymentExpired} answer two different
+	 * questions and the screen needs both. The status is what is <em>written
+	 * down</em>, and only the nightly VENCEN_FICHAS sweep writes it down; the flag
+	 * is what is <em>true today</em>. Between a deadline falling at 00:00 and the
+	 * sweep running at 00:10 those disagree, and the flag is the one the applicant
+	 * must be shown: her window closed, and the checkout will refuse her, so
+	 * offering a button that cannot work is the bug this field exists to prevent.
+	 * Making the screen re-derive that from {@code paymentDeadline} instead would
+	 * put a second copy of the window rule in TypeScript, which is exactly how the
+	 * portal and the engine start answering differently.
 	 */
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
-			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn) {
+			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
+			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired) {
 	}
 }

@@ -163,7 +163,8 @@ class AcademicProgramControllerTest {
 				.content(objectMapper.writeValueAsString(new CreateProgramBody(divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
 						"desc"))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("La clave de la carrera ya está en uso."));
 	}
 
 	@Test
@@ -175,7 +176,8 @@ class AcademicProgramControllerTest {
 				.content(objectMapper.writeValueAsString(new CreateProgramBody(divisionId, "Ingeniería en Software",
 						"Ingeniería en Software", "ISC-01", AcademicLevel.INGENIERIA, ProgramModality.PRESENCIAL, null,
 						"desc"))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe una carrera con el mismo nombre de oferta y modalidad."));
 	}
 
 	@Test
@@ -297,6 +299,7 @@ class AcademicProgramControllerTest {
 		when(active.getId()).thenReturn(programId);
 		when(active.getName()).thenReturn("Ingeniería en Software");
 		when(active.getCode()).thenReturn("ISW");
+		when(active.getModality()).thenReturn(ProgramModality.MIXTA);
 		when(academicProgramJpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE))
 				.thenReturn(List.of(active));
 
@@ -304,6 +307,7 @@ class AcademicProgramControllerTest {
 				.andExpect(jsonPath("$[0].id").value(programId.toString()))
 				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
 				.andExpect(jsonPath("$[0].code").value("ISW"))
+				.andExpect(jsonPath("$[0].modality").value("MIXTA"))
 				.andExpect(jsonPath("$[1]").doesNotExist());
 
 		verify(academicProgramJpaRepository).findByStatusOrderByNameAsc(ProgramStatus.ACTIVE);

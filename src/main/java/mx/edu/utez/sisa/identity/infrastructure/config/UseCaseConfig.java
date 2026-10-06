@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.config;
 
+import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignPermissionsToRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
@@ -34,6 +35,7 @@ import mx.edu.utez.sisa.identity.domain.port.out.PermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.PersonRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenRepository;
+import mx.edu.utez.sisa.identity.domain.port.out.TemporaryPasswordGenerator;
 import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionCacheInvalidator;
 import mx.edu.utez.sisa.identity.domain.port.out.RolePermissionRepository;
 import mx.edu.utez.sisa.identity.domain.port.out.RoleRepository;
@@ -61,6 +63,7 @@ import mx.edu.utez.sisa.identity.domain.service.RefreshAccessTokenUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RequestPasswordResetUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ResetPasswordUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.RevokeRoleUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.AdminResetPasswordUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.UnlockUserUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.UpdatePermissionUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.UpdateRoleUseCaseImpl;
@@ -168,6 +171,14 @@ public class UseCaseConfig {
 	@Bean
 	public UnlockUserUseCase unlockUserUseCase(UserRepository userRepository) {
 		return new UnlockUserUseCaseImpl(userRepository);
+	}
+
+	@Bean
+	public AdminResetPasswordUseCase adminResetPasswordUseCase(UserRepository userRepository,
+			PasswordHasher passwordHasher, TemporaryPasswordGenerator temporaryPasswordGenerator,
+			NotificationPort notificationPort, RefreshTokenRepository refreshTokenRepository) {
+		return new AdminResetPasswordUseCaseImpl(userRepository, passwordHasher, temporaryPasswordGenerator,
+				notificationPort, refreshTokenRepository);
 	}
 
 	@Bean

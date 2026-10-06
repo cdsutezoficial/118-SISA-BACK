@@ -12,8 +12,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +38,11 @@ class GetFichaAmountUseCaseImplTest {
 
 	private static final LocalDate QUOTE_DATE = LocalDate.of(2026, 9, 25);
 
+	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
+
+	/** Noon on {@link #QUOTE_DATE}, so {@code LocalDate.now(clock)} is unambiguous. */
+	private static final Clock CLOCK = Clock.fixed(QUOTE_DATE.atTime(12, 0).atZone(ZONE).toInstant(), ZONE);
+
 	// Carried by the projection but not consulted by this use case — it only
 	// quotes the concept's amount. The rules the window gates are covered in
 	// RegisterCandidateUseCaseImplTest.
@@ -53,14 +60,14 @@ class GetFichaAmountUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new GetFichaAmountUseCaseImpl(programAdmissionConfigQueryPort, fichaAmountResolver, QUOTE_DATE);
+		useCase = new GetFichaAmountUseCaseImpl(programAdmissionConfigQueryPort, fichaAmountResolver, CLOCK);
 	}
 
 	@Test
 	void quotesTheProgramConceptAmount() {
 		when(programAdmissionConfigQueryPort.findById(CONFIG_ID))
 				.thenReturn(Optional.of(new AdmissionConfigInfo(CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, WINDOW_OPEN,
+						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, null, WINDOW_OPEN,
 						WINDOW_CLOSE, MAX_CANDIDATES)));
 		when(fichaAmountResolver.resolve(PROGRAM_ID, QUOTE_DATE))
 				.thenReturn(new FichaAmountResolver.FichaAmount(new BigDecimal("1578.00"), "Inscripción"));

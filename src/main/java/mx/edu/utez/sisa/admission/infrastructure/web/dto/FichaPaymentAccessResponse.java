@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.infrastructure.web.dto;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase.PaymentAccess;
 
 import java.math.BigDecimal;
@@ -23,20 +24,28 @@ import java.util.UUID;
  * instead of a checkout button that would 409. {@code paidAt} carries the
  * confirmation date the business asked to display next to the receipt folio.
  *
- * <p>{@code paymentClosesOn} is what makes the checkout button honest: it is the
- * tuition concept's {@code availableUntil} read live, i.e. the same date the
- * checkout endpoint enforces, so a screen can never show a payment window the
- * backend would not honour. It is {@code null} when the catalog sets no closing
- * date, and the screen must then omit the row rather than invent one.
+ * <p>{@code paymentDeadline} is what makes the checkout button honest: it is the
+ * earlier of the sales window and the ficha's own plazo, i.e. the boundary the
+ * checkout endpoint will actually enforce, so the screen can never promise more
+ * time than the backend gives. {@code paymentClosesOn} stays as the catalog's
+ * own closing date for completeness but is no longer the date shown.
+ *
+ * <p>{@code paymentExpired} and {@code candidateStatus} are separate because they
+ * answer different questions: the status is what the nightly VENCEN_FICHAS sweep
+ * wrote down, the flag is what is true today. In the ten minutes between a
+ * deadline passing and the sweep running they disagree, and the flag is the one
+ * the screen must obey, because it is what the checkout enforces.
  */
 public record FichaPaymentAccessResponse(UUID candidateId, String folio, String nombre, String programName,
 		BigDecimal amount, String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
-		String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn) {
+		String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
+		LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired) {
 
 	public static FichaPaymentAccessResponse from(PaymentAccess access) {
 		return new FichaPaymentAccessResponse(access.candidateId(), access.folio(), access.nombre(),
 				access.programName(), access.amount(), access.referenceNumber(), access.registrationDeadline(),
 				access.paymentStatus(), access.receiptNumber(), access.paidAt(), access.alreadyPaid(),
-				access.paymentClosesOn());
+				access.paymentClosesOn(), access.paymentDeadline(), access.candidateStatus(),
+				access.paymentExpired());
 	}
 }

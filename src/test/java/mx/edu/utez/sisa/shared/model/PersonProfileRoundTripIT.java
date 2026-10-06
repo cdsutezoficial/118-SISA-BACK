@@ -92,7 +92,7 @@ class PersonProfileRoundTripIT {
 		person.setDiversityProfile(
 				new DiversityProfile(false, false, true, false, false, false, false, null, null));
 		person.setEmploymentInfo(
-				new EmploymentInfo(true, EmploymentType.PERMANENT, "UTEZ", "Docente", null, BigDecimal.valueOf(15000),
+				new EmploymentInfo(true, "Tiempo completo", "UTEZ", "Docente", null, BigDecimal.valueOf(15000),
 						null, null));
 		person.setHighSchoolBackground(new HighSchoolBackground("Prepa UTEZ", "Emiliano Zapata", null,
 				BigDecimal.valueOf(9.2), true, null, null, null, null, null, null, null, null));

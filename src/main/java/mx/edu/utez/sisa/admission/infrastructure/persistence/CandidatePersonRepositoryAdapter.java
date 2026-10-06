@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,5 +34,13 @@ public class CandidatePersonRepositoryAdapter implements CandidatePersonReposito
 	@Override
 	public Optional<Person> findById(UUID id) {
 		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public List<Person> findByIds(List<UUID> ids) {
+		if (ids.isEmpty()) {
+			return List.of();
+		}
+		return jpaRepository.findAllById(ids);
 	}
 }

@@ -34,7 +34,7 @@ class GetPaymentConceptUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new GetPaymentConceptUseCaseImpl(paymentConceptRepository);
-		concept = new PaymentConcept("Inscripcion", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true,
+		concept = new PaymentConcept("Inscripcion", "COD-1", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null,
 				false, 1, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 		conceptId = UUID.randomUUID();
 		ReflectionTestUtils.setField(concept, "id", conceptId);

@@ -29,17 +29,21 @@ public class CreateAcademicDivisionUseCaseImpl implements CreateAcademicDivision
 	@Override
 	@Transactional
 	public AcademicDivisionResult createDivision(CreateAcademicDivisionCommand command) {
-		if (divisionRepository.findByName(command.name()).isPresent()) {
-			throw new DuplicateDivisionNameException("Division name already in use: " + command.name());
+		String name = AcademicDivisionTextNormalizer.name(command.name());
+		String code = AcademicDivisionTextNormalizer.code(command.code());
+		String description = AcademicDivisionTextNormalizer.description(command.description());
+
+		if (divisionRepository.findByName(name).isPresent()) {
+			throw new DuplicateDivisionNameException("Division name already in use: " + name);
 		}
-		if (divisionRepository.findByCode(command.code()).isPresent()) {
-			throw new DuplicateDivisionCodeException("Division code already in use: " + command.code());
+		if (divisionRepository.findByCode(code).isPresent()) {
+			throw new DuplicateDivisionCodeException("Division code already in use: " + code);
 		}
 		if (command.directorPersonId() != null && !personLookupPort.existsById(command.directorPersonId())) {
 			throw new DirectorNotFoundException("Director person not found: " + command.directorPersonId());
 		}
 
-		AcademicDivision division = new AcademicDivision(command.name(), command.code(), command.description(),
+		AcademicDivision division = new AcademicDivision(name, code, description,
 				command.directorPersonId());
 		AcademicDivision saved = divisionRepository.save(division);
 

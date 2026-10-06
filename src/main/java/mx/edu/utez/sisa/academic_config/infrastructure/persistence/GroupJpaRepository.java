@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -48,5 +50,25 @@ public interface GroupJpaRepository extends JpaRepository<Group, UUID> {
 	 * assigned to one {@code periodId} — the dashboard's "grupos activos"
 	 * counter for the current period.
 	 */
-	long countByPeriodId(UUID periodId);
+	long countByPeriodIdAndStatus(UUID periodId, GroupStatus status);
+
+	/**
+	 * Backs the {@code (generationId, code)} uniqueness check of
+	 * {@code CreateGroupUseCaseImpl}/{@code UpdateGroupUseCaseImpl}.
+	 *
+	 * <p>
+	 * Derived query, not JPQL: a derived {@code findBy...} lets Hibernate bind
+	 * the value as a parameter, whereas the same predicate written by hand would
+	 * have to go through a string concat. No {@code @Query} needed and no chance
+	 * of the concat introducing a syntax error.
+	 */
+	Optional<Group> findByGenerationIdAndCode(UUID generationId, String code);
+
+	/**
+	 * Backs the bulk-creation letter allocator: given every {@code code} already
+	 * in use by this generation, pick the next free ones. Returns the codes, not
+	 * the entities — the allocator only needs the identifier, and fetching whole
+	 * rows to read one column would be wasteful.
+	 */
+	List<String> findCodesByGenerationId(UUID generationId);
 }

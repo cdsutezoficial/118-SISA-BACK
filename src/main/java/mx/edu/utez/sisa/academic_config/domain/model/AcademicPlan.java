@@ -55,13 +55,13 @@ public class AcademicPlan {
 	@Column(name = "program_id", nullable = false)
 	private UUID programId;
 
-	@Column(nullable = false)
+	@Column(nullable = false, length = 50)
 	private String version;
 
-	@Column(name = "validity_period", nullable = false)
+	@Column(name = "validity_period", nullable = false, length = 100)
 	private String validityPeriod;
 
-	@Column(name = "titulation_key", nullable = false)
+	@Column(name = "titulation_key", nullable = false, length = 100)
 	private String titulationKey;
 
 	@Column(name = "effective_from", nullable = false)
@@ -341,7 +341,14 @@ public class AcademicPlan {
 	}
 
 	private boolean hasSubjectCode(String code, UUID excludingSubjectId) {
-		return allSubjects().anyMatch(subject -> subject.getCode().equals(code)
+		// Case-insensitive: `code` is normalized to upper case before it gets
+		// here (AcademicPlanTextNormalizer#subjectCode), but rows written before
+		// that normalization existed keep whatever case they were saved with, and
+		// MySQL's default collation is already case-insensitive — so an
+		// exact-match comparison here would let "MAT101" and "mat101" both be
+		// accepted by the application and then collide in the unique index (or,
+		// for `code`, which has no unique index at all, silently duplicate).
+		return allSubjects().anyMatch(subject -> subject.getCode().equalsIgnoreCase(code)
 				&& (excludingSubjectId == null || !excludingSubjectId.equals(subject.getId())));
 	}
 

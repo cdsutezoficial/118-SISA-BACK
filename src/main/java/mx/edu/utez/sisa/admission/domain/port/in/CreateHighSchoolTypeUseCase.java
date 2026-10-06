@@ -14,7 +14,9 @@ public interface CreateHighSchoolTypeUseCase {
 	HighSchoolTypeResult createHighSchoolType(CreateHighSchoolTypeCommand command);
 
 	/**
-	 * @param name deliberately NOT unique — see {@code HighSchoolType}'s javadoc
+	 * @param name unique once normalized, across active and inactive rows alike;
+	 *             the implementation normalizes it and rejects a duplicate with
+	 *             {@link mx.edu.utez.sisa.admission.shared.exception.DuplicateHighSchoolTypeNameException}
 	 */
 	record CreateHighSchoolTypeCommand(String name) {
 	}

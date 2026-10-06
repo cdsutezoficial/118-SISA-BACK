@@ -17,11 +17,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicProgramJpaRepository;
-import mx.edu.utez.sisa.academic_config.infrastructure.persistence.PaymentConceptJpaRepository;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.ProgramAdmissionConfigJpaRepository;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
@@ -31,6 +28,7 @@ import mx.edu.utez.sisa.admission.infrastructure.persistence.AdmissionPaymentRep
 import mx.edu.utez.sisa.admission.infrastructure.persistence.AdmissionQuotaAdapter;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateRepositoryAdapter;
+import mx.edu.utez.sisa.admission.infrastructure.persistence.CheckoutAttemptRepositoryAdapter;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
@@ -61,7 +59,7 @@ import org.springframework.transaction.annotation.Transactional;
  * this feature exists to prevent. A pass here means the second thread's count saw
  * the first thread's committed row.</li>
  * <li><b>The same candidate twice → both succeed.</b> The self-exclusion in
- * {@code countOccupiedByProgramIdExcludingCandidate} is a correctness requirement,
+ * {@code countOccupiedByConfigIdExcludingCandidate} is a correctness requirement,
  * not an optimisation, and it is the kind of thing that passes in a unit test with
  * an argument captor while being wrong in the query.</li>
  * </ol>
@@ -82,7 +80,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @DataJpaTest
 @Import({ CheckoutSlotClaimer.class, AdmissionQuotaAdapter.class, AdmissionPaymentRepositoryAdapter.class,
-		CandidateRepositoryAdapter.class, CheckoutSlotClaimerConcurrencyIT.FixedClock.class })
+		CandidateRepositoryAdapter.class, CheckoutAttemptRepositoryAdapter.class,
+		CheckoutSlotClaimerConcurrencyIT.FixedClock.class })
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CheckoutSlotClaimerConcurrencyIT {
@@ -97,6 +96,16 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 	private static final Instant NOW = TODAY.atTime(12, 0).atZone(ZONE).toInstant();
 
+	/** A checkout tariff; the claim stores it, the count ignores it. */
+	private static final BigDecimal CHECKOUT_AMOUNT = new BigDecimal("500.00");
+
+	/**
+	 * The ficha's payment window, the default the application ships with. The claim
+	 * needs it because a claim only holds its slot while the ficha is still payable,
+	 * and it has to be the same number the count compares against.
+	 */
+	private static final int PAYMENT_WINDOW_DAYS = 10;
+
 	@Autowired
 	private CheckoutSlotClaimer claimer;
 
@@ -107,9 +116,6 @@ class CheckoutSlotClaimerConcurrencyIT {
 	private ProgramAdmissionConfigJpaRepository programConfigJpaRepository;
 
 	@Autowired
-	private PaymentConceptJpaRepository paymentConceptJpaRepository;
-
-	@Autowired
 	private CandidateJpaRepository candidateJpaRepository;
 
 	@Autowired
@@ -117,7 +123,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 	@Test
 	void onlyOneOfTwoCandidatesGetsTheLastPlace() throws Exception {
-		ProgramAdmissionConfig config = saveConfigWithTuitionConcept(1);
+		ProgramAdmissionConfig config = saveConfig(1);
 		UUID first = saveCandidateWithPendingFicha(config.getId());
 		UUID second = saveCandidateWithPendingFicha(config.getId());
 
@@ -125,14 +131,14 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 		assertThat(claimFailures(outcomes)).as("with one place left, exactly one candidate is refused").hasSize(1);
 		assertThat(claimSuccesses(outcomes)).as("the other candidate is not refused").hasSize(1);
-		assertThat(claimedCount(config.getProgramId()))
+		assertThat(claimedCount(config.getId()))
 				.as("the quota of 1 holds: the loser's transaction left nothing behind")
 				.isEqualTo(1);
 	}
 
 	@Test
 	void aCandidateMayClaimTwiceForTheSamePlace() throws Exception {
-		ProgramAdmissionConfig config = saveConfigWithTuitionConcept(1);
+		ProgramAdmissionConfig config = saveConfig(1);
 		UUID candidateId = saveCandidateWithPendingFicha(config.getId());
 
 		List<Throwable> outcomes = race(candidateId, candidateId);
@@ -161,7 +167,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 					// before the other has started, which is the whole point.
 					go.await(10, TimeUnit.SECONDS);
 					try {
-						claimer.claim(candidateId);
+						claimer.claim(candidateId, CHECKOUT_AMOUNT);
 						return null;
 					} catch (RuntimeException e) {
 						return e;
@@ -193,17 +199,32 @@ class CheckoutSlotClaimerConcurrencyIT {
 	/**
 	 * Reads the occupancy straight from the database rather than from the claimer's
 	 * port, so a claim that was written and then rolled back cannot hide here.
+	 *
+	 * <p>The two cutoffs come from {@code FichaPaymentWindow} for the same reason
+	 * the production code uses it: the query asks "which day is it" in the admission
+	 * zone, and a test that computed the day differently would be asserting against
+	 * a boundary the application does not have.
 	 */
-	private long claimedCount(UUID programId) {
-		return admissionPaymentJpaRepository.countOccupiedByProgramId(programId,
+	private long claimedCount(UUID admissionConfigId) {
+		ZoneId zone = ZONE;
+		return admissionPaymentJpaRepository.countOccupiedByConfigId(admissionConfigId,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING,
-				mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus.ACTIVE, PaymentConceptType.ADMISSION,
-				TODAY);
+				FichaPaymentWindow.latestPayableRegistration(TODAY, PAYMENT_WINDOW_DAYS, zone),
+				FichaPaymentWindow.startOfDay(TODAY, zone));
 	}
 
-	/** A config, its program, and an open tuition concept that makes claims count. */
-	private ProgramAdmissionConfig saveConfigWithTuitionConcept(int maxCandidates) {
+	/**
+	 * A config and its program. Deliberately no payment concept and no rate.
+	 *
+	 * <p>Until the occupancy query stopped walking the price ladder, this method had
+	 * to seed an ADMISSION concept and a rate or every count read zero and there was
+	 * no "last place" to compete over. Its absence now is the point: what holds a
+	 * claim is the ficha's own dates and this config's window, so a career whose
+	 * catalog is not even set up yet still holds its places correctly instead of
+	 * reporting itself empty and overselling.
+	 */
+	private ProgramAdmissionConfig saveConfig(int maxCandidates) {
 		AcademicProgram program = new AcademicProgram(UUID.randomUUID(), "Ingeniería en Software",
 				"Software " + UUID.randomUUID(), "code-" + UUID.randomUUID(), AcademicLevel.INGENIERIA,
 				ProgramModality.PRESENCIAL, null, null, null);
@@ -212,17 +233,6 @@ class CheckoutSlotClaimerConcurrencyIT {
 		ProgramAdmissionConfig config = new ProgramAdmissionConfig(program.getId(), UUID.randomUUID(), UUID.randomUUID(),
 				true, maxCandidates, NOW.minusSeconds(86_400), NOW.plusSeconds(86_400));
 		programConfigJpaRepository.save(config);
-
-		// The EXISTS clause in the occupancy query only counts a claimed PENDING ficha
-		// while its admission concept can still be paid, so without this row the
-		// "last place" scenario would have nothing to compete over. The type is
-		// ADMISSION because that is what the occupancy query filters on: an
-		// ENROLLMENT concept would be invisible to it and every count would read 0.
-		PaymentConcept concept = new PaymentConcept("Matrícula " + UUID.randomUUID(), "", "",
-				PaymentConceptType.ADMISSION, true, false, null, null, false, TODAY.minusDays(1), TODAY.plusDays(5),
-				null, BigDecimal.valueOf(1578), false, null, false, false, null, List.of(), List.of(program.getId()));
-		concept.activate();
-		paymentConceptJpaRepository.save(concept);
 
 		return config;
 	}

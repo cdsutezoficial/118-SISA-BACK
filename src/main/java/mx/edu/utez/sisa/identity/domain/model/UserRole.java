@@ -46,6 +46,24 @@ public class UserRole {
 		this.divisionId = divisionId;
 	}
 
+	/**
+	 * Re-points an existing grant at a division. Used only to backfill the
+	 * scope on an already-seeded {@code DIRECTOR_DIVISION} account, whose grant
+	 * is created with a {@code null} division because
+	 * {@code identity.TestAccountsSeedRunner} cannot see which division exists
+	 * ({@code academic_config} owns that catalog).
+	 *
+	 * <p>The required-vs-forbidden rule is NOT enforced here, for the same
+	 * reason it is not enforced on the constructor: this data holder stores no
+	 * role key, so it cannot know whether the grant may carry a division. The
+	 * caller is responsible — {@code AssignRoleUseCaseImpl} for the real write
+	 * path, {@code UserRoleScopeAdapter} for the seed, which is why the seed
+	 * only ever scopes {@code DIRECTOR_DIVISION} (a division-scoped role).
+	 */
+	public void scopeDivision(UUID divisionId) {
+		this.divisionId = divisionId;
+	}
+
 	public UUID getId() {
 		return id;
 	}

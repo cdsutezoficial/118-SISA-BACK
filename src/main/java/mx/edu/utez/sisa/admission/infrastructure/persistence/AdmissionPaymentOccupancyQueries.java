@@ -1,11 +1,8 @@
 package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.UUID;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptStatus;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfig;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
@@ -33,11 +30,17 @@ import org.springframework.data.repository.query.Param;
  * caller that forgot to branch would get a plausible number instead of an error.
  * Here both variants are named for what they do, so the compiler-visible
  * difference is the argument list.
+ *
+ * <p>Both are keyed by {@code admissionConfigId}, which is what the catalog's
+ * {@code findOpenOfferedOptions} subquery has always counted. Before this was fixed
+ * these two counted by {@code programId} while the catalog counted by config, and
+ * the two answers only ever agreed for programs sold in a single period — see
+ * {@code ProgramAdmissionConfigOptionsQueryIT}.
  */
 interface AdmissionPaymentOccupancyQueries {
 
 	/**
-	 * Occupied slots across a program's whole quota, counted the way the quota is
+	 * Occupied slots of one admission config's quota, counted the way the quota is
 	 * enforced: a ficha that PAID, or a PENDING ficha that already claimed its
 	 * slot at checkout.
 	 *
@@ -46,41 +49,54 @@ interface AdmissionPaymentOccupancyQueries {
 	 * applicant, and it is evaluated at the one moment a refusal is still free:
 	 * before Evo has been asked to take the money.
 	 *
-	 * <p>The {@code EXISTS} subquery is the expiry rule, and it is what keeps this
-	 * design free of scheduled cleanup. A claim only holds while the tuition
-	 * concept can still be paid; once {@code available_until} has passed, a PENDING
-	 * ficha nobody paid for drops out of the count on its own, because the count is
-	 * a function of stored data rather than of a number someone has to decrement.
-	 * It mirrors {@code PaymentConceptLookupJpaRepository#findActiveTuitionForProgram}
-	 * so "still payable" means the same thing in both places.
+* <p><b>What holds a claim is the ficha's own dates, and nothing else.</b> A
+	 * claim occupies a slot while that ficha can still be paid: while it is inside
+	 * its private {@code registeredAt + N-day} plazo, and while the config's
+	 * {@code closesAt} has not passed. Both comparisons are made against the
+	 * {@code Instant} that starts today, so the test is "which day is it", never
+	 * "what hour is it" — a ficha issued on the 28th in a process closing on the
+	 * 30th is payable through the 30th whatever time of day either lands.
 	 *
-	 * <p>Keyed by {@code programId} rather than by config because the window lives
-	 * on the concept, which is found per program. A config belongs to exactly one
-	 * program, so the quota a staff member edits and the one enforced here remain
-	 * the same number.
+	 * <p>This clause used to be an {@code EXISTS} over the payment catalog: "is
+	 * there still an active ADMISSION concept with a live rate for this program".
+	 * Two things made that the wrong rule. It decided when a claim expired from a
+	 * date staff edit in the catalog rather than from the window the applicant was
+	 * actually promised, so one claim could be released by the calendar and
+	 * enforced by the checkout; and it walked the whole price ladder — program,
+	 * then level, then general — on every single checkout attempt, which is the
+	 * most contended write in the system, all of it inside a transaction holding a
+	 * lock on the config row.
+	 *
+	 * <p>Not depending on any scheduled job is a property worth keeping: a claim is
+	 * released because it no longer counts, not because somebody ran a cleanup.
+	 *
+	 * <p><b>Keyed by config, not by program</b> — this was the drift that let the
+	 * picker and the checkout disagree. Counting {@code cfg.programId} summed the
+	 * fichas of every period the program had ever been sold in, so a program whose
+	 * 2026-1 cycle was full blocked its own 2027-1 cycle at checkout while the
+	 * picker, which counts per config, happily offered it. See
+	 * {@code ProgramAdmissionConfigOptionsQueryIT#aFullOldCycleDoesNotBlockTheSame
+	 * ProgramsNewCycle}.
+	 *
+	 * <p>Both dates are resolved by the caller from a single {@code Clock}, so the
+	 * dropdown, the claim and the sweep all expire against the same day.
 	 */
 	@Query("""
 			SELECT COUNT(pay)
 			FROM AdmissionPayment pay
 			JOIN Candidate cand ON cand.id = pay.candidateId
 			JOIN ProgramAdmissionConfig cfg ON cfg.id = cand.admissionConfigId
-			WHERE cfg.programId = :programId
+			WHERE cand.admissionConfigId = :admissionConfigId
 			  AND (pay.paymentStatus = :paid
 			       OR (pay.paymentStatus = :pending
 			           AND pay.checkoutClaimedAt IS NOT NULL
-			           AND EXISTS (
-			                SELECT c FROM PaymentConcept c
-			                WHERE c.status = :conceptStatus
-			                  AND c.type = :conceptType
-			                  AND c.isTuition = true
-			                  AND :programId MEMBER OF c.programIds
-			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
-			           )))
+			           AND cand.registeredAt >= :registeredNoLaterThan
+			           AND cfg.closesAt >= :midnightToday))
 			""")
-	long countOccupiedByProgramId(@Param("programId") UUID programId,
+	long countOccupiedByConfigId(@Param("admissionConfigId") UUID admissionConfigId,
 			@Param("paid") AdmissionPaymentStatus paid, @Param("pending") AdmissionPaymentStatus pending,
-			@Param("conceptStatus") PaymentConceptStatus conceptStatus,
-			@Param("conceptType") PaymentConceptType conceptType, @Param("onDate") LocalDate onDate);
+			@Param("registeredNoLaterThan") Instant registeredNoLaterThan,
+			@Param("midnightToday") Instant midnightToday);
 
 	/**
 	 * The same count, ignoring the requesting candidate's own ficha.
@@ -98,28 +114,22 @@ interface AdmissionPaymentOccupancyQueries {
 	 * ficha is not in the count either way — a PENDING payment without
 	 * {@code checkout_claimed_at} occupies nothing.
 	 */
-	@Query("""
+@Query("""
 			SELECT COUNT(pay)
 			FROM AdmissionPayment pay
 			JOIN Candidate cand ON cand.id = pay.candidateId
 			JOIN ProgramAdmissionConfig cfg ON cfg.id = cand.admissionConfigId
-			WHERE cfg.programId = :programId
+			WHERE cand.admissionConfigId = :admissionConfigId
 			  AND pay.candidateId <> :candidateId
 			  AND (pay.paymentStatus = :paid
 			       OR (pay.paymentStatus = :pending
 			           AND pay.checkoutClaimedAt IS NOT NULL
-			           AND EXISTS (
-			                SELECT c FROM PaymentConcept c
-			                WHERE c.status = :conceptStatus
-			                  AND c.type = :conceptType
-			                  AND c.isTuition = true
-			                  AND :programId MEMBER OF c.programIds
-			                  AND (c.availableUntil IS NULL OR c.availableUntil >= :onDate)
-			           )))
+			           AND cand.registeredAt >= :registeredNoLaterThan
+			           AND cfg.closesAt >= :midnightToday))
 			""")
-	long countOccupiedByProgramIdExcludingCandidate(@Param("programId") UUID programId,
+	long countOccupiedByConfigIdExcludingCandidate(@Param("admissionConfigId") UUID admissionConfigId,
 			@Param("candidateId") UUID candidateId, @Param("paid") AdmissionPaymentStatus paid,
 			@Param("pending") AdmissionPaymentStatus pending,
-			@Param("conceptStatus") PaymentConceptStatus conceptStatus,
-			@Param("conceptType") PaymentConceptType conceptType, @Param("onDate") LocalDate onDate);
+			@Param("registeredNoLaterThan") Instant registeredNoLaterThan,
+			@Param("midnightToday") Instant midnightToday);
 }

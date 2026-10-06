@@ -14,7 +14,9 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.ListGro
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.ListGroupsResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase.UpdateGroupCommand;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GroupCodeLevelMismatchException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GroupNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
@@ -174,6 +176,34 @@ class GroupControllerTest {
 				.content(objectMapper.writeValueAsString(new CreateBody(UUID.randomUUID(), UUID.randomUUID(),
 						UUID.randomUUID(), "3A", 35, Shift.MORNING))))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void createGroupWithDuplicateCodeReturns409() throws Exception {
+		// Era el único agregado con claves de negocio únicas sin test de
+		// duplicado (C2 de las incidencias de la primera prueba manual).
+		when(createGroupUseCase.createGroup(any()))
+				.thenThrow(new DuplicateGroupCodeException("Group code already in use for this generation: 3A"));
+
+		mockMvc.perform(post("/groups").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody(UUID.randomUUID(), UUID.randomUUID(),
+						UUID.randomUUID(), "3A", 35, Shift.MORNING))))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe un grupo con esa clave en la generación."));
+	}
+
+	@Test
+	void createGroupWithCodeFromAnotherLevelReturns400() throws Exception {
+		when(createGroupUseCase.createGroup(any()))
+				.thenThrow(new GroupCodeLevelMismatchException("Group code '5A' does not describe plan level 3"));
+
+		mockMvc.perform(post("/groups").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreateBody(UUID.randomUUID(), UUID.randomUUID(),
+						UUID.randomUUID(), "5A", 35, Shift.MORNING))))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("GROUP_CODE_LEVEL_MISMATCH"))
+				.andExpect(jsonPath("$.message")
+						.value("La clave del grupo debe corresponder al nivel seleccionado (ej. 3A para el Nivel 3)."));
 	}
 
 	@Test

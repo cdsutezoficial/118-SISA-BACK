@@ -10,6 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -44,7 +46,19 @@ public class Candidate {
 	@Column(name = "admission_config_id", nullable = false)
 	private UUID admissionConfigId;
 
-	@Column(nullable = false)
+	/**
+	 * The applicant's ficha number, and the key she comes back with
+	 * ("vuelve a pagar mi ficha" pairs it with the last 3 CURP characters), so a
+	 * duplicate here is worse than a wasted row: two applicants would be looking
+	 * up the same ficha.
+	 *
+	 * <p>{@code generateFolio()} derives it as {@code count(prefix) + 1}, which is
+	 * read-then-write with no lock — two concurrent registrations can compute the
+	 * same number. This index is what makes that collision visible as a
+	 * {@code DuplicateKeyException} instead of silent corruption. See the migration
+	 * script for applying it outside {@code ddl-auto=update} environments.
+	 */
+	@Column(nullable = false, unique = true)
 	private String folio;
 
 	@Enumerated(EnumType.STRING)
@@ -157,6 +171,42 @@ public class Candidate {
 		}
 		this.status = CandidateStatus.PAID;
 		this.paidAt = Instant.now();
+	}
+
+	/**
+	 * The calendar date the ficha was registered, in the given zone. It is day 0
+	 * of the payment window: {@code registeredAt} is a UTC {@code Instant}, but
+	 * the window is counted in the admission calendar, so a registration just
+	 * before midnight local must not roll over to the next day.
+	 */
+	public LocalDate registeredOn(ZoneId zone) {
+		return registeredAt.atZone(zone).toLocalDate();
+	}
+
+	/**
+	 * Last day the ficha can be paid: day 0 ({@link #registeredOn}) plus the
+	 * configured deadline. The window closes at 23:59:59 that day, so callers
+	 * compare {@code today.isAfter(paymentDeadline(...))} — on the deadline
+	 * itself the ficha is still payable. The deadline is derived, never stored:
+	 * there is no column, and changing {@code deadline-days} re-reads every ficha.
+	 */
+	public LocalDate paymentDeadline(ZoneId zone, int deadlineDays) {
+		return registeredOn(zone).plusDays(deadlineDays);
+	}
+
+	/**
+	 * Moves the ficha to {@code PAYMENT_EXPIRED} ("no pago") when its window
+	 * lapsed without payment, releasing the CURP lock. Only {@code REGISTERED}
+	 * can expire: a {@code PAID} ficha is final and every later status is past
+	 * this point of the lifecycle. Returns whether the status changed, so the
+	 * caller only saves real writes.
+	 */
+	public boolean markPaymentExpired() {
+		if (this.status != CandidateStatus.REGISTERED) {
+			return false;
+		}
+		this.status = CandidateStatus.PAYMENT_EXPIRED;
+		return true;
 	}
 
 	@Override

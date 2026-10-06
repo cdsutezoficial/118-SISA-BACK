@@ -1,10 +1,13 @@
 package mx.edu.utez.sisa.academic_config.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.PaymentConcept;
+import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase;
-import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
+import mx.edu.utez.sisa.academic_config.domain.port.in.ReconcilePaymentRatesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentAreaRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.PaymentConceptRepository;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentConceptCodeException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentQuotaLevelException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,23 +21,41 @@ import java.util.UUID;
 /**
  * Creates a {@code PaymentConcept} catalog entry (plan section 5 —
  * {@code CreatePaymentConceptUseCase}, the exact name already documented in
- * {@code 02-config-academica.md} line 299). No uniqueness check on
- * {@code name} — deliberately, per plan section 4, same criterion already
- * used in {@code CreateSubjectClassificationUseCaseImpl}. Enforces the
- * {@code maxPerStudent}/{@code maxPerPeriod} > 0 and
+ * {@code 02-config-academica.md} line 299). Enforces the
+ * {@code maxPerStudent}/{@code maxPerPeriod} &gt; 0 and
  * {@code availableFrom <= availableUntil} range rules (plan section 4 —
  * inferred, marked for correction).
  *
  * <p>
  * The extension fields ({@code areaId}, {@code cost}, {@code costExternal},
  * {@code isExternal}, {@code isAccumulable}, {@code isMulticoncept},
- * {@code quotaLimit}, {@code linkedConceptIds}, {@code programIds}) are
- * validated here (plan {@code 2026-09-19-payment-concept-extension.md} §3):
- * scalar rules raise {@link InvalidPaymentConceptDataException} and cross-
- * aggregate references ({@code PaymentArea}, {@code AcademicProgram},
- * {@code PaymentConcept}) raise {@link PaymentConceptReferenceNotFoundException}
- * — same precedent as {@code CreateAcademicProgramUseCaseImpl} validating
- * {@code divisionId} against {@code AcademicDivision}.
+ * {@code quotaLimit}, {@code linkedConceptIds}) are validated here (plan
+ * {@code 2026-09-19-payment-concept-extension.md} §3): scalar rules raise
+ * {@link InvalidPaymentConceptDataException} and cross-aggregate references
+ * ({@code PaymentArea}, {@code PaymentConcept}) raise
+ * {@link PaymentConceptReferenceNotFoundException} — same precedent as
+ * {@code CreateAcademicProgramUseCaseImpl} validating {@code divisionId}
+ * against {@code AcademicDivision}.
+ *
+ * <p>
+ * The {@code type}/{@code levelNumber} pairing is checked inside
+ * {@link PaymentConcept} itself (pure two-field invariant, no repository), and
+ * "at most one active recurring quota per level" is checked here because it
+ * spans records.
+ *
+ * <p>
+ * Rates are reconciled in the same transaction, right after the concept is
+ * persisted. For a {@code PERIODIC_QUOTA} this is mandatory rather than
+ * convenient: the type is illegal without a price for every active program, and
+ * reconciling in a follow-up request would leave a window where a student of
+ * that level has a quota concept that prices nothing. Both use cases share one
+ * {@code @Transactional} boundary, so a rejected rate set rolls the concept
+ * back with it.
+ *
+ * <p>There is deliberately no {@code programIds}: which programs a concept
+ * charges for is stated by its rates, so a concept's scope is the single set of
+ * rows the pricing query already reads rather than a second list that has to be
+ * kept in agreement with it.
  */
 public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseCase {
 
@@ -42,13 +63,13 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 
 	private final PaymentAreaRepository paymentAreaRepository;
 
-	private final AcademicProgramRepository academicProgramRepository;
+	private final ReconcilePaymentRatesUseCase reconcilePaymentRatesUseCase;
 
 	public CreatePaymentConceptUseCaseImpl(PaymentConceptRepository paymentConceptRepository,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository) {
+			PaymentAreaRepository paymentAreaRepository, ReconcilePaymentRatesUseCase reconcilePaymentRatesUseCase) {
 		this.paymentConceptRepository = paymentConceptRepository;
 		this.paymentAreaRepository = paymentAreaRepository;
-		this.academicProgramRepository = academicProgramRepository;
+		this.reconcilePaymentRatesUseCase = reconcilePaymentRatesUseCase;
 	}
 
 	@Override
@@ -56,18 +77,53 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 	public PaymentConceptResult createPaymentConcept(CreatePaymentConceptCommand command) {
 		validate(command.maxPerStudent(), command.maxPerPeriod(), command.availableFrom(), command.availableUntil(),
 				command.cost(), command.isExternal(), command.costExternal(), command.quotaLimit());
-		validateReferences(command.areaId(), command.programIds(), command.linkedConceptIds(), null,
-				paymentAreaRepository, academicProgramRepository, paymentConceptRepository);
+		validateReferences(command.areaId(), command.linkedConceptIds(), null, paymentAreaRepository,
+				paymentConceptRepository);
+		validateCode(command.code(), null, paymentConceptRepository);
+		validateQuotaLevel(command.type(), command.levelNumber(), null, paymentConceptRepository);
 
-		PaymentConcept concept = new PaymentConcept(command.name(), command.description(), command.policies(),
-				command.type(), command.isTuition(), command.isStandalone(), command.maxPerStudent(),
-				command.maxPerPeriod(), command.requiresValidation(), command.availableFrom(),
+		PaymentConcept concept = new PaymentConcept(command.name(), command.code(), command.description(),
+				command.policies(), command.type(), command.levelNumber(), command.isStandalone(),
+				command.maxPerStudent(), command.maxPerPeriod(), command.requiresValidation(), command.availableFrom(),
 				command.availableUntil(), command.areaId(), command.cost(), command.isExternal(),
 				command.costExternal(), command.isAccumulable(), command.isMulticoncept(), command.quotaLimit(),
-				command.linkedConceptIds(), command.programIds());
+				command.linkedConceptIds());
 		PaymentConcept saved = paymentConceptRepository.save(concept);
 
+		reconcilePaymentRatesUseCase.reconcileRates(
+				new ReconcilePaymentRatesUseCase.ReconcilePaymentRatesCommand(saved.getId(), command.rates()));
+
 		return toResult(saved);
+	}
+
+	/**
+	 * {@code code} uniqueness, case-insensitive, with {@code excludingId} letting
+	 * an update exclude the row being edited so an unchanged re-save is not a
+	 * collision with itself.
+	 */
+	static void validateCode(String code, UUID excludingId, PaymentConceptRepository paymentConceptRepository) {
+		if (code == null || code.isBlank()) {
+			throw new InvalidPaymentConceptDataException("code is required");
+		}
+		if (paymentConceptRepository.findByCode(code.trim(), excludingId).isPresent()) {
+			throw new DuplicatePaymentConceptCodeException("A payment concept already uses this code: " + code);
+		}
+	}
+
+	/**
+	 * "One ACTIVE recurring quota per level." A second one would leave the
+	 * tuition lookup with two defensible prices for the same student, so this is
+	 * refused rather than disambiguated.
+	 */
+	static void validateQuotaLevel(PaymentConceptType type, Integer levelNumber, UUID excludingId,
+			PaymentConceptRepository paymentConceptRepository) {
+		if (!type.requiresLevelNumber()) {
+			return;
+		}
+		if (paymentConceptRepository.findActiveByTypeAndLevelNumber(type, levelNumber, excludingId).isPresent()) {
+			throw new DuplicatePaymentQuotaLevelException(
+					"An active recurring quota already exists for this level: levelNumber=" + levelNumber);
+		}
 	}
 
 	/**
@@ -110,19 +166,10 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 	 * not exist yet) and the concept's own id on Update (a concept cannot
 	 * link to itself).
 	 */
-	static void validateReferences(UUID areaId, List<UUID> programIds, List<UUID> linkedConceptIds, UUID selfId,
-			PaymentAreaRepository paymentAreaRepository, AcademicProgramRepository academicProgramRepository,
-			PaymentConceptRepository paymentConceptRepository) {
+	static void validateReferences(UUID areaId, List<UUID> linkedConceptIds, UUID selfId,
+			PaymentAreaRepository paymentAreaRepository, PaymentConceptRepository paymentConceptRepository) {
 		if (areaId != null && paymentAreaRepository.findById(areaId).isEmpty()) {
 			throw new PaymentConceptReferenceNotFoundException("Payment area not found: " + areaId);
-		}
-		validateIds(programIds, "programIds");
-		if (programIds != null) {
-			for (UUID programId : programIds) {
-				if (academicProgramRepository.findById(programId).isEmpty()) {
-					throw new PaymentConceptReferenceNotFoundException("Academic program not found: " + programId);
-				}
-			}
 		}
 		validateIds(linkedConceptIds, "linkedConceptIds");
 		if (linkedConceptIds != null) {
@@ -155,12 +202,12 @@ public class CreatePaymentConceptUseCaseImpl implements CreatePaymentConceptUseC
 	}
 
 	static PaymentConceptResult toResult(PaymentConcept concept) {
-		return new PaymentConceptResult(concept.getId(), concept.getName(), concept.getDescription(),
-				concept.getPolicies(), concept.getType(), concept.isTuition(), concept.isStandalone(),
-				concept.getMaxPerStudent(), concept.getMaxPerPeriod(), concept.isRequiresValidation(),
-				concept.getAvailableFrom(), concept.getAvailableUntil(), concept.getStatus(), concept.getAreaId(),
-				concept.getCost(), concept.isExternal(), concept.getCostExternal(), concept.isAccumulable(),
-				concept.isMulticoncept(), concept.getQuotaLimit(), List.copyOf(concept.getLinkedConceptIds()),
-				List.copyOf(concept.getProgramIds()));
+		return new PaymentConceptResult(concept.getId(), concept.getName(), concept.getCode(),
+				concept.getDescription(), concept.getPolicies(), concept.getType(), concept.getLevelNumber(),
+				concept.isStandalone(), concept.getMaxPerStudent(), concept.getMaxPerPeriod(),
+				concept.isRequiresValidation(), concept.getAvailableFrom(), concept.getAvailableUntil(),
+				concept.getStatus(), concept.getAreaId(), concept.getCost(), concept.isExternal(),
+				concept.getCostExternal(), concept.isAccumulable(), concept.isMulticoncept(),
+				concept.getQuotaLimit(), List.copyOf(concept.getLinkedConceptIds()));
 	}
 }

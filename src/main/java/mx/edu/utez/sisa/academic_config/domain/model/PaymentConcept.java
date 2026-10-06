@@ -11,6 +11,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import mx.edu.utez.sisa.academic_config.shared.exception.InvalidPaymentConceptDataException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,10 +35,32 @@ import java.util.UUID;
  * <p>
  * Unlike {@link SubjectClassification} (its closest structural sibling —
  * simple aggregate, no children, idempotent status toggle), this aggregate
- * has no {@code code} field at all, so {@code name} is deliberately NOT
- * unique and there is no secondary unique business key either (plan section
- * 4 — the domain doc does not document a uniqueness constraint for this
- * catalog).
+ * has no hard-delete operation and {@code name} is deliberately NOT unique.
+ * It does have a {@code code}, which is required and unique
+ * case-insensitively.
+ *
+ * <p>
+ * {@code code} exists for two reasons, and the second is the one that makes it
+ * a human decision rather than a generated value. First, a concept catalog
+ * needs a stable handle for config and support that does not change when the
+ * display name is reworded. Second — and this is why the field is captured by
+ * hand and never synthesized — {@code payment_benefit.scope_concept_code}
+ * ({@code er-08-pagos.md}) references a concept by this string as a free-text
+ * foreign key, deliberately not a FK, because scholarships can also point at
+ * {@code ADMISSION_FICHA}/{@code INDUCTION_COURSE} concepts owned by other
+ * bounded contexts. Somebody writes that configuration by hand, so the code has
+ * to be something a person chose and meant; a server-generated one would be
+ * regenerated-looking, unauditable, and would break those references silently.
+ *
+ * <p>
+ * {@code levelNumber} is required for {@link PaymentConceptType#PERIODIC_QUOTA}
+ * and MUST be null otherwise — see {@link PaymentConceptType} for why the
+ * recurring quota is one concept per student level rather than one concept with
+ * a flag. The pairing is enforced by {@link #validateLevelNumber} inside this
+ * aggregate rather than in the use case layer, because it is a pure invariant
+ * between two of this entity's own fields and needs no repository — the same
+ * split {@code AcademicPeriod}'s date-range check and {@code GradeScale}'s
+ * {@code validateEntries} already make in this module.
  *
  * <p>
  * {@code description}/{@code policies} are mapped as {@code TEXT} columns
@@ -45,7 +70,8 @@ import java.util.UUID;
  * Hibernate would otherwise generate.
  */
 @Entity
-@Table(name = "payment_concept")
+@Table(name = "payment_concept",
+		uniqueConstraints = @UniqueConstraint(name = "uk_payment_concept_active_level", columnNames = "active_level"))
 public class PaymentConcept {
 
 	@Id
@@ -54,6 +80,13 @@ public class PaymentConcept {
 
 	@Column(nullable = false)
 	private String name;
+
+	/**
+	 * Stable handle for configuration and cross-context references, unique
+	 * case-insensitively. Captured by hand — see the class Javadoc for why.
+	 */
+	@Column(nullable = false, unique = true)
+	private String code;
 
 	@Column(columnDefinition = "TEXT")
 	private String description;
@@ -65,8 +98,17 @@ public class PaymentConcept {
 	@Column(nullable = false)
 	private PaymentConceptType type;
 
-	@Column(nullable = false)
-	private boolean isTuition;
+	/**
+	 * The student level this concept prices, matching
+	 * {@code PlanLevel.levelNumber}. Deliberately a plain integer rather than a
+	 * {@code planLevelId}: {@code PlanLevel} rows belong to a specific
+	 * {@code AcademicPlan} of a specific {@code AcademicProgram}, but a
+	 * recurring quota's level is institution-wide — "second semester" is the
+	 * same for every career — and coupling it to one plan would make the same
+	 * concept unreachable from the other nine.
+	 */
+	@Column(name = "level_number")
+	private Integer levelNumber;
 
 	@Column(nullable = false)
 	private boolean isStandalone;
@@ -85,6 +127,51 @@ public class PaymentConcept {
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private PaymentConceptStatus status;
+
+	/**
+	 * {@code levelNumber} while this concept is an ACTIVE {@code PERIODIC_QUOTA},
+	 * {@code null} otherwise. Never set by a caller — always recomputed from
+	 * {@code type}, {@code levelNumber} and {@code status}.
+	 *
+	 * <p>
+	 * Exists only to carry one database-level fact that Java cannot enforce: "at
+	 * most one active quota per level". The use case checks that with a
+	 * read-then-write, which two concurrent requests can both pass, so without
+	 * this column the catalog could end up with two live quotas for one level and
+	 * the tuition lookup would have two defensible prices for the same student.
+	 *
+	 * <p>
+	 * MySQL 8 has no partial indexes, so {@code UNIQUE (type, status,
+	 * level_number)} would be wrong — it would also refuse the second INACTIVE
+	 * quota of a level, and history is not optional here. A unique index over a
+	 * nullable column works instead: MySQL treats {@code NULL} values as
+	 * distinct, so any number of rows may carry {@code NULL} while exactly one
+	 * may carry a given level number. Hence a derived column rather than the
+	 * three real ones.
+	 *
+	 * <p>
+	 * Maintained in {@link #syncActiveLevel()} at every mutation point rather
+	 * than by a database trigger or {@code @Formula}: {@code @Formula} columns
+	 * are never created by {@code ddl-auto}, so the schema and the entity would
+	 * disagree on a fresh database, which is the case that matters least until it
+	 * suddenly matters a lot.
+	 *
+	 * <p>
+	 * The unique constraint is declared on the table rather than on the field so
+	 * it gets the stable name {@code uk_payment_concept_active_level}. MySQL
+	 * reports a violation by index name and Hibernate would otherwise invent an
+	 * unreadable one, leaving
+	 * {@code PaymentConceptRepositoryAdapter} unable to tell this collision apart
+	 * from any other constraint failure.
+	 */
+	@Column(name = "active_level", insertable = true, updatable = true)
+	private Integer activeLevel;
+
+	private void syncActiveLevel() {
+		this.activeLevel = (type == PaymentConceptType.PERIODIC_QUOTA && status == PaymentConceptStatus.ACTIVE)
+				? levelNumber
+				: null;
+	}
 
 	/**
 	 * Optional grouping area (frontend-first field, plan
@@ -124,39 +211,36 @@ public class PaymentConcept {
 	@Column(name = "linked_concept_id", nullable = false)
 	private List<UUID> linkedConceptIds = new ArrayList<>();
 
-	@ElementCollection
-	@CollectionTable(name = "payment_concept_program", joinColumns = @JoinColumn(name = "concept_id"))
-	@Column(name = "program_id", nullable = false)
-	private List<UUID> programIds = new ArrayList<>();
-
 	protected PaymentConcept() {
 		// JPA
 	}
 
 	/**
-	 * Backward-compatible convenience constructor for the original 11 fields
-	 * (still used by the existing test suite). Delegates with empty/null for
-	 * every field introduced by the
-	 * {@code 2026-09-19-payment-concept-extension.md} plan.
+	 * Convenience constructor for the catalog fields alone (still used by the
+	 * existing test suite). Delegates with empty/null for every extension
+	 * field. {@code isTuition} is absent on purpose: it was replaced by
+	 * {@link PaymentConceptType#PERIODIC_QUOTA} plus {@code levelNumber}.
 	 */
-	public PaymentConcept(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+	public PaymentConcept(String name, String code, String description, String policies, PaymentConceptType type,
+			Integer levelNumber, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
-		this(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
+		this(name, code, description, policies, type, levelNumber, isStandalone, maxPerStudent, maxPerPeriod,
 				requiresValidation, availableFrom, availableUntil, null, null, false, null, false, false, null,
-				List.of(), List.of());
+				List.of());
 	}
 
-	public PaymentConcept(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+	public PaymentConcept(String name, String code, String description, String policies, PaymentConceptType type,
+			Integer levelNumber, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
 			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
+		validateLevelNumber(type, levelNumber);
 		this.name = name;
+		this.code = code;
 		this.description = description;
 		this.policies = policies;
 		this.type = type;
-		this.isTuition = isTuition;
+		this.levelNumber = levelNumber;
 		this.isStandalone = isStandalone;
 		this.maxPerStudent = maxPerStudent;
 		this.maxPerPeriod = maxPerPeriod;
@@ -171,8 +255,34 @@ public class PaymentConcept {
 		this.isMulticoncept = isMulticoncept;
 		this.quotaLimit = quotaLimit;
 		this.linkedConceptIds = linkedConceptIds == null ? new ArrayList<>() : new ArrayList<>(linkedConceptIds);
-		this.programIds = programIds == null ? new ArrayList<>() : new ArrayList<>(programIds);
 		this.status = PaymentConceptStatus.ACTIVE;
+		syncActiveLevel();
+	}
+
+	/**
+	 * The bidirectional {@code type}/{@code levelNumber} pairing: a recurring
+	 * quota must name the level it prices, and nothing else may. Enforced here
+	 * rather than in the use cases because it needs no repository access, so
+	 * every path that builds or mutates this entity gets it — including tests
+	 * and any future caller.
+	 */
+	private static void validateLevelNumber(PaymentConceptType type, Integer levelNumber) {
+		if (type == null) {
+			throw new InvalidPaymentConceptDataException("type is required");
+		}
+		if (type.requiresLevelNumber()) {
+			if (levelNumber == null) {
+				throw new InvalidPaymentConceptDataException(
+						"levelNumber is required for a PERIODIC_QUOTA concept: type=" + type);
+			}
+			if (levelNumber < 1) {
+				throw new InvalidPaymentConceptDataException(
+						"levelNumber must be greater than zero: " + levelNumber);
+			}
+		} else if (levelNumber != null) {
+			throw new InvalidPaymentConceptDataException(
+					"levelNumber only applies to a PERIODIC_QUOTA concept, but type=" + type);
+		}
 	}
 
 	/**
@@ -181,13 +291,12 @@ public class PaymentConcept {
 	 * {@code ChangePaymentConceptStatusUseCase}, same separation as
 	 * {@code SubjectClassification#updateDetails}.
 	 */
-	public void updateDetails(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+	public void updateDetails(String name, String code, String description, String policies, PaymentConceptType type,
+			Integer levelNumber, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
-		updateDetails(name, description, policies, type, isTuition, isStandalone, maxPerStudent, maxPerPeriod,
-				requiresValidation, availableFrom, availableUntil, this.areaId, this.cost, this.isExternal,
-				this.costExternal, this.isAccumulable, this.isMulticoncept, this.quotaLimit, this.linkedConceptIds,
-				this.programIds);
+		updateDetails(name, code, description, policies, type, levelNumber, isStandalone, maxPerStudent,
+				maxPerPeriod, requiresValidation, availableFrom, availableUntil, this.areaId, this.cost, this.isExternal,
+				this.costExternal, this.isAccumulable, this.isMulticoncept, this.quotaLimit, this.linkedConceptIds);
 	}
 
 	/**
@@ -196,16 +305,18 @@ public class PaymentConcept {
 	 * deliberately absent. The collections are mutated in place (never
 	 * re-assigned) so Hibernate tracks the change on the managed entity.
 	 */
-	public void updateDetails(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+	public void updateDetails(String name, String code, String description, String policies, PaymentConceptType type,
+			Integer levelNumber, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil, UUID areaId,
 			BigDecimal cost, boolean isExternal, BigDecimal costExternal, boolean isAccumulable,
-			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds, List<UUID> programIds) {
+			boolean isMulticoncept, Integer quotaLimit, List<UUID> linkedConceptIds) {
+		validateLevelNumber(type, levelNumber);
 		this.name = name;
+		this.code = code;
 		this.description = description;
 		this.policies = policies;
 		this.type = type;
-		this.isTuition = isTuition;
+		this.levelNumber = levelNumber;
 		this.isStandalone = isStandalone;
 		this.maxPerStudent = maxPerStudent;
 		this.maxPerPeriod = maxPerPeriod;
@@ -223,10 +334,10 @@ public class PaymentConcept {
 		if (linkedConceptIds != null) {
 			this.linkedConceptIds.addAll(linkedConceptIds);
 		}
-		this.programIds.clear();
-		if (programIds != null) {
-			this.programIds.addAll(programIds);
-		}
+		// Recomputed, not adjusted: a retype ENROLLMENT -> PERIODIC_QUOTA has to
+		// claim the level and PERIODIC_QUOTA -> ENROLLMENT has to release it, and
+		// reading the old value to decide which would get one of the two wrong.
+		syncActiveLevel();
 	}
 
 	/**
@@ -236,15 +347,22 @@ public class PaymentConcept {
 	 */
 	public void activate() {
 		this.status = PaymentConceptStatus.ACTIVE;
+		syncActiveLevel();
 	}
 
 	/**
 	 * Transitions to {@code INACTIVE}. Idempotent — calling on an
 	 * already-{@code INACTIVE} concept is a no-op. The record itself is never
 	 * deleted, same convention as {@code SubjectClassification#deactivate}.
+	 *
+	 * <p>
+	 * Releasing the level is what lets another concept take it, so this is also
+	 * the escape hatch for a catalog that already holds a duplicate: deactivate
+	 * one of them and the unique index will accept the replacement.
 	 */
 	public void deactivate() {
 		this.status = PaymentConceptStatus.INACTIVE;
+		syncActiveLevel();
 	}
 
 	public UUID getId() {
@@ -253,6 +371,10 @@ public class PaymentConcept {
 
 	public String getName() {
 		return name;
+	}
+
+	public String getCode() {
+		return code;
 	}
 
 	public String getDescription() {
@@ -267,8 +389,8 @@ public class PaymentConcept {
 		return type;
 	}
 
-	public boolean isTuition() {
-		return isTuition;
+	public Integer getLevelNumber() {
+		return levelNumber;
 	}
 
 	public boolean isStandalone() {
@@ -329,10 +451,6 @@ public class PaymentConcept {
 
 	public List<UUID> getLinkedConceptIds() {
 		return linkedConceptIds;
-	}
-
-	public List<UUID> getProgramIds() {
-		return programIds;
 	}
 
 	@Override

@@ -34,8 +34,8 @@ public class ListPaymentConceptsUseCaseImpl implements ListPaymentConceptsUseCas
 	}
 
 	private PaymentConceptSummary toSummary(PaymentConcept concept) {
-		return new PaymentConceptSummary(concept.getId(), concept.getName(), concept.getType(), concept.isTuition(),
-				concept.isStandalone(), concept.getStatus());
+		return new PaymentConceptSummary(concept.getId(), concept.getName(), concept.getCode(), concept.getType(),
+				concept.getLevelNumber(), concept.isStandalone(), concept.getStatus());
 	}
 
 	/**

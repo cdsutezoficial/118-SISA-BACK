@@ -64,6 +64,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("USERS_ASSIGN_ROLE", "Asignar rol a usuario"),
 			permission("USERS_REVOKE_ROLE", "Revocar rol de usuario"),
 			permission("USERS_UNLOCK", "Desbloquear usuario"),
+			permission("USERS_RESET_PASSWORD", "Restablecer contraseña de usuario"),
 			permission("PERSONS_READ", "Consultar personas"),
 			permission("PERSONS_CREATE", "Crear persona"),
 			permission("DIVISIONS_READ", "Consultar divisiones"),
@@ -117,6 +118,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("HIGH_SCHOOL_TYPES_CREATE", "Crear tipo de bachillerato"),
 			permission("HIGH_SCHOOL_TYPES_UPDATE", "Actualizar tipo de bachillerato"),
 			permission("HIGH_SCHOOL_TYPES_CHANGE_STATUS", "Cambiar estatus de tipo de bachillerato"),
+			permission("CANDIDATES_READ", "Consultar candidatos"),
 			permission("STATES_READ", "Consultar estados"),
 			permission("MUNICIPALITIES_READ", "Consultar municipios"));
 
@@ -212,7 +214,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 				"PROGRAM_ADMISSION_CONFIGS_UPDATE", "PROGRAM_ADMISSION_CONFIGS_CHANGE_STATUS",
 				"OUTREACH_CHANNELS_READ", "OUTREACH_CHANNELS_CREATE", "OUTREACH_CHANNELS_UPDATE",
 				"OUTREACH_CHANNELS_CHANGE_STATUS", "HIGH_SCHOOL_TYPES_READ", "HIGH_SCHOOL_TYPES_CREATE",
-				"HIGH_SCHOOL_TYPES_UPDATE", "HIGH_SCHOOL_TYPES_CHANGE_STATUS", "STATES_READ",
+				"HIGH_SCHOOL_TYPES_UPDATE", "HIGH_SCHOOL_TYPES_CHANGE_STATUS", "CANDIDATES_READ", "STATES_READ",
 				"MUNICIPALITIES_READ"));
 
 		permissionsByRole.put(RoleType.PERSONAL_FINANZAS, orderedSet("PAYMENT_CONCEPTS_READ",
@@ -223,7 +225,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 		permissionsByRole.put(RoleType.GESTOR_ACADEMICO, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.DIRECTOR_DIVISION, orderedSet("STATES_READ", "MUNICIPALITIES_READ",
 				"PROGRAM_ADMISSION_CONFIGS_READ", "PROGRAM_ADMISSION_CONFIGS_CREATE",
-				"PROGRAM_ADMISSION_CONFIGS_UPDATE", "PROGRAM_ADMISSION_CONFIGS_CHANGE_STATUS"));
+				"PROGRAM_ADMISSION_CONFIGS_UPDATE", "PROGRAM_ADMISSION_CONFIGS_CHANGE_STATUS", "CANDIDATES_READ"));
 		permissionsByRole.put(RoleType.JEFATURA_ESTADIAS, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.ASISTENTE_ESTADIAS, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.COORDINACION_ESTADIAS_DIVISION,

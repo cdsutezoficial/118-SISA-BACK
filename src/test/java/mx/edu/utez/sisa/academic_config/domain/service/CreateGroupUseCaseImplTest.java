@@ -14,7 +14,9 @@ import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GroupRepository;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GenerationReferenceNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.GroupCodeLevelMismatchException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelNotFoundException;
 import mx.edu.utez.sisa.shared.model.Shift;
@@ -163,6 +165,64 @@ class CreateGroupUseCaseImplTest {
 				.isInstanceOf(PeriodNotFoundException.class);
 
 		verify(groupRepository, never()).save(any());
+	}
+
+	@Test
+	void createGroupWithDuplicateCodeThrowsDuplicateGroupCodeException() {
+		// El `Group` era el único agregado con claves de negocio únicas sin un
+		// test de duplicado (C2). Aquí se prueba la rama Java de
+		// `requireUniqueCode`; la restricción de BD sigue siendo la que resuelve
+		// la carrera entre dos altas simultáneas.
+		AcademicPlan plan = newPlan();
+		UUID levelId = addLevel(plan, 3);
+		when(generationRepository.findById(generationId)).thenReturn(Optional.of(newGeneration()));
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+		when(periodRepository.findById(periodId)).thenReturn(Optional.of(newPeriod()));
+		when(groupRepository.findByGenerationIdAndCode(generationId, "3A"))
+				.thenReturn(Optional.of(new Group(generationId, periodId, levelId, programId, "3A", 35, Shift.MORNING)));
+
+		assertThatThrownBy(
+				() -> useCase.createGroup(new CreateGroupCommand(generationId, periodId, levelId, "3A", 35, Shift.MORNING)))
+				.isInstanceOf(DuplicateGroupCodeException.class);
+
+		verify(groupRepository, never()).save(any());
+	}
+
+	@Test
+	void createGroupWithCodeFromAnotherLevelThrowsGroupCodeLevelMismatch() {
+		// Nivel 3 con la clave de otro nivel: la incidencia C1 de la primera
+		// prueba manual. Sin esta regla el grupo entraba y convivía con los del
+		// nivel 3 usando el espacio de letras de otro nivel.
+		AcademicPlan plan = newPlan();
+		UUID levelId = addLevel(plan, 3);
+		when(generationRepository.findById(generationId)).thenReturn(Optional.of(newGeneration()));
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+		when(periodRepository.findById(periodId)).thenReturn(Optional.of(newPeriod()));
+
+		assertThatThrownBy(
+				() -> useCase.createGroup(new CreateGroupCommand(generationId, periodId, levelId, "5A", 35, Shift.MORNING)))
+				.isInstanceOf(GroupCodeLevelMismatchException.class);
+
+		verify(groupRepository, never()).save(any());
+		verify(groupRepository, never()).findByGenerationIdAndCode(any(), any());
+	}
+
+	@Test
+	void createGroupStripsLeadingZerosBeforeMatchingTheLevelAndTheUniquenessCheck() {
+		// "003A" y "3A" son la misma clave: sin canonicalizar, las dos entraban y
+		// abrían dos espacios de letras distintos para el nivel 3.
+		AcademicPlan plan = newPlan();
+		UUID levelId = addLevel(plan, 3);
+		when(generationRepository.findById(generationId)).thenReturn(Optional.of(newGeneration()));
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+		when(periodRepository.findById(periodId)).thenReturn(Optional.of(newPeriod()));
+		when(groupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		GroupResult result = useCase
+				.createGroup(new CreateGroupCommand(generationId, periodId, levelId, "003A", 35, Shift.MORNING));
+
+		assertThat(result.code()).isEqualTo("3A");
+		verify(groupRepository).findByGenerationIdAndCode(generationId, "3A");
 	}
 
 	private Generation newGeneration() {

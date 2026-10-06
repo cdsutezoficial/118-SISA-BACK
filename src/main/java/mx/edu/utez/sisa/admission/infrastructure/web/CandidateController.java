@@ -2,11 +2,16 @@ package mx.edu.utez.sisa.admission.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.CandidateListItem;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesQuery;
+import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
@@ -16,32 +21,39 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
+import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateStaffDetailResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.FichaPaymentAccessResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.PaymentConfirmationResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.RegisterCandidateRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentRequest;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.ReleaseFichaPaymentResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.VerifyFichaPaymentRequest;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
-import mx.edu.utez.sisa.shared.model.EmploymentType;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -57,18 +69,18 @@ import java.util.UUID;
  * {@code identity.SecurityFilterConfig} grants {@code POST /candidates},
  * the ficha read/PDF and the payment endpoints {@code permitAll} (the
  * applicant has no session); every admin-facing endpoint stays on the
- * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
- *
- * <p>This controller is the WEB layer's translation boundary: it maps the
+* {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
+  *
+  * <p>This controller is the WEB layer's translation boundary: it maps the
  * frontend ficha payload ({@code RegisterCandidateRequest}, string-typed:
  * {@code fechaNacimiento} {@code dd/MM/yyyy}, {@code sexo}
  * {"Femenino"/"Masculino"/"Hombre"/"Mujer"}, {@code estadoCivil}
- * {"Soltero/a", …}, {@code tipoTrabajo} {"Tiempo completo"/"Medio tiempo"},
- * {@code horaInicio}/{@code horaFin} {@code HH:mm}, {@code cctConfirmacion})
- * into the enum-typed domain command ({@code Gender}, {@code MaritalStatus},
- * {@code EmploymentType}, {@code LocalDate}/{@code LocalTime},
- * {@code cctConfirmed}), keeping the domain port purist. String→enum and
- * text→date/time mappings live HERE, not in {@code RegisterCandidateUseCaseImpl}.
+ * {"Soltero/a", …}, {@code tipoTrabajo} free text, {@code horaInicio}/{@code
+ * horaFin} {@code HH:mm}, {@code cctConfirmacion}) into the typed domain
+ * command ({@code Gender}, {@code MaritalStatus}, {@code LocalDate}/{@code
+ * LocalTime}, {@code cctConfirmed}), keeping the domain port purist.
+ * String→enum and text→date/time mappings live HERE, not in
+ * {@code RegisterCandidateUseCaseImpl}.
  *
  * <p>The {@code promo} field is deliberately not included: {@code modalidad}
  * is defined by the chosen program, not stored on {@code Candidate}
@@ -90,7 +102,11 @@ public class CandidateController {
 
 	private final InitiateFichaPaymentUseCase initiateFichaPaymentUseCase;
 
+	private final ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase;
+
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
+
+	private final ListCandidatesUseCase listCandidatesUseCase;
 
 	private final CandidateFichaMailService fichaMailService;
 
@@ -102,16 +118,47 @@ public class CandidateController {
 			AccessFichaPaymentUseCase accessFichaPaymentUseCase,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase,
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
-			GetCandidateFichaUseCase getCandidateFichaUseCase, CandidateFichaMailService fichaMailService,
+			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
+			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
+			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
+		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
+		this.listCandidatesUseCase = listCandidatesUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
+	}
+
+	/**
+	 * Staff-facing candidate list ("Candidatos" screen). Every filter is optional
+	 * and the whole query is scoped server-side from the JWT: a
+	 * {@code DIRECTOR_DIVISION} caller is restricted to their own division's
+	 * programs (RN-ADM-004), so {@code divisionId} is deliberately NOT a
+	 * request parameter. Unlike the public ficha endpoints, this one requires a
+	 * session ({@code SecurityFilterConfig}) and its permission
+	 * ({@code CANDIDATES_READ}, {@code PermissionRegistry}).
+	 *
+	 * @param status    optional — exact {@link CandidateStatus}
+	 * @param programId optional — filter by chosen program
+	 * @param periodId  optional — filter by the config's destination period
+	 * @param search    optional — matches folio, CURP or name
+	 */
+	@GetMapping
+	public ResponseEntity<CandidateListResponse> listCandidates(@RequestParam(required = false) CandidateStatus status,
+			@RequestParam(required = false) UUID programId, @RequestParam(required = false) UUID periodId,
+			@RequestParam(required = false) String search, @RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size, Authentication authentication) {
+		UUID callerId = UUID.fromString(authentication.getName());
+		ListCandidatesResult result = listCandidatesUseCase
+				.listCandidates(new ListCandidatesQuery(callerId, status, programId, periodId, search, page, size));
+		return ResponseEntity.ok(new CandidateListResponse(
+				result.items().stream().map(CandidateController::toItem).toList(), result.totalElements(),
+				result.totalPages(), result.page(), result.size()));
 	}
 
 	@PostMapping
@@ -191,6 +238,33 @@ public class CandidateController {
 	}
 
 	/**
+	 * Gives the quota slot back when the applicant's browser gave up on the hosted
+	 * checkout — the {@code onEvoTimeout} / {@code onEvoError} callbacks of
+	 * {@code useFichaPayment.ts}. Before this existed the browser cleaned up locally
+	 * and told the backend nothing, so the slot stayed held and the next "Pagar" on
+	 * that career was refused for a place the applicant had already released.
+	 *
+	 * <p>Despite the name and the caller, <b>this endpoint does not believe the
+	 * caller</b>. A browser timeout and a browser error are both compatible with an
+	 * order that exists and was captured moments later, so the body is treated as a
+	 * question and {@code Retrieve Order} answers it; the slot comes back only when
+	 * the bank proves nothing was captured. Anything else — still pending, captured,
+	 * or the undiagnosable {@code SUCCESS} with no capture — returns
+	 * {@code slotReleased=false} and leaves the attempt open for the daily sweep.
+	 *
+	 * <p>{@code 404} if there is no ficha, {@code 409} if it is already paid,
+	 * {@code 400} if the {@code orderId} is absent or is not this ficha's, and
+	 * {@code 502} if the gateway could not be reached — in which case nothing changed
+	 * and the applicant may simply try again.
+	 */
+	@PostMapping("/{id}/payments/release")
+	public ResponseEntity<ReleaseFichaPaymentResponse> releasePaymentSlot(@PathVariable UUID id,
+			@Valid @RequestBody ReleaseFichaPaymentRequest request) {
+		return ResponseEntity.ok(ReleaseFichaPaymentResponse
+				.from(releaseFichaPaymentSlotUseCase.release(id, request.orderId())));
+	}
+
+	/**
 	 * Full ficha projection for the screen refresh / direct-open case (the
 	 * ficha route is only reachable via {@code navigate} state today; a reload
 	 * loses it, so the frontend re-fetches by {@code id}).
@@ -202,6 +276,15 @@ public class CandidateController {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
 		return ResponseEntity.ok(CandidateFichaResponse.from(ficha));
+	}
+
+	@GetMapping("/{id}/detail")
+	public ResponseEntity<CandidateStaffDetailResponse> getStaffDetail(@PathVariable UUID id) {
+		FichaData ficha = getCandidateFichaUseCase.get(id);
+		if (ficha == null) {
+			throw new CandidateNotFoundException("No existe el candidato: " + id);
+		}
+		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
 	}
 
 	@GetMapping("/{id}/ficha.pdf")
@@ -255,7 +338,11 @@ public class CandidateController {
 	}
 
 	private static Ingresos toIngresos(RegisterCandidateRequest.Ingresos i) {
-		return new Ingresos(i.ingresoMensualFamiliar(), i.trabaja(), toEmploymentType(i.tipoTrabajo()),
+		// tipoTrabajo travels as written. It used to go through toEmploymentType(),
+		// which returned null for anything that was not "tiempo completo"/"medio
+		// tiempo" — silently voiding "Freelance", "Negocio propio" and every word
+		// the free-text field accepts. The field is free text on purpose now.
+		return new Ingresos(i.ingresoMensualFamiliar(), i.trabaja(), trimToNull(i.tipoTrabajo()),
 				i.telefonoTrabajo(), i.ingresoMensual(), i.nombreEmpresa(), i.puesto(), parseTime(i.horaInicio()),
 				parseTime(i.horaFin()));
 	}
@@ -332,24 +419,25 @@ public class CandidateController {
 	}
 
 	/**
-	 * Maps the front's {@code tipoTrabajo} labels — "Tiempo completo" →
-	 * {@code PERMANENT}, "Medio tiempo" → {@code TEMPORARY}, anything else →
-	 * {@code null} (EmploymentType is nullable).
+	 * Trims and nulls out a blank free-text field. The enrollment wizard sends
+	 * {@code ''} for the employment fields it never rendered, and storing ""
+	 * would print as a filled-in value on the PDF instead of "-".
 	 */
-	private static EmploymentType toEmploymentType(String value) {
+	private static String trimToNull(String value) {
 		if (value == null) {
 			return null;
 		}
-		String normalized = normalize(value);
-		return switch (normalized) {
-			case "tiempo completo", "trabajo de tiempo completo" -> EmploymentType.PERMANENT;
-			case "medio tiempo", "trabajo de medio tiempo" -> EmploymentType.TEMPORARY;
-			default -> null;
-		};
+		String trimmed = value.trim();
+		return trimmed.isEmpty() ? null : trimmed;
 	}
 
 	private static String normalize(String value) {
 		return value.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private static CandidateListItemResponse toItem(CandidateListItem item) {
+		return new CandidateListItemResponse(item.id(), item.folio(), item.fullName(), item.curp(), item.programId(),
+				item.programName(), item.status(), item.registeredAt());
 	}
 
 	private static String fullName(FichaData ficha) {

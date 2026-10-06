@@ -36,13 +36,13 @@ public class AcademicProgram {
 	@Column(nullable = false)
 	private UUID divisionId;
 
-	@Column(nullable = false)
+	@Column(nullable = false, length = 150)
 	private String name;
 
-	@Column(name = "offer_name", nullable = false)
+	@Column(name = "offer_name", nullable = false, length = 200)
 	private String offerName;
 
-	@Column(nullable = false, unique = true)
+	@Column(nullable = false, unique = true, length = 41)
 	private String code;
 
 	@Enumerated(EnumType.STRING)
@@ -56,10 +56,10 @@ public class AcademicProgram {
 	@Column
 	private UUID continuityProgramId;
 
-	@Column
+	@Column(length = 100)
 	private String dgpCode;
 
-	@Column
+	@Column(length = 500)
 	private String description;
 
 	@Enumerated(EnumType.STRING)

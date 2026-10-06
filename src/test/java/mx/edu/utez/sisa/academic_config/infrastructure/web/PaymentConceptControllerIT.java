@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -341,33 +342,49 @@ class PaymentConceptControllerIT {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
 	}
 
+	/**
+	 * {@code @SpringBootTest} here is not {@code @Transactional}, so rows really do
+	 * survive between test methods and {@code code} — now the unique key — has to
+	 * be minted per call rather than hardcoded.
+	 */
+	private static final AtomicInteger CODE_SEQ = new AtomicInteger();
+
+	private static String nextCode() {
+		return "INS-" + CODE_SEQ.incrementAndGet();
+	}
+
 	private static PaymentConcept newConcept(String name) {
-		return new PaymentConcept(name, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true, false, 1, 2,
-				true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return new PaymentConcept(name, nextCode(), "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null,
+				false, 1, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 
 	private static CreateBody validBody(String name) {
-		return new CreateBody(name, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true, false, 1, 2,
-				true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return new CreateBody(name, nextCode(), "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null, false, 1,
+				2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+	}
+
+	private static CreateBody validBody(String name, String code) {
+		return new CreateBody(name, code, "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, null, false, 1,
+				2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 
 	private static CreateBody bodyWithMaxPerStudent(Integer maxPerStudent) {
-		return new CreateBody("Concepto Invalido", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true,
-				false, maxPerStudent, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return new CreateBody("Concepto Invalido", nextCode(), "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT,
+				null, false, maxPerStudent, 2, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 
 	private static CreateBody bodyWithMaxPerPeriod(Integer maxPerPeriod) {
-		return new CreateBody("Concepto Invalido", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true,
-				false, 1, maxPerPeriod, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		return new CreateBody("Concepto Invalido", nextCode(), "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT,
+				null, false, 1, maxPerPeriod, true, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
 	}
 
 	private static CreateBody bodyWithDateRange(LocalDate availableFrom, LocalDate availableUntil) {
-		return new CreateBody("Concepto Invalido", "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT, true,
-				false, 1, 2, true, availableFrom, availableUntil);
+		return new CreateBody("Concepto Invalido", nextCode(), "Descripcion", "Politicas", PaymentConceptType.ENROLLMENT,
+				null, false, 1, 2, true, availableFrom, availableUntil);
 	}
 
-	private record CreateBody(String name, String description, String policies, PaymentConceptType type,
-			boolean isTuition, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
+	private record CreateBody(String name, String code, String description, String policies, PaymentConceptType type,
+			Integer levelNumber, boolean isStandalone, Integer maxPerStudent, Integer maxPerPeriod,
 			boolean requiresValidation, LocalDate availableFrom, LocalDate availableUntil) {
 	}
 

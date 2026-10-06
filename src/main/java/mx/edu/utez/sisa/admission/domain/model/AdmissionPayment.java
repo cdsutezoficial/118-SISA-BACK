@@ -20,8 +20,9 @@ import java.util.UUID;
  * {@code 118-SISA-CLAUDE/docs/design/dominio/03-admision.md}. Created as
  * {@code PENDING} together with its {@link Candidate} by
  * {@code RegisterCandidateUseCase} (the ticket generates a payment reference,
- * amount and the registration window's closing date the moment the ficha is
- * created); transitioned to {@code PAID} by
+ * an initial amount quote and the registration window's closing date the
+ * moment the ficha is created); the amount is re-quoted live when the applicant
+ * starts the checkout ({@link #reprice}); transitioned to {@code PAID} by
  * {@code ConfirmAdmissionPaymentUseCase}.
  *
  * <p>One {@code AdmissionPayment} per {@code Candidate} for the
@@ -56,6 +57,16 @@ public class AdmissionPayment {
 	@Column(nullable = false)
 	private AdmissionPaymentConcept concept;
 
+	/**
+	 * What the applicant is charged for this ficha.
+	 *
+	 * <p>Written twice. At registration it is a catalog quote as of that day;
+	 * the moment the applicant starts the checkout it is overwritten with the
+	 * live tariff ({@link #reprice}), because the price that governs is the one
+	 * the applicant saw when they clicked to pay (§1.3). Once the ficha is
+	 * {@code PAID} the value is frozen: confirmation compares the bank's captured
+	 * amount against it.
+	 */
 	@Column(nullable = false, precision = 12, scale = 2)
 	private BigDecimal amount;
 
@@ -221,6 +232,24 @@ public class AdmissionPayment {
 	}
 
 	/**
+	 * Overwrites the ficha's amount with the tariff the catalog quotes at the
+	 * moment the applicant starts paying.
+	 *
+	 * <p>The value deposited at registration is only a quote: a tariff edited
+	 * between issuing and paying must reach the applicant, and the number sent
+	 * to the gateway is the one the confirmation later checks against the bank.
+	 * Kept out of {@code PAID} fichas, whose amount is what was actually charged.
+	 *
+	 * @throws IllegalStateException if the ficha is already {@code PAID}
+	 */
+	public void reprice(BigDecimal amount) {
+		if (this.paymentStatus == AdmissionPaymentStatus.PAID) {
+			throw new IllegalStateException("La ficha ya está pagada; no se puede re-cotizar.");
+		}
+		this.amount = amount;
+	}
+
+	/**
 	 * Marks this ficha as holding one of its career's quota slots.
 	 *
 	 * <p>Called <em>before</em> the gateway is touched, and committed before the
@@ -241,12 +270,35 @@ public class AdmissionPayment {
 	}
 
 	/**
-	 * Gives the slot back immediately after the gateway refused the checkout, so
-	 * the quota does not stay held until the payment window closes for an order
-	 * that does not exist.
+	 * Gives the slot back, but only if it is still the same claim the caller read.
+	 *
+	 * <p>Release is the one quota write that happens from a decision made <em>before</em>
+	 * it: every caller asks the bank first and writes afterwards, and between those two
+	 * moments the applicant may have started another checkout and stamped a fresh claim.
+	 * A release that only checked "is this ficha still {@code PENDING}" would then hand
+	 * back the <em>new</em> claim — the one keeping a live order occupied — because the
+	 * decision it was carrying belonged to an older attempt.
+	 *
+	 * <p>So the caller hands back the {@code checkoutClaimedAt} it decided against and
+	 * this refuses to touch a claim it does not recognise. No lock and no version column:
+	 * the value is already there, it is already overwritten on every claim, and a
+	 * mismatch means precisely the one thing worth protecting against. Compare-and-set,
+	 * returning whether the slot actually went back.
+	 *
+	 * <p>An absent claim is {@code false}, not a silent success — "there was nothing to
+	 * give back" and "the place is now free" are different answers, and a caller counting
+	 * releases has to be able to tell them apart.
+	 *
+	 * @param expectedClaimedAt the {@code checkoutClaimedAt} the caller read before asking
+	 *                           the bank; {@code null} when it expected no claim
+	 * @return {@code true} if this call is the one that gave the place back
 	 */
-	public void releaseCheckoutSlot() {
+	public boolean releaseCheckoutSlotIfClaimedAt(Instant expectedClaimedAt) {
+		if (this.checkoutClaimedAt == null || !this.checkoutClaimedAt.equals(expectedClaimedAt)) {
+			return false;
+		}
 		this.checkoutClaimedAt = null;
+		return true;
 	}
 
 	public Instant getCheckoutClaimedAt() {

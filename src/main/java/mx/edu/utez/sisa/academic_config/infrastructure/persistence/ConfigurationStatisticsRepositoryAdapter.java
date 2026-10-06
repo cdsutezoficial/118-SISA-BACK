@@ -48,6 +48,6 @@ public class ConfigurationStatisticsRepositoryAdapter implements ConfigurationSt
 
 	@Override
 	public long countGroupsForPeriod(UUID periodId) {
-		return groupJpaRepository.countByPeriodId(periodId);
+		return groupJpaRepository.countByPeriodIdAndStatus(periodId, mx.edu.utez.sisa.academic_config.domain.model.GroupStatus.OPEN);
 	}
 }

@@ -5,9 +5,12 @@ import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptE
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.DuplicateOutreachChannelNameException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
+import mx.edu.utez.sisa.admission.shared.exception.DuplicateHighSchoolTypeNameException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -18,6 +21,9 @@ import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpen
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.shared.web.dto.ErrorResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -60,6 +66,8 @@ import java.time.Instant;
 @Component("admissionGlobalExceptionHandler")
 public class GlobalExceptionHandler {
 
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
 	/**
 	 * Stable machine-readable discriminators. These are part of the HTTP contract:
 	 * the frontend branches on them, so a rename is a breaking change, while the
@@ -72,11 +80,29 @@ public class GlobalExceptionHandler {
 	 */
 	public static final String CODE_QUOTA_REACHED = "ADMISSION_QUOTA_REACHED";
 	public static final String CODE_SALES_WINDOW_CLOSED = "ADMISSION_SALES_WINDOW_CLOSED";
+	public static final String CODE_FICHA_EXPIRED = "ADMISSION_FICHA_EXPIRED";
 	public static final String CODE_CONFIG_NOT_OPEN = "ADMISSION_CONFIG_NOT_OPEN";
 	public static final String CODE_PAYMENT_WINDOW_CLOSED = "ADMISSION_PAYMENT_WINDOW_CLOSED";
 	public static final String CODE_CANDIDATE_ALREADY_EXISTS = "ADMISSION_CANDIDATE_ALREADY_EXISTS";
 	public static final String CODE_CANDIDATE_NOT_FOUND = "ADMISSION_CANDIDATE_NOT_FOUND";
 	public static final String CODE_CONFIG_NOT_FOUND = "ADMISSION_CONFIG_NOT_FOUND";
+	/**
+	 * Catálogo de canales de difusión: el nombre normalizado ya existe en otro
+	 * canal. Separate from {@link #CODE_CANDIDATE_ALREADY_EXISTS} even though
+	 * both are 409s: the recoveries differ. The applicant one sends the user to an
+	 * existing ficha; this one is a catalog validation error and belongs on the
+	 * name field of the form, so the modal can show it inline and keep the typed
+	 * name instead of bouncing to a banner.
+	 */
+	public static final String CODE_OUTREACH_CHANNEL_NAME_DUPLICATE = "OUTREACH_CHANNEL_NAME_DUPLICATE";
+	/**
+	 * Catálogo de tipos de bachillerato: el nombre normalizado ya existe. Espejo de
+	 * {@link #CODE_OUTREACH_CHANNEL_NAME_DUPLICATE} para el catálogo hermano, y
+	 * con la misma razón para ser un código aparte y no reusar aquel: el frontend
+	 * lo ramifica para pegarlo en el campo {@code name} del modal, y el copy de
+	 * cada catálogo habla de su propia cosa.
+	 */
+	public static final String CODE_HIGH_SCHOOL_TYPE_NAME_DUPLICATE = "HIGH_SCHOOL_TYPE_NAME_DUPLICATE";
 	public static final String CODE_CONCEPT_NOT_FOUND = "ADMISSION_CONCEPT_NOT_FOUND";
 	public static final String CODE_CONCEPT_AMBIGUOUS = "ADMISSION_CONCEPT_AMBIGUOUS";
 	public static final String CODE_ALREADY_PAID = "ADMISSION_ALREADY_PAID";
@@ -84,6 +110,29 @@ public class GlobalExceptionHandler {
 	public static final String CODE_VERIFICATION_INVALID = "ADMISSION_VERIFICATION_INVALID";
 	public static final String CODE_EVO_GATEWAY_ERROR = "ADMISSION_EVO_GATEWAY_ERROR";
 	public static final String CODE_RATE_LIMITED = "ADMISSION_PAYMENT_ACCESS_RATE_LIMITED";
+
+	/**
+	 * A unique index rejected the registration because a concurrent one got there
+	 * first — almost always {@code candidate.folio}, whose number comes from
+	 * {@code count(prefix) + 1} with no lock. Distinct from
+	 * {@link #CODE_CANDIDATE_ALREADY_EXISTS} on purpose: that one means "your CURP
+	 * is already registered", which is a fact about the applicant and never
+	 * resolves by retrying. This one is transient and always does.
+	 */
+	public static final String CODE_REGISTRATION_CONFLICT = "ADMISSION_REGISTRATION_CONFLICT";
+
+	/**
+	 * Tipo de bachillerato duplicado por nombre normalizado (Fase 10). Mismo
+	 * contrato que el 409 de los canales: {@code code} estable para que el frontend
+	 * ramifique sin leer el mensaje, y el texto de la excepción al log y no al
+	 * cuerpo de la respuesta.
+	 */
+	@ExceptionHandler(DuplicateHighSchoolTypeNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateHighSchoolTypeName(DuplicateHighSchoolTypeNameException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate high school type name rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_HIGH_SCHOOL_TYPE_NAME_DUPLICATE, "El nombre del tipo ya está en uso.", request);
+	}
 
 	@ExceptionHandler(HighSchoolTypeNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleHighSchoolTypeNotFound(HighSchoolTypeNotFoundException ex,
@@ -103,6 +152,26 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
 	}
 
+	/**
+	 * Canal de difusión duplicado por nombre normalizado (Fase 9). Lleva copy
+	 * propio y no el del {@link DuplicateKeyException} de abajo, que está escrito
+	 * para el registro de candidatos ("No pudimos completar tu registro…") y sería
+	 * el mensaje equivocado en un catálogo.
+	 *
+	 * <p>Emite {@link #CODE_OUTREACH_CHANNEL_NAME_DUPLICATE} para que el frontend
+	 * ramifique sobre el código y no sobre el texto, que es lo que pide el javadoc
+	 * de {@code ErrorResponse}: el mensaje se puede reescribir sin romper la
+	 * lógica. El mensaje de la excepción ({@code "Outreach channel name already in
+	 * use: Facebook"}) va al log y no al cuerpo de la respuesta, porque es texto
+	 * para el desarrollador y el catálogo necesita copy en español.
+	 */
+	@ExceptionHandler(DuplicateOutreachChannelNameException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateOutreachChannelName(DuplicateOutreachChannelNameException ex,
+			HttpServletRequest request) {
+		log.warn("Duplicate outreach channel name rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+		return build(HttpStatus.CONFLICT, CODE_OUTREACH_CHANNEL_NAME_DUPLICATE, "El nombre del canal ya está en uso.", request);
+	}
+
 	@ExceptionHandler(CandidateNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleCandidateNotFound(CandidateNotFoundException ex,
 			HttpServletRequest request) {
@@ -113,6 +182,40 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleCandidateAlreadyExists(CandidateAlreadyExistsException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, CODE_CANDIDATE_ALREADY_EXISTS, ex.getMessage(), request);
+	}
+
+	/**
+	 * A unique index rejected the write at flush time. Two things can get here, and
+	 * the message covers both without naming either:
+	 *
+	 * <ul>
+	 * <li><b>Folio collision (the common one).</b> {@code generateFolio()} is
+	 * {@code count(prefix) + 1} — read-then-write with no lock — so two
+	 * simultaneous registrations compute the same number and the loser collides on
+	 * {@code candidate.folio}'s unique index. Nothing about her data is wrong and
+	 * nothing is stored, so "already exists, review your information" would be a
+	 * lie: there is nothing to review.</li>
+	 * <li><b>CURP collision (rare).</b> The pre-check at
+	 * {@code RegisterCandidateUseCaseImpl} is also read-then-write, so the loser
+	 * of a same-CURP race can get here instead of the intended
+	 * {@code CandidateAlreadyExistsException}. Self-correcting: by then the other
+	 * registration is committed, so the retry's pre-check catches it and returns
+	 * the proper 409 with the CURP-specific message.</li>
+	 * </ul>
+	 *
+	 * <p>Either way the answer is the same and it is true: nothing was saved, the
+	 * applicant keeps her wizard state, and pressing "Finalizar registro" again
+	 * succeeds. The wizard stays on its step because the folio was never assigned.
+	 *
+	 * <p>More specific than {@code DataIntegrityViolationException}, which
+	 * {@code identity.GlobalExceptionHandler} maps to a 400 — that covers NOT NULL
+	 * / length / FK, this one covers "a concurrent write got there first".
+	 */
+	@ExceptionHandler(DuplicateKeyException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateKey(DuplicateKeyException ex, HttpServletRequest request) {
+		log.warn("Unique constraint violated on {}", request.getRequestURI(), ex);
+		return build(HttpStatus.CONFLICT, CODE_REGISTRATION_CONFLICT,
+				"No pudimos completar tu registro en este momento. Inténtalo de nuevo en un momento.", request);
 	}
 
 	@ExceptionHandler(ProgramAdmissionConfigNotOpenException.class)
@@ -141,6 +244,17 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleProgramAdmissionConfigCapacityReached(
 			ProgramAdmissionConfigCapacityReachedException ex, HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, CODE_QUOTA_REACHED, ex.getMessage(), request);
+	}
+
+	/**
+	 * The applicant's own ficha window lapsed. Shouted with its own code because
+	 * the front shows a different screen than it does for a closed sales window:
+	 * this one is about her 10 days, not about the cohort's calendar.
+	 */
+	@ExceptionHandler(FichaPaymentExpiredException.class)
+	public ResponseEntity<ErrorResponse> handleFichaPaymentExpired(FichaPaymentExpiredException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, CODE_FICHA_EXPIRED, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(FichaPaymentConceptNotFoundException.class)
