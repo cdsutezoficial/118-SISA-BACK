@@ -91,6 +91,12 @@ public final class PermissionRegistry {
 			// academic_config — groups
 			e("GET", "/groups/**", "GROUPS_READ"),
 			e("POST", "/groups", "GROUPS_CREATE"),
+			// El bulk comparte clave con el alta individual: son la misma operación
+			// de escritura sobre la misma tabla, sólo que en lote. Hace falta su
+			// propia entrada porque AntPathMatcher.match("/groups", "/groups/bulk")
+			// es false — sin ella, el POST caería al matcher de rol y lo crearía
+			// cualquiera con el rol, saltándose GROUPS_CREATE.
+			e("POST", "/groups/bulk", "GROUPS_CREATE"),
 			e("PUT", "/groups/**", "GROUPS_UPDATE"),
 			e("PATCH", "/groups/**", "GROUPS_CHANGE_STATUS"),
 			// academic_config — payment concepts (ADMIN/PERSONAL_FINANZAS in coarse)

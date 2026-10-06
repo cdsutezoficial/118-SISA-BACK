@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPeriodRepository
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicPlanRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GenerationRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.GroupRepository;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GroupNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,8 +52,19 @@ public class UpdateGroupUseCaseImpl implements UpdateGroupUseCase {
 		CreateGroupUseCaseImpl.requireLevel(plan, command.planLevelId());
 		CreateGenerationUseCaseImpl.requirePeriod(command.periodId(), periodRepository);
 
+		// Normalizar antes de comprobar, por el mismo motivo que en create.
+		String code = GroupTextNormalizer.code(command.code());
+		// La unicidad se revalida excluyendo esta misma fila: cambiar de
+		// generación puede traer un código que ya existe en la de destino, y
+		// quedarse en la misma puede no cambiar nada. Mismo autocambio que en
+		// UpdateGenerationUseCaseImpl.
+		groupRepository.findByGenerationIdAndCode(command.generationId(), code)
+				.filter(found -> !found.getId().equals(group.getId())).ifPresent(found -> {
+					throw new DuplicateGroupCodeException("Group code already in use for this generation: " + code);
+				});
+
 		group.updateDetails(command.generationId(), command.periodId(), command.planLevelId(),
-				generation.getProgramId(), command.code(), command.maxCapacity(), command.shift());
+				generation.getProgramId(), code, command.maxCapacity(), command.shift());
 		Group saved = groupRepository.save(group);
 
 		return CreateGroupUseCaseImpl.toResult(saved);

@@ -18,6 +18,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionExc
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateProgramCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateClassificationCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGenerationNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentAreaNameException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePaymentConceptCodeException;
@@ -39,6 +40,7 @@ import mx.edu.utez.sisa.academic_config.shared.exception.InvalidSocialServiceLev
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentAreaNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PaymentConceptReferenceNotFoundException;
+import mx.edu.utez.sisa.academic_config.shared.exception.NotEnoughGroupCodesException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PeriodNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
 import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
@@ -218,6 +220,34 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleGenerationConflict(DuplicateGenerationNumberException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, "Ya existe una generación con la información proporcionada.", request);
+	}
+
+	/**
+	 * 409 de grupos. El copy no menciona ningún campo a propósito: el frontend
+	 * lo atribuye a {@code code} sin mirar el texto (el 409 de
+	 * {@code POST/PUT /groups} sólo puede ser el duplicado de
+	 * {@code (generationId, code)}), y el mismo copy sirve para el 409 de la
+	 * creación masiva, donde el conflicto puede venir de otra transacción que
+	 * tomó las mismas letras.
+	 */
+	@ExceptionHandler(DuplicateGroupCodeException.class)
+	public ResponseEntity<ErrorResponse> handleGroupConflict(DuplicateGroupCodeException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, "Ya existe un grupo con esa clave en la generación.", request);
+	}
+
+	/**
+	 * 409 de la creacion masiva de grupos: no quedan letras libres en el rango
+	 * A-Z para esa cantidad, o bien otra transaccion se llevo las letras entre
+	 * la lectura y la escritura. Mismo status que
+	 * {@code DuplicateGroupCodeException} y copy distinto a proposito: uno es
+	 * "ya existe un grupo con esa clave" y este "no cabe la cantidad que pediste".
+	 */
+	@ExceptionHandler(NotEnoughGroupCodesException.class)
+	public ResponseEntity<ErrorResponse> handleNotEnoughGroupCodes(NotEnoughGroupCodesException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT,
+				"No hay suficientes claves de grupo libres en ese nivel para crear la cantidad solicitada.", request);
 	}
 
 	@ExceptionHandler({ PlanNotFoundException.class, PeriodNotFoundException.class })

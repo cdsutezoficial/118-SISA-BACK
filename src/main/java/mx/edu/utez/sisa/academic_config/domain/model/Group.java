@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import mx.edu.utez.sisa.shared.model.Shift;
 
 import java.util.Objects;
@@ -43,13 +44,23 @@ import java.util.UUID;
  * schema change, resolving the plan's one previously-open technical question.
  *
  * <p>
- * Unlike {@link Generation}'s {@code code} (computed, unique per program),
- * {@code Group.code} (e.g. "3A", "3B") is caller-supplied and carries NO
- * uniqueness rule in this slice — not specified by the plan's resolved
- * design, so none is invented here.
+ * Unlike {@link Generation}'s {@code code} (computed server-side), {@code Group.code}
+ * (e.g. "3A", "3B") is caller-supplied — but it IS unique, together with
+ * {@code generationId}, as of the Fase 8 work (2026-10-05). The table carries a
+ * {@code uk_academic_groups_generation_code} constraint AND the use cases check
+ * it in Java; see {@code DuplicateGroupCodeException} for why the key is
+ * {@code (generationId, code)} and not the three-column
+ * "programa + generación + letra" the plan document words, and for why
+ * {@code maxCapacity} and {@code periodId} stay out of it.
+ *
+ * <p>
+ * {@code maxCapacity} has no upper bound by decision (user, 2026-10-05): a real
+ * capacity is a business number and no document of the domain states a ceiling.
  */
 @Entity
-@Table(name = "academic_groups")
+@Table(name = "academic_groups",
+		uniqueConstraints = @UniqueConstraint(name = "uk_academic_groups_generation_code",
+				columnNames = { "generation_id", "code" }))
 public class Group {
 
 	@Id
@@ -71,7 +82,11 @@ public class Group {
 	@Column(name = "program_id", nullable = false)
 	private UUID programId;
 
-	@Column(nullable = false)
+	/**
+	 * Length mirrors {@code CreateGroupRequest}'s {@code @Size(max = 10)}, so the
+	 * ceiling cannot be raised on one side only.
+	 */
+	@Column(nullable = false, length = 10)
 	private String code;
 
 	@Column(name = "max_capacity", nullable = false)
@@ -100,8 +115,10 @@ public class Group {
 	 *                     {@code CreateGroupUseCaseImpl}, not here
 	 * @param programId    resolved from {@code generationId}'s owning {@code Generation.programId} by
 	 *                     the use case (see class javadoc) — never accepted as caller input
-	 * @param code         caller-supplied, e.g. "3A" — no uniqueness rule in this slice
-	 * @param maxCapacity  caller-supplied, no range validation specified by the resolved design
+	 * @param code         caller-supplied, e.g. "3A" — must be level-then-letter and
+	 *                     unique within {@code generationId}; validated by the DTO and
+	 *                     re-checked by {@code CreateGroupUseCaseImpl}
+	 * @param maxCapacity  caller-supplied, must be at least 1; no upper bound
 	 * @param shift        {@link Shift#MORNING}, {@link Shift#AFTERNOON}, or {@link Shift#MIXED}
 	 */
 	public Group(UUID generationId, UUID periodId, UUID planLevelId, UUID programId, String code, int maxCapacity,

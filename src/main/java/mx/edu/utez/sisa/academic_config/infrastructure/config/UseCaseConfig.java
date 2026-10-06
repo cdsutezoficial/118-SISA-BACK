@@ -25,6 +25,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicPlanUseCase
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateAcademicProgramUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGenerationUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupsBulkUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentAreaUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreatePaymentConceptUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateSubjectClassificationUseCase;
@@ -44,6 +45,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicPlansUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicProgramsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGenerationsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.PreviewGroupCodesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentAreasUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListPaymentConceptsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListSubjectClassificationsUseCase;
@@ -100,6 +102,7 @@ import mx.edu.utez.sisa.academic_config.domain.service.ChangeGroupStatusUseCaseI
 import mx.edu.utez.sisa.academic_config.domain.service.ChangePaymentAreaStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.ChangePaymentConceptStatusUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreateGroupUseCaseImpl;
+import mx.edu.utez.sisa.academic_config.domain.service.CreateGroupsBulkUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreatePaymentAreaUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.CreatePaymentConceptUseCaseImpl;
 import mx.edu.utez.sisa.academic_config.domain.service.GetGenerationUseCaseImpl;
@@ -399,6 +402,28 @@ public class UseCaseConfig {
 			GenerationRepository generationRepository, AcademicPlanRepository planRepository,
 			AcademicPeriodRepository periodRepository) {
 		return new UpdateGroupUseCaseImpl(groupRepository, generationRepository, planRepository, periodRepository);
+	}
+
+	/**
+	 * One bean serving both ports: the implementation class handles
+	 * {@link CreateGroupsBulkUseCase} and {@link PreviewGroupCodesUseCase} because
+	 * they share the reference-resolution prologue and the allocator. Spring
+	 * injects it by port type, so the two beans below are the same object.
+	 */
+	@Bean
+	public CreateGroupsBulkUseCase createGroupsBulkUseCase(GroupRepository groupRepository,
+			GenerationRepository generationRepository, AcademicPlanRepository planRepository,
+			AcademicPeriodRepository periodRepository) {
+		return new CreateGroupsBulkUseCaseImpl(groupRepository, generationRepository, planRepository,
+				periodRepository);
+	}
+
+	@Bean
+	public PreviewGroupCodesUseCase previewGroupCodesUseCase(GroupRepository groupRepository,
+			GenerationRepository generationRepository, AcademicPlanRepository planRepository,
+			AcademicPeriodRepository periodRepository) {
+		return new CreateGroupsBulkUseCaseImpl(groupRepository, generationRepository, planRepository,
+				periodRepository);
 	}
 
 	@Bean
