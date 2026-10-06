@@ -28,7 +28,7 @@ public class UpdateOutreachChannelUseCaseImpl implements UpdateOutreachChannelUs
 				.orElseThrow(() -> new OutreachChannelNotFoundException("Outreach channel not found: " + command.channelId()));
 
 		// Normalizar antes de comprobar, por el mismo motivo que en create.
-		String name = OutreachChannelTextNormalizer.name(command.name());
+		String name = CatalogDisplayNameNormalizer.displayName(command.name());
 		// La unicidad se revalida excluyendo esta misma fila: renombrar un canal
 		// al nombre que ya tiene no es un conflicto, y sin el filtro el guardado
 		// sin cambios de la lista devolvería 409. Mismo autocambio que en

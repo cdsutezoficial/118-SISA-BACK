@@ -20,7 +20,7 @@ import jakarta.validation.constraints.Size;
  * dominio lo pida.
  *
  * <p>Ojo con el orden: el controller evalúa estas anotaciones <b>antes</b> que
- * {@code OutreachChannelTextNormalizer}, así que el patrón tiene que aceptar todo
+ * {@code CatalogDisplayNameNormalizer}, así que el patrón tiene que aceptar todo
  * lo que el normalizador arregla. {@code ^[^\p{Cc}]*$} lo hace: el espacio duro
  * (U+00A0) y el BOM (U+FEFF) son whitespace, no caracteres de control.
  */

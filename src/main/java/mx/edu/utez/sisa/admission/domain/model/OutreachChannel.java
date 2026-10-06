@@ -69,7 +69,7 @@ public class OutreachChannel {
 	 * {@code NO PAD} collation a trailing space is significant, and internal
 	 * doubles never compare equal. So {@code " Facebook "} would sail past the
 	 * constraint and land next to {@code "Facebook"}. That half is closed by
-	 * {@code OutreachChannelTextNormalizer} plus the Java check in
+	 * {@code CatalogDisplayNameNormalizer} plus the Java check in
 	 * {@code CreateOutreachChannelUseCaseImpl#requireUniqueName}, which compare the
 	 * normalized value. The column is not uppercased on purpose — the name is shown
 	 * to the user in the list and in the reference pickers.

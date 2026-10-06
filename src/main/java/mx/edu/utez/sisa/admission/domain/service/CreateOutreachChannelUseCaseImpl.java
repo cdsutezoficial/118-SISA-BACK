@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
  * registros activos e inactivos" — so the constraint now exists and this javadoc
  * is the record of the change.
  *
- * <p>The name is normalized by {@link OutreachChannelTextNormalizer} <b>before</b>
+ * <p>The name is normalized by {@link CatalogDisplayNameNormalizer} <b>before</b>
  * the duplicate check and before persisting, so the comparison sees the same form
  * the column will hold. It has to be normalized first rather than rely on the
  * query alone: {@code findByNameIgnoreCase} is case-insensitive but not
@@ -36,7 +36,7 @@ public class CreateOutreachChannelUseCaseImpl implements CreateOutreachChannelUs
 	@Override
 	@Transactional
 	public OutreachChannelResult createChannel(CreateOutreachChannelCommand command) {
-		String name = OutreachChannelTextNormalizer.name(command.name());
+		String name = CatalogDisplayNameNormalizer.displayName(command.name());
 		requireUniqueName(name, channelRepository);
 
 		OutreachChannel channel = new OutreachChannel(name);

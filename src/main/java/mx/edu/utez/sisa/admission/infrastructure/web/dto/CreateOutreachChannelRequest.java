@@ -27,7 +27,7 @@ import jakarta.validation.constraints.Size;
  * sobra para cualquiera. El de la columna vive en la entidad, no aquí.
  *
  * <p>Ojo con el orden: el controller evalúa estas anotaciones <b>antes</b> que
- * {@code OutreachChannelTextNormalizer}. Por eso el patrón tiene que aceptar
+ * {@code CatalogDisplayNameNormalizer}. Por eso el patrón tiene que aceptar
  * todo lo que el normalizador arregla, y {@code ^[^\p{Cc}]*$} lo hace: el espacio
  * duro (U+00A0) y el BOM (U+FEFF) no son caracteres de control, sólo whitespace,
  * y los compacta el normalizador en vez de rechazarlos aquí.
