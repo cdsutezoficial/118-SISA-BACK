@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,6 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class PaymentAreaControllerIT {
+
+	/** Alimenta {@link #suffix()}; ver su javadoc para por qué es contador. */
+	private static final java.util.concurrent.atomic.AtomicInteger SEQUENCE = new java.util.concurrent.atomic.AtomicInteger();
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -102,7 +106,7 @@ class PaymentAreaControllerIT {
 
 		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(validBody("Forbidden SE", "FSE" + suffix()))))
+				.content(objectMapper.writeValueAsString(validBody("Forbidden SE", "SE" + suffix()))))
 				.andExpect(status().isForbidden());
 	}
 
@@ -134,8 +138,12 @@ class PaymentAreaControllerIT {
 
 		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(validBody("Area Duplicada Nombre", "DN2" + suffix()))))
-				.andExpect(status().isConflict());
+				.content(objectMapper.writeValueAsString(validBody("Area Duplicada Nombre", "D2" + suffix()))))
+				.andExpect(status().isConflict())
+				// Fase 11: el código estable es el contrato que el frontend ramifica
+				// para pegar el error al campo `name`. Sin esta aserción, volver a
+				// fusionar los dos 409 en un handler único pasaría el test.
+				.andExpect(jsonPath("$.code").value("PAYMENT_AREA_NAME_DUPLICATE"));
 	}
 
 	@Test
@@ -150,7 +158,9 @@ class PaymentAreaControllerIT {
 		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(validBody("Area Codigo Dos", code))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				// Espejo del caso de nombre: aquí el código va al campo `code`.
+				.andExpect(jsonPath("$.code").value("PAYMENT_AREA_CODE_DUPLICATE"));
 	}
 
 	@Test
@@ -161,6 +171,59 @@ class PaymentAreaControllerIT {
 				.contentType("application/json")
 				.content(objectMapper.writeValueAsString(validBody("", "BN" + suffix()))))
 				.andExpect(status().isBadRequest());
+	}
+
+	// ─── Fase 11: formato de `code` (2 a 5 alfanuméricos en mayúscula) ────────
+
+	/**
+	 * Los límites del regla de negocio del 2026-10-05. Se prueban los tres fallos
+	 * de forma por separado del {@code @Size(min = 2, max = 5)} porque comparten
+	 * mensaje: lo que cambia aquí es que el 400 llegue, no qué texto diga.
+	 */
+	@Test
+	void createWithCodeOutsideTheAllowedFormatReturns400() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		// Una sola letra: por debajo del mínimo de 2.
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Formato Corto", "A"))))
+				.andExpect(status().isBadRequest());
+
+		// Seis caracteres: por encima del máximo de 5.
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Formato Largo", "ABCDEF"))))
+				.andExpect(status().isBadRequest());
+
+		// Minúscula y símbolo: el patrón es `^[A-Z0-9]{2,5}$`, sin `accents` ni
+		// `guiones`. El navegador nunca manda minúscula porque `normalizeCode` la
+		// sube antes; un cliente de API sí puede, y debe recibir el 400.
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Formato Simbolo", "CO-L"))))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Formato Minúscula", "col"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	/** Los dos extremos válidos del rango, para que el test no sólo acote por fuera. */
+	@Test
+	void createWithCodeAtTheFormatBoundariesIsAccepted() throws Exception {
+		String token = tokenFor(RoleType.ADMIN);
+
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Clave Minima", "AB"))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.code").value("AB"));
+
+		mockMvc.perform(post("/payment-areas").header("Authorization", "Bearer " + token)
+				.contentType("application/json")
+				.content(objectMapper.writeValueAsString(validBody("Clave Maxima", "ABC12"))))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.code").value("ABC12"));
 	}
 
 	@Test
@@ -299,8 +362,34 @@ class PaymentAreaControllerIT {
 		return jwtService.sign(UUID.randomUUID().toString(), Set.of(role.name()));
 	}
 
+	/**
+	 * Sufijo de 3 caracteres en base36 mayúscula, para que el código completo
+	 * quepa en el {@code VARCHAR(5)} de {@code PaymentArea.code}: la regla de
+	 * negocio del 2026-10-05 lo limita a <b>2 a 5 alfanuméricos en mayúscula</b>.
+	 *
+	 * <p>Antes era {@code UUID.randomUUID().substring(0, 8)}, o sea 8 hex en
+	 * minúscula: con el prefijo de 2 letras daba 10 caracteres, y con los de 3
+	 * daba 11. Los dos casos pasaban la validación cuando esta IT se escribió
+	 * (no había {@code @Size} ni {@code @Pattern}) y hoy no pasarían —ni caben en
+	 * la columna—, así que el generador tenía que cambiar con la regla.
+	 *
+	 * <p>Es un contador y no un azar a propósito: con 3 caracteres aleatorios
+	 * sobre el alfabeto de 36 hay 46 656 combinaciones, y con ~40 fixtures en
+	 * esta clase la probabilidad de que dos choquen en una misma ejecución es de
+	 * alrededor del 1.7 %. Un contador es único por construcción, y como la base
+	 * se recrea entre ejecuciones ({@code ddl-auto=create-drop}) no hace falta
+	 * que dos ejecuciones distintas se distinguieran.
+	 *
+	 * <p>El {@code floorMod} recorta a los 3 dígitos de base36 que caben. Con las
+	 * ~40 fixtures de esta clase nunca se llega al tope y el recorte es
+	 * inofensivo, pero sin él un {@code substring} con un índice mayor que 3
+	 * reventaría con {@code StringIndexOutOfBoundsException} en lugar de dar un
+	 * código repetido y un fallo de clave única que sí se lee.
+	 */
 	private static String suffix() {
-		return UUID.randomUUID().toString().substring(0, 8);
+		int value = Math.floorMod(SEQUENCE.getAndIncrement(), 36 * 36 * 36);
+		String base36 = Integer.toString(value, Character.MAX_RADIX).toUpperCase(Locale.ROOT);
+		return "000".substring(base36.length()) + base36;
 	}
 
 	private static PaymentArea newArea(String name, String code) {

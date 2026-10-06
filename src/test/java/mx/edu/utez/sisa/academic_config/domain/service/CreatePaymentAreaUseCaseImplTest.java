@@ -97,6 +97,69 @@ class CreatePaymentAreaUseCaseImplTest {
 				.isInstanceOf(InvalidPaymentAreaDataException.class);
 	}
 
+	// ─── Fase 11: normalización antes de buscar y antes de guardar ─────────────
+
+	/**
+	 * El valor que se busca y el que se guarda es el normalizado, no el crudo.
+	 * Sin esto, el {@code @Size}/{@code @Pattern} del DTO no alcanzaría: el
+	 * backend guardaría " Colegiaturas " y el índice único no lo distinguiría de
+	 * "Colegiaturas" hasta reventar con un {@code DuplicateKeyException}.
+	 */
+	@Test
+	void createPaymentArea_storesNormalizedNameAndCode() {
+		when(paymentAreaRepository.findByName("Colegiaturas")).thenReturn(Optional.empty());
+		when(paymentAreaRepository.findByCode("COL")).thenReturn(Optional.empty());
+		when(paymentAreaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		PaymentAreaResult result = useCase.createPaymentArea(validCommand("  Colegiaturas  ", "  col  "));
+
+		assertThat(result.name()).isEqualTo("Colegiaturas");
+		assertThat(result.code()).isEqualTo("COL");
+		verify(paymentAreaRepository).findByName("Colegiaturas");
+		verify(paymentAreaRepository).findByCode("COL");
+	}
+
+	/**
+	 * El caso que motiva la fase: un nombre que sólo se diferencia del existente
+	 * por los espacios de los extremos <b>es</b> el mismo nombre. La colación de
+	 * MySQL es {@code NO PAD}, así que la búsqueda sin normalizar lo dejaría pasar
+	 * y el alta reventaría después con un 500 en lugar de un 409.
+	 */
+	@Test
+	void createPaymentArea_rejectsDuplicateNameIgnoringSurroundingWhitespace() {
+		when(paymentAreaRepository.findByName("Colegiaturas"))
+				.thenReturn(Optional.of(newArea("Colegiaturas", "COL")));
+
+		assertThatThrownBy(() -> useCase.createPaymentArea(validCommand("  Colegiaturas  ", "OTRO")))
+				.isInstanceOf(DuplicatePaymentAreaNameException.class);
+
+		verify(paymentAreaRepository, never()).save(any());
+	}
+
+	/** Igual que el anterior pero por la clave, y tolerando la minúscula. */
+	@Test
+	void createPaymentArea_rejectsDuplicateCodeIgnoringCaseAndWhitespace() {
+		when(paymentAreaRepository.findByName("Inscripcion")).thenReturn(Optional.empty());
+		when(paymentAreaRepository.findByCode("COL")).thenReturn(Optional.of(newArea("Colegiaturas", "COL")));
+
+		assertThatThrownBy(() -> useCase.createPaymentArea(validCommand("Inscripcion", " col ")))
+				.isInstanceOf(DuplicatePaymentAreaCodeException.class);
+
+		verify(paymentAreaRepository, never()).save(any());
+	}
+
+	/** Las rachas de whitespace interno también colapsan antes de comparar. */
+	@Test
+	void createPaymentArea_rejectsDuplicateNameCollapsingInnerWhitespace() {
+		when(paymentAreaRepository.findByName("Cuotas de Inscripción"))
+				.thenReturn(Optional.of(newArea("Cuotas de Inscripción", "INSC")));
+
+		assertThatThrownBy(() -> useCase.createPaymentArea(validCommand("Cuotas   de  Inscripción", "OTRO")))
+				.isInstanceOf(DuplicatePaymentAreaNameException.class);
+
+		verify(paymentAreaRepository, never()).save(any());
+	}
+
 	private static CreatePaymentAreaCommand validCommand(String name, String code) {
 		return new CreatePaymentAreaCommand(name, code, "Descripcion");
 	}
