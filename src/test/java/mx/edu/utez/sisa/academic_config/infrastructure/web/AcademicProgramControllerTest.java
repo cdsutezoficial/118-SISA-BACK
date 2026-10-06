@@ -299,6 +299,7 @@ class AcademicProgramControllerTest {
 		when(active.getId()).thenReturn(programId);
 		when(active.getName()).thenReturn("Ingeniería en Software");
 		when(active.getCode()).thenReturn("ISW");
+		when(active.getModality()).thenReturn(ProgramModality.MIXTA);
 		when(academicProgramJpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE))
 				.thenReturn(List.of(active));
 
@@ -306,6 +307,7 @@ class AcademicProgramControllerTest {
 				.andExpect(jsonPath("$[0].id").value(programId.toString()))
 				.andExpect(jsonPath("$[0].label").value("Ingeniería en Software"))
 				.andExpect(jsonPath("$[0].code").value("ISW"))
+				.andExpect(jsonPath("$[0].modality").value("MIXTA"))
 				.andExpect(jsonPath("$[1]").doesNotExist());
 
 		verify(academicProgramJpaRepository).findByStatusOrderByNameAsc(ProgramStatus.ACTIVE);

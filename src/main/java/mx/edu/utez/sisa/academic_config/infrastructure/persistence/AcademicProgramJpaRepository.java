@@ -81,8 +81,10 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 
 	/**
 	 * Minimal projection for reference pickers — {@code id}, {@code name}
-	 * (the label) and {@code code}. Maps to {@code OptionResponse}. Interface
-	 * projection is deliberate (design.md — glide-light reads).
+	 * (the label), {@code code} and {@code modality} (the picker renders
+	 * "DSM — Desarrollo de Software (Presencial)"). Maps to
+	 * {@code ProgramOptionResponse}. Interface projection is deliberate
+	 * (design.md — glide-light reads).
 	 */
 	interface ProgramOptionProjection {
 		UUID getId();
@@ -90,5 +92,7 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 		String getName();
 
 		String getCode();
+
+		ProgramModality getModality();
 	}
 }
