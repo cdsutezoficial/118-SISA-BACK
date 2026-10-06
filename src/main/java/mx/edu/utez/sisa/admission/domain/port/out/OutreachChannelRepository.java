@@ -8,10 +8,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persistence out-port for {@link OutreachChannel}. No {@code findByCode} /
- * {@code findByName} lookup is declared — unlike {@code SubjectClassification},
- * this aggregate has no uniqueness constraint to enforce, so Create/Update
- * never need to look up an existing row by a candidate value.
+ * Persistence out-port for {@link OutreachChannel}. There is no
+ * {@code findByCode} — this catalog has no code field — but {@code findByName}
+ * backs the uniqueness check, exactly as {@code SubjectClassificationRepository}
+ * does for its {@code code}.
  */
 public interface OutreachChannelRepository {
 
@@ -22,6 +22,28 @@ public interface OutreachChannelRepository {
 	 * {@code SubjectClassificationRepository#findById}.
 	 */
 	Optional<OutreachChannel> findById(UUID id);
+
+	/**
+	 * Uniqueness lookup for {@code name}, backing the 409 of
+	 * {@code CreateOutreachChannelUseCase} / {@code UpdateOutreachChannelUseCase}.
+	 *
+	 * <p><b>Deliberately not filtered by {@code status}.</b> The spec requires the
+	 * normalized name to be unique "entre registros activos e inactivos": a
+	 * deactivated channel still occupies its name, otherwise deactivating
+	 * "Facebook" and then creating "facebook" would pass the check and leave two
+	 * rows the user cannot tell apart in the reference pickers, which do filter by
+	 * status. Same convention as {@code SubjectClassificationRepository}: the
+	 * catalog keeps deactivated rows forever, so the constraint cannot be scoped
+	 * to the active ones.
+	 *
+	 * <p>Case-insensitive by contract (see
+	 * {@code AcademicDivisionRepository#findByName} for the same shape): the
+	 * stored name keeps its casing because it is displayed, so the comparison is
+	 * what has to ignore it.
+	 *
+	 * @param name the already-normalized candidate name
+	 */
+	Optional<OutreachChannel> findByName(String name);
 
 	/**
 	 * Filterable, paginated query backing {@code ListOutreachChannelsUseCase}.
