@@ -38,6 +38,6 @@ import java.util.UUID;
  */
 public record CreateGroupRequest(@NotNull UUID generationId, @NotNull UUID periodId, @NotNull UUID planLevelId,
 		@NotNull @Size(max = 10, message = "La clave del grupo no puede exceder 10 caracteres.")
-		@Pattern(regexp = "^\\p{N}+\\p{L}+$", message = "La clave del grupo debe ser el nivel seguido de la letra, por ejemplo 3A.") String code,
+		@Pattern(regexp = "^\\p{N}+\\p{L}$", message = "La clave del grupo debe ser el nivel seguido de una sola letra, por ejemplo 3A.") String code,
 		@Min(value = 1, message = "La capacidad máxima debe ser mayor o igual a 1.") int maxCapacity, @NotNull Shift shift) {
 }
