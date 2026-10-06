@@ -69,6 +69,16 @@ public interface GroupJpaRepository extends JpaRepository<Group, UUID> {
 	 * in use by this generation, pick the next free ones. Returns the codes, not
 	 * the entities — the allocator only needs the identifier, and fetching whole
 	 * rows to read one column would be wasteful.
+	 *
+	 * <p>
+	 * <b>No puede ser query derivada</b> (D1 de las incidencias 2026-10-06): un
+	 * {@code findCodesByGenerationId} sin {@code @Query} le pide a Spring Data
+	 * una propiedad {@code codes} que {@code Group} no tiene, y esa
+	 * {@code PropertyReferenceException} se lanza dentro de la ruta masiva
+	 * ({@code previewGroupCodes}/{@code createGroupsBulk}) y cae en el handler
+	 * de última instancia de {@code identity}, que responde 500. Con JPQL
+	 * explícito el predicado es la columna {@code code} y nada más.
 	 */
-	List<String> findCodesByGenerationId(UUID generationId);
+	@Query("SELECT g.code FROM Group g WHERE g.generationId = :generationId")
+	List<String> findCodesByGenerationId(@Param("generationId") UUID generationId);
 }

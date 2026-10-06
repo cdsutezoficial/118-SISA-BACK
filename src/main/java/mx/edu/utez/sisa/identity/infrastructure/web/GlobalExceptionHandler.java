@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.identity.infrastructure.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.AccountLockedException;
 import mx.edu.utez.sisa.identity.shared.exception.DivisionRuleViolationException;
 import mx.edu.utez.sisa.identity.shared.exception.DuplicateCurpException;
@@ -24,11 +25,15 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 
@@ -151,6 +156,28 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
+	 * Validación de parámetros de ruta/método, no de cuerpo: {@code @Validated}
+	 * sobre la clase + {@code @Min}/{@code @Max}/{@code Pattern} en un
+	 * {@code @RequestParam} lanza {@code ConstraintViolationException}. Antes
+	 * caía en {@link #handleUnexpected} y respondía 500 (D1 de las incidencias
+	 * 2026-10-06: {@code GET /groups/next-codes?quantity=999} devolvía "error
+	 * interno" en vez de 400).
+	 *
+	 * <p>El copy es genérico y en español a propósito: el mensaje por defecto de
+	 * Hibernate Validator es inglés ({@code "must be greater than or equal to
+	 * 1"}), y salirle al usuario con eso es peor que no decir nada. Los detalles
+	 * sí van al log, que es donde corresponde verlos.
+	 */
+	@ExceptionHandler(ConstraintViolationException.class)
+	public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex,
+			HttpServletRequest request) {
+		String violations = ex.getConstraintViolations().stream()
+				.map(violation -> violation.getPropertyPath() + " " + violation.getMessage()).toList().toString();
+		log.warn("Constraint violation on {}: {}", request.getRequestURI(), violations);
+		return build(HttpStatus.BAD_REQUEST, "La solicitud contiene un dato fuera del rango permitido.", request);
+	}
+
+	/**
 	 * The request body could not be READ: absent on an endpoint whose
 	 * {@code @RequestBody} is required, or malformed/unparseable JSON.
 	 * Spring raises this before the controller method runs, so it is a
@@ -198,11 +225,68 @@ public class GlobalExceptionHandler {
 	 * Last-resort handler so unexpected failures still return the standard
 	 * {@link ErrorResponse} envelope. The internal exception message is
 	 * logged but never returned to the caller.
+	 *
+	 * <p>Antes devolvía 500 <b>siempre</b>, y eso se tragaba el status real de
+	 * las excepciones que Spring ya trae con uno propio (D1 + hallazgo de paso
+	 * de las incidencias 2026-10-06): una ruta inexistente
+	 * ({@code NoResourceFoundException} → 404), un método que la ruta no acepta
+	 * (405), un content-type insoportable (415) y cualquier
+	 * {@code ResponseStatusException} acababan como "Ocurrió un error al
+	 * procesar la solicitud". Ahí se respeta el status que la excepción declara
+	 * y sólo queda 500 para lo que de verdad no tiene.
 	 */
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+		HttpStatus declared = declaredStatusOf(ex);
+		if (declared != null) {
+			log.warn("Request failed with declared status {} on {}: {}", declared.value(), request.getRequestURI(),
+					ex.toString());
+			return build(declared, messageFor(declared), request);
+		}
 		log.error("Unhandled exception on {}", request.getRequestURI(), ex);
 		return build(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error al procesar la solicitud. Intenta nuevamente más tarde.", request);
+	}
+
+	/**
+	 * The status the exception itself declares, or {@code null} when it doesn't
+	 * declare one (i.e. when it really is an unexpected server failure).
+	 *
+	 * <p>{@code org.springframework.web.ErrorResponse} cubre las excepciones de
+	 * Spring MVC con status propio — entre ellas
+	 * {@code NoResourceFoundException} (404 para rutas inexistentes),
+	 * {@code NoHandlerFoundException} y {@code ErrorResponseException} — y
+	 * {@link ResponseStatusException} es el equivalente del lado de aplicaciones
+	 * que usan {@code @ResponseStatus}. Las de Spring que no implementan
+	 * ninguna de las dos se declaran aparte. Se usa el nombre calificado porque
+	 * {@code ErrorResponse} ya está tomado por el DTO propio del proyecto.
+	 */
+	private static HttpStatus declaredStatusOf(Exception ex) {
+		if (ex instanceof org.springframework.web.ErrorResponse errorResponse) {
+			return HttpStatus.resolve(errorResponse.getStatusCode().value());
+		}
+		if (ex instanceof ResponseStatusException responseStatus) {
+			return HttpStatus.resolve(responseStatus.getStatusCode().value());
+		}
+		if (ex instanceof HttpRequestMethodNotSupportedException) {
+			return HttpStatus.METHOD_NOT_ALLOWED;
+		}
+		if (ex instanceof HttpMediaTypeNotSupportedException) {
+			return HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+		}
+		if (ex instanceof HttpMediaTypeNotAcceptableException) {
+			return HttpStatus.NOT_ACCEPTABLE;
+		}
+		return null;
+	}
+
+	private static String messageFor(HttpStatus status) {
+		return switch (status) {
+			case NOT_FOUND -> "La ruta solicitada no existe.";
+			case METHOD_NOT_ALLOWED -> "El método HTTP utilizado no está permitido para esta ruta.";
+			case UNSUPPORTED_MEDIA_TYPE -> "El tipo de contenido enviado no es compatible con esta ruta.";
+			case NOT_ACCEPTABLE -> "El tipo de contenido solicitado no está disponible.";
+			default -> "La solicitud no pudo procesarse. Revisa los datos enviados.";
+		};
 	}
 
 	private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
