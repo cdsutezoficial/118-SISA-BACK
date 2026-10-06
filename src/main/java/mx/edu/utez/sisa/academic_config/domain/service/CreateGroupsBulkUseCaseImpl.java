@@ -41,14 +41,11 @@ import java.util.UUID;
  * <p>
  * Concurrency: two simultaneous bulk requests for the same generation both read
  * the same set of used codes and both allocate "3A". The Java-level duplicate
- * check cannot see the other transaction's uncommitted row, so correctness
- * rests on the {@code uk_academic_groups_generation_code} constraint — with the
- * caveat, documented on {@code Group}, that
- * {@code spring.jpa.hibernate.ddl-auto=update} does not add that constraint to
- * a table that already exists. The {@link DataIntegrityViolationException} catch
- * below is what turns that residual race into a 409 instead of a 500. It is a
- * last line of defence, not the primary mechanism: without the constraint, two
- * concurrent batches would both succeed and leave duplicate codes.
+ * check cannot see the other transaction's uncommitted row, so correctness rests
+ * on the {@code uk_academic_groups_generation_code} constraint, which Hibernate
+ * creates because the schema is rebuilt from scratch on every start. The
+ * {@link DataIntegrityViolationException} catch below turns the residual race
+ * into a 409 instead of letting it surface as a 500.
  */
 public class CreateGroupsBulkUseCaseImpl
 		implements CreateGroupsBulkUseCase, PreviewGroupCodesUseCase {
@@ -93,8 +90,7 @@ public class CreateGroupsBulkUseCaseImpl
 		} catch (DataIntegrityViolationException ex) {
 			// Another transaction took one of these letters between the read above
 			// and this insert. Rethrown as the module's own conflict so the web
-			// layer answers 409 instead of leaking a 500 — see the class javadoc
-			// for why this is a safety net and not the main mechanism.
+			// layer answers 409 instead of leaking a 500.
 			throw new NotEnoughGroupCodesException(
 					"Concurrent bulk creation claimed one of the codes for generation " + command.generationId());
 		}

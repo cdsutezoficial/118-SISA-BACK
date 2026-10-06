@@ -90,12 +90,13 @@ public class CreateGroupUseCaseImpl implements CreateGroupUseCase {
 	}
 
 	/**
-	 * Unicidad de {@code (generationId, code)}. Se comprueba en Java además de
-	 * por la restricción de la tabla porque la tabla solo protege si el esquema
-	 * se aplico: {@code spring.jpa.hibernate.ddl-auto=update} no agrega indices
-	 * nuevos a una tabla que ya existe, así que en una base instalada antes de
-	 * esta fase la restricción {@code uk_academic_groups_generation_code} puede
-	 * no estar. La comprobacion en Java da el 409 correcto en ambos casos.
+	/**
+	 * Unicidad de {@code (generationId, code)}. Se comprueba en Java además de por
+	 * la restricción de la tabla: la restricción es la que resuelve la carrera
+	 * entre dos altas simultáneas —imposible de cerrar en Java, porque una
+	 * transacción no ve la fila no confirmada de la otra—, pero el mensaje del 409
+	 * tiene que ser el del módulo y no el de Hibernate, y eso lo da esta
+	 * comprobación.
 	 */
 	static void requireUniqueCode(UUID generationId, String code, GroupRepository groupRepository) {
 		if (groupRepository.findByGenerationIdAndCode(generationId, code).isPresent()) {
