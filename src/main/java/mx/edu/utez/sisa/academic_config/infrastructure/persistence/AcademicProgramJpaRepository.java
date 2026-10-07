@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -58,6 +59,19 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 			""")
 	Page<AcademicProgram> search(@Param("divisionId") UUID divisionId, @Param("status") ProgramStatus status,
 			@Param("search") String search, Pageable pageable);
+
+	/**
+	 * Grouped count backing {@code AcademicProgramRepository#countProgramsByDivisionIds}
+	 * — one aggregate query for the whole page of {@code GET /divisions},
+	 * instead of a {@code COUNT} per division.
+	 */
+	@Query("""
+			SELECT p.divisionId, COUNT(p)
+			FROM AcademicProgram p
+			WHERE p.divisionId IN :divisionIds
+			GROUP BY p.divisionId
+			""")
+	List<Object[]> countProgramsByDivisionIdIn(@Param("divisionIds") Collection<UUID> divisionIds);
 
 	/**
 	 * Reference-catalog read backing {@code GET /programs/options} (transversal

@@ -33,8 +33,10 @@ public interface ListAcademicDivisionsUseCase {
 	}
 
 	/**
-	 * @param programCount hardcoded {@code 0} stub pending real {@code AcademicProgram} data (HU-PROG-010) —
-	 *                      NOT a real aggregation query (spec: "Every item reports a stub programCount")
+	 * @param programCount number of {@code AcademicProgram}s that reference
+	 *                      this division — real grouped count from
+	 *                      {@code AcademicProgramRepository#countProgramsByDivisionIds},
+	 *                      defaulting to zero for divisions without programs
 	 */
 	record DivisionSummary(UUID id, String name, String code, String description, UUID directorPersonId,
 			DivisionStatus status, int programCount) {
