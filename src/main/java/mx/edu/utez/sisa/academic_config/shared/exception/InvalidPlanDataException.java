@@ -4,8 +4,8 @@ package mx.edu.utez.sisa.academic_config.shared.exception;
  * Thrown when a caller-supplied {@code AcademicPlan}/{@code PlanLevel} field
  * fails a simple range validation rule enforced by the use case layer:
  * {@code minPassingGrade} outside {@code [0, 10]} ({@code
- * CreateAcademicPlanUseCase}) or {@code levelNumber} outside
- * {@code [1, totalLevels]} ({@code AddPlanLevelUseCase}). Maps to HTTP 400 in
+ * CreateAcademicPlanUseCase}) or {@code levelNumber} below {@code 1} ({@code
+ * AddPlanLevelUseCase}). Maps to HTTP 400 in
  * the web layer's {@code GlobalExceptionHandler}.
  *
  * <p>
