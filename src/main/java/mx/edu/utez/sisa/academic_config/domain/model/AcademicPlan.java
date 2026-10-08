@@ -167,7 +167,7 @@ public class AcademicPlan {
 	/**
 	 * Adds a {@link PlanLevel} to this plan (spec: "Add and Update Plan
 	 * Level"). Rejects a {@code levelNumber} already used by another level of
-	 * this same plan. The {@code [1, totalLevels]} range check is enforced by
+	 * this same plan. The {@code levelNumber >= 1} check is enforced by
 	 * {@code AddPlanLevelUseCaseImpl}, not here.
 	 */
 	public PlanLevel addLevel(int levelNumber, PlanLevelType type, String description) {

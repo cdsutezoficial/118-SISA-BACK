@@ -19,7 +19,8 @@ public interface AddPlanLevelUseCase {
 	PlanLevelResult addLevel(AddPlanLevelCommand command);
 
 	/**
-	 * @param levelNumber MUST be within {@code [1, totalLevels]} and unique within the plan
+	 * @param levelNumber must be {@code >= 1} and unique within the plan; it is a
+	 *                    free label, so it may exceed {@code totalLevels}
 	 */
 	record AddPlanLevelCommand(UUID planId, int levelNumber, PlanLevelType type, String description) {
 	}

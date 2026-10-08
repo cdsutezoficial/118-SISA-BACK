@@ -13,11 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Updates an existing {@code PlanLevel} owned by an {@code AcademicPlan}
  * (spec: "Add and Update Plan Level"). Delegates the not-found and
  * duplicate-{@code levelNumber} checks to {@link AcademicPlan#updateLevel}.
- * Enforces the {@code [1, totalLevels]} range at this layer (post-verify
- * fast-follow bugfix — {@code AddPlanLevelUseCaseImpl} already enforced this
- * range when adding a level, but the equivalent guard was missing here,
- * silently accepting/persisting an out-of-range {@code levelNumber} on
- * update).
+ * Enforces that {@code levelNumber} is {@code >= 1} at this layer — the
+ * number is a free label, not an index, so it can exceed {@code totalLevels}
+ * (a 4-level plan may be numbered 7, 8, 9, 10).
  */
 public class UpdatePlanLevelUseCaseImpl implements UpdatePlanLevelUseCase {
 
@@ -32,9 +30,9 @@ public class UpdatePlanLevelUseCaseImpl implements UpdatePlanLevelUseCase {
 	public PlanLevelResult updateLevel(UpdatePlanLevelCommand command) {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
-		if (command.levelNumber() < 1 || command.levelNumber() > plan.getTotalLevels()) {
-			throw new InvalidPlanDataException("El número de nivel debe estar entre 1 y el total de niveles del plan ("
-					+ plan.getTotalLevels() + "): " + command.levelNumber());
+		if (command.levelNumber() < 1) {
+			throw new InvalidPlanDataException(
+					"El número de nivel debe ser un entero mayor o igual a 1: " + command.levelNumber());
 		}
 
 		plan.updateLevel(command.levelId(), command.levelNumber(), command.type(),

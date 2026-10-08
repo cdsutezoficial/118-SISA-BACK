@@ -7,10 +7,11 @@ import mx.edu.utez.sisa.academic_config.domain.model.PlanLevelType;
 
 /**
  * Request body for {@code POST /plans/{id}/levels} (design.md — REST
- * endpoints). {@code levelNumber} range/uniqueness validation is enforced by
- * {@code AddPlanLevelUseCaseImpl}/{@code AcademicPlan.addLevel}, not bean
- * validation here — the valid range depends on the plan's
- * {@code totalLevels}, which bean validation cannot see.
+ * endpoints). {@code levelNumber} must be {@code >= 1} and unique within the
+ * plan; that is enforced by {@code AddPlanLevelUseCaseImpl}/
+ * {@code AcademicPlan.addLevel}, not bean validation here, because the
+ * number is a free label (it may exceed {@code totalLevels}) and uniqueness
+ * needs the aggregate's state.
  *
  * <p>{@code description} is optional (the column is nullable), so it carries no
  * {@code @NotBlank}; {@code @Size} still applies to it because Hibernate's
