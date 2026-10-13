@@ -30,20 +30,24 @@ public class CreateAcademicProgramUseCaseImpl implements CreateAcademicProgramUs
 	@Override
 	@Transactional
 	public AcademicProgramResult createProgram(CreateAcademicProgramCommand command) {
+		String name = AcademicProgramTextNormalizer.name(command.name());
+		String offerName = AcademicProgramTextNormalizer.offerName(command.offerName());
+		String code = AcademicProgramTextNormalizer.code(command.code());
+		String description = AcademicProgramTextNormalizer.optional(command.description());
+		String dgpCode = AcademicProgramTextNormalizer.optional(command.dgpCode());
 		if (command.divisionId() == null || divisionRepository.findById(command.divisionId()).isEmpty()) {
 			throw new DivisionNotFoundException("Academic division not found: " + command.divisionId());
 		}
-		if (programRepository.findByCode(command.code()).isPresent()) {
-			throw new DuplicateProgramCodeException("Program code already in use: " + command.code());
+		if (programRepository.findByCode(code).isPresent()) {
+			throw new DuplicateProgramCodeException("Program code already in use: " + code);
 		}
-		if (programRepository.findByOfferNameAndModality(command.offerName(), command.modality()).isPresent()) {
+		if (programRepository.findByOfferNameAndModality(offerName, command.modality()).isPresent()) {
 			throw new DuplicateOfferNameModalityException("Program offerName+modality already in use: "
-					+ command.offerName() + " / " + command.modality());
+					+ offerName + " / " + command.modality());
 		}
 
-		AcademicProgram program = new AcademicProgram(command.divisionId(), command.name(), command.offerName(),
-				command.code(), command.level(), command.modality(), command.continuityProgramId(),
-				command.description(), command.dgpCode());
+		AcademicProgram program = new AcademicProgram(command.divisionId(), name, offerName, code, command.level(),
+				command.modality(), command.continuityProgramId(), description, dgpCode);
 		AcademicProgram saved = programRepository.save(program);
 
 		return toResult(saved);

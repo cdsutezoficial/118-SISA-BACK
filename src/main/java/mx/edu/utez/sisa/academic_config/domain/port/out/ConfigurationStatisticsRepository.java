@@ -20,7 +20,7 @@ public interface ConfigurationStatisticsRepository {
 
 	/**
 	 * @param periodId the period whose groups should be counted
-	 * @return number of groups assigned to {@code periodId}
+	 * @return number of open groups assigned to {@code periodId}
 	 */
 	long countGroupsForPeriod(UUID periodId);
 }

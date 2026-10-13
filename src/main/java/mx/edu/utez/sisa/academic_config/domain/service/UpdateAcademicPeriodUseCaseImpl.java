@@ -15,6 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
  * succeed, same rule as {@code UpdateSubjectClassificationUseCaseImpl}'s
  * {@code code} revalidation. Date-range validation is enforced by
  * {@link AcademicPeriod#updateDetails} itself.
+ *
+ * <p>{@code name} is normalized by {@link AcademicPeriodTextNormalizer} before the
+ * update, for the same reason as in {@code CreateAcademicPeriodUseCaseImpl} and with the
+ * same caveat: the duplicate key is {@code (year, periodNumber)}, so the normalization
+ * cannot affect the 409 either way.
  */
 public class UpdateAcademicPeriodUseCaseImpl implements UpdateAcademicPeriodUseCase {
 
@@ -36,8 +41,9 @@ public class UpdateAcademicPeriodUseCaseImpl implements UpdateAcademicPeriodUseC
 							+ " and periodNumber " + command.periodNumber());
 				});
 
-		period.updateDetails(command.name(), command.year(), command.periodNumber(), command.type(),
-				command.startDate(), command.endDate(), command.enrollmentStart(), command.enrollmentEnd());
+		period.updateDetails(AcademicPeriodTextNormalizer.name(command.name()), command.year(), command.periodNumber(),
+				command.type(), command.startDate(), command.endDate(), command.enrollmentStart(),
+				command.enrollmentEnd());
 		AcademicPeriod saved = periodRepository.save(period);
 
 		return CreateAcademicPeriodUseCaseImpl.toResult(saved);

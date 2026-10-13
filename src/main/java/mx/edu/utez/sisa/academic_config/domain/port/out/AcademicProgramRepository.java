@@ -4,7 +4,9 @@ import mx.edu.utez.sisa.academic_config.domain.model.AcademicProgram;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramStatus;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,6 +48,16 @@ public interface AcademicProgramRepository {
 
 	record AcademicProgramReference(UUID id, String name) {
 	}
+
+	/**
+	 * Counts the programs of each requested division in a single grouped
+	 * query — backs the "Carreras" column of {@code GET /divisions}, the
+	 * aggregation the old hardcoded stub deferred (HU-PROG-010). Divisions
+	 * without programs are absent from the map; callers default to zero.
+	 *
+	 * @param divisionIds non-null; an empty collection returns an empty map
+	 */
+	Map<UUID, Long> countProgramsByDivisionIds(Collection<UUID> divisionIds);
 
 	/**
 	 * Filterable, paginated query backing {@code ListAcademicProgramsUseCase}.

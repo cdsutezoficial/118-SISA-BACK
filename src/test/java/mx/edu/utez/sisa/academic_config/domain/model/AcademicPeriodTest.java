@@ -337,6 +337,59 @@ class AcademicPeriodTest {
 		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CLOSED);
 	}
 
+	// --- enrollment dates are optional (user decision 2026-10-06) ---
+
+	@Test
+	void constructor_allowsMissingEnrollmentDates() {
+		AcademicPeriod period = new AcademicPeriod("X", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, null, null);
+
+		assertThat(period.getEnrollmentStart()).isNull();
+		assertThat(period.getEnrollmentEnd()).isNull();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CONFIGURATION);
+	}
+
+	@Test
+	void constructor_stillRejectsEnrollmentEndAfterEndDate_whenEnrollmentStartIsMissing() {
+		assertThatThrownBy(() -> new AcademicPeriod("X", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, null,
+				END.plusDays(1))).isInstanceOf(InvalidPlanDataException.class);
+	}
+
+	@Test
+	void constructor_stillRejectsEqualEnrollmentDates_whenBothPresent() {
+		assertThatThrownBy(() -> new AcademicPeriod("X", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, START,
+				START)).isInstanceOf(InvalidPlanDataException.class);
+	}
+
+	@Test
+	void updateDetails_allowsClearingEnrollmentDates() {
+		AcademicPeriod period = newPeriod();
+
+		period.updateDetails("Renombrado", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, null, null);
+
+		assertThat(period.getEnrollmentStart()).isNull();
+		assertThat(period.getEnrollmentEnd()).isNull();
+	}
+
+	@Test
+	void advanceByDate_withoutEnrollmentDates_staysInConfigurationBeforeStartDate() {
+		AcademicPeriod period = new AcademicPeriod("X", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, null, null);
+
+		boolean changed = period.advanceByDate(START.minusDays(1));
+
+		assertThat(changed).isFalse();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.CONFIGURATION);
+	}
+
+	@Test
+	void advanceByDate_withoutEnrollmentDates_resolvesEnrollmentOnStartDateAndReachesActive() {
+		AcademicPeriod period = new AcademicPeriod("X", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, null, null);
+
+		boolean changed = period.advanceByDate(START);
+
+		assertThat(changed).isTrue();
+		assertThat(period.getStatus()).isEqualTo(PeriodStatus.ACTIVE);
+	}
+
 	private static AcademicPeriod newPeriod() {
 		return new AcademicPeriod("Enero-Abril 2026", 2026, 1, PeriodType.CUATRIMESTRAL, START, END, ENROLLMENT_START,
 				ENROLLMENT_END);

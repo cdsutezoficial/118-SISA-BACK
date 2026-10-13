@@ -42,6 +42,9 @@ public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase 
 	public AcademicPlanResult updatePlan(UpdateAcademicPlanCommand command) {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
+		String version = AcademicPlanTextNormalizer.version(command.version());
+		String validityPeriod = AcademicPlanTextNormalizer.validityPeriod(command.validityPeriod());
+		String titulationKey = AcademicPlanTextNormalizer.titulationKey(command.titulationKey());
 
 		if (command.minPassingGrade() == null || command.minPassingGrade().compareTo(MIN_PASSING_GRADE_FLOOR) < 0
 				|| command.minPassingGrade().compareTo(MIN_PASSING_GRADE_CEILING) > 0) {
@@ -49,18 +52,22 @@ public class UpdateAcademicPlanUseCaseImpl implements UpdateAcademicPlanUseCase 
 					+ command.minPassingGrade());
 		}
 
-		planRepository.findByProgramIdAndVersion(plan.getProgramId(), command.version())
+		planRepository.findByProgramIdAndVersion(plan.getProgramId(), version)
 				.filter(found -> !found.getId().equals(plan.getId())).ifPresent(found -> {
 					throw new DuplicatePlanVersionException(
-							"Plan version already in use for this program: " + command.version());
+							"Plan version already in use for this program: " + version);
 				});
+		if (!command.requiresSocialService() && command.socialServiceMinLevelId() != null) {
+			throw new InvalidSocialServiceLevelException(
+					"socialServiceMinLevelId requires requiresSocialService=true");
+		}
 		if (command.requiresSocialService() && command.socialServiceMinLevelId() != null
 				&& !plan.hasLevel(command.socialServiceMinLevelId())) {
 			throw new InvalidSocialServiceLevelException(
 					"socialServiceMinLevelId does not belong to this plan: " + command.socialServiceMinLevelId());
 		}
 
-		plan.updateDetails(command.version(), command.validityPeriod(), command.titulationKey(),
+		plan.updateDetails(version, validityPeriod, titulationKey,
 				command.effectiveFrom(), command.totalLevels(), command.minPassingGrade(),
 				command.maxExtraordinaryExamsPerPeriod(), command.requiresSocialService(),
 				command.socialServiceMinLevelId());

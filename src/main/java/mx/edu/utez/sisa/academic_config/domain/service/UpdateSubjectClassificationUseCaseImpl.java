@@ -14,6 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
  * excluding the record's own current row — a self-update with an unchanged
  * code must succeed. {@code name} is still deliberately NOT validated for
  * uniqueness, same rule as {@code CreateSubjectClassificationUseCaseImpl}.
+ *
+ * <p>{@code name} and {@code code} are normalized by
+ * {@link SubjectClassificationTextNormalizer} <b>before</b> the duplicate check
+ * and before persisting. The self-exclusion filter stays as it is, but it now
+ * compares normalized codes: re-saving a record with its own code typed as
+ * {@code " int-c-adm "} resolves to the same {@code INT-C-ADM} the row already
+ * holds, so the update succeeds instead of reporting a conflict with itself.
  */
 public class UpdateSubjectClassificationUseCaseImpl implements UpdateSubjectClassificationUseCase {
 
@@ -30,13 +37,16 @@ public class UpdateSubjectClassificationUseCaseImpl implements UpdateSubjectClas
 				.orElseThrow(() -> new ClassificationNotFoundException(
 						"Classification not found: " + command.classificationId()));
 
-		classificationRepository.findByCode(command.code())
+		String name = SubjectClassificationTextNormalizer.name(command.name());
+		String code = SubjectClassificationTextNormalizer.code(command.code());
+
+		classificationRepository.findByCode(code)
 				.filter(found -> !found.getId().equals(classification.getId())).ifPresent(found -> {
 					throw new DuplicateClassificationCodeException(
-							"Classification code already in use: " + command.code());
+							"Classification code already in use: " + code);
 				});
 
-		classification.updateDetails(command.name(), command.code());
+		classification.updateDetails(name, code);
 		SubjectClassification saved = classificationRepository.save(classification);
 
 		return CreateSubjectClassificationUseCaseImpl.toResult(saved);

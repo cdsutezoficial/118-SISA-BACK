@@ -24,6 +24,6 @@ public interface GetConfigurationStatisticsUseCase {
 			long groupsForCurrentPeriod, CurrentPeriodStatistics currentPeriod) {
 	}
 
-	record CurrentPeriodStatistics(UUID id, String name) {
+	record CurrentPeriodStatistics(UUID id, String name, boolean active) {
 	}
 }

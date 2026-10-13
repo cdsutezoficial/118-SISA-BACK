@@ -5,21 +5,29 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListAcademicDivisionsUseC
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository.DivisionSearchCriteria;
 import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicDivisionRepository.DivisionSearchPage;
+import mx.edu.utez.sisa.academic_config.domain.port.out.AcademicProgramRepository;
 
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Paginated, filterable query for {@code AcademicDivision} catalog entries
- * (spec: "List Academic Divisions (Paginated)"). Every returned item carries
- * a hardcoded {@code programCount = 0} stub — no {@code AcademicProgram}
- * aggregate exists yet (HU-PROG-010).
+ * (spec: "List Academic Divisions (Paginated)"). Each item carries its real
+ * {@code programCount} — a grouped count over {@code AcademicProgram} (one
+ * aggregate query per page), replacing the hardcoded stub kept while no
+ * {@code AcademicProgram} aggregate existed (HU-PROG-010).
  */
 public class ListAcademicDivisionsUseCaseImpl implements ListAcademicDivisionsUseCase {
 
 	private final AcademicDivisionRepository divisionRepository;
 
-	public ListAcademicDivisionsUseCaseImpl(AcademicDivisionRepository divisionRepository) {
+	private final AcademicProgramRepository programRepository;
+
+	public ListAcademicDivisionsUseCaseImpl(AcademicDivisionRepository divisionRepository,
+			AcademicProgramRepository programRepository) {
 		this.divisionRepository = divisionRepository;
+		this.programRepository = programRepository;
 	}
 
 	@Override
@@ -29,15 +37,20 @@ public class ListAcademicDivisionsUseCaseImpl implements ListAcademicDivisionsUs
 
 		DivisionSearchPage page = divisionRepository.search(criteria);
 
-		List<DivisionSummary> summaries = page.content().stream().map(this::toSummary).toList();
+		Map<UUID, Long> programCounts = programRepository
+				.countProgramsByDivisionIds(page.content().stream().map(AcademicDivision::getId).toList());
+
+		List<DivisionSummary> summaries = page.content().stream().map(division -> toSummary(division, programCounts))
+				.toList();
 
 		return new ListAcademicDivisionsResult(summaries, page.totalElements(), page.totalPages(), criteria.page(),
 				criteria.size());
 	}
 
-	private DivisionSummary toSummary(AcademicDivision division) {
+	private DivisionSummary toSummary(AcademicDivision division, Map<UUID, Long> programCounts) {
 		return new DivisionSummary(division.getId(), division.getName(), division.getCode(),
-				division.getDescription(), division.getDirectorPersonId(), division.getStatus(), 0);
+				division.getDescription(), division.getDirectorPersonId(), division.getStatus(),
+				programCounts.getOrDefault(division.getId(), 0L).intValue());
 	}
 
 	/**

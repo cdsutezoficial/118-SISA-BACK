@@ -8,9 +8,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persistence out-port for {@link HighSchoolType}. No {@code findByName}
- * lookup — same "no uniqueness constraint to enforce" rationale as
- * {@code OutreachChannelRepository}.
+ * Persistence out-port for {@link HighSchoolType}. Has a
+ * {@code findByName} for the same reason {@code OutreachChannelRepository} gained
+ * one in Fase 9: the normalized name is unique and has to be checked before
+ * saving.
  */
 public interface HighSchoolTypeRepository {
 
@@ -21,6 +22,20 @@ public interface HighSchoolTypeRepository {
 	 * {@code OutreachChannelRepository#findById}.
 	 */
 	Optional<HighSchoolType> findById(UUID id);
+
+	/**
+	 * Uniqueness lookup for {@code name}, backing the 409 of
+	 * {@code CreateHighSchoolTypeUseCase} / {@code UpdateHighSchoolTypeUseCase}.
+	 *
+	 * <p><b>Deliberately not filtered by {@code status}:</b> the normalized name is
+	 * unique across active <i>and</i> inactive rows, because a deactivated type
+	 * still occupies its name. The registration form's option pickers filter by
+	 * status, so two rows differing only in status would surface as two identical
+	 * options to the applicant.
+	 *
+	 * @param name the already-normalized candidate name
+	 */
+	Optional<HighSchoolType> findByName(String name);
 
 	/**
 	 * Filterable, paginated query backing {@code ListHighSchoolTypesUseCase}.

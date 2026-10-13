@@ -9,9 +9,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * JPA-backed {@link AcademicProgramRepository} adapter delegating to
@@ -40,18 +43,27 @@ public class AcademicProgramRepositoryAdapter implements AcademicProgramReposito
 
 	@Override
 	public Optional<AcademicProgram> findByCode(String code) {
-		return jpaRepository.findByCode(code);
+		return jpaRepository.findByCodeIgnoreCase(code);
 	}
 
 	@Override
 	public Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality) {
-		return jpaRepository.findByOfferNameAndModality(offerName, modality);
+		return jpaRepository.findByOfferNameIgnoreCaseAndModality(offerName, modality);
 	}
 
 	@Override
 	public List<AcademicProgramReference> findAllActive() {
 		return jpaRepository.findByStatusOrderByNameAsc(ProgramStatus.ACTIVE).stream()
 				.map(row -> new AcademicProgramReference(row.getId(), row.getName())).toList();
+	}
+
+	@Override
+	public Map<UUID, Long> countProgramsByDivisionIds(Collection<UUID> divisionIds) {
+		if (divisionIds.isEmpty()) {
+			return Map.of();
+		}
+		return jpaRepository.countProgramsByDivisionIdIn(divisionIds).stream()
+				.collect(Collectors.toMap(row -> (UUID) row[0], row -> ((Number) row[1]).longValue()));
 	}
 
 	@Override

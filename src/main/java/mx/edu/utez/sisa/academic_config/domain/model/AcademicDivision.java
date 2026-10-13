@@ -27,13 +27,13 @@ public class AcademicDivision {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false, unique = true)
+	@Column(nullable = false, unique = true, length = 150)
 	private String name;
 
-	@Column(nullable = false, unique = true)
+	@Column(nullable = false, unique = true, length = 12)
 	private String code;
 
-	@Column
+	@Column(length = 500)
 	private String description;
 
 	@Column

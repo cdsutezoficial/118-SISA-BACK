@@ -53,7 +53,15 @@ public class AcademicPlanRepositoryAdapter implements AcademicPlanRepository {
 
 	@Override
 	public Optional<AcademicPlan> findByProgramIdAndVersion(UUID programId, String version) {
-		return jpaRepository.findByProgramIdAndVersion(programId, version);
+		// Case-insensitive on purpose — see AcademicPlanJpaRepository's javadoc:
+		// the unique (program_id, version) constraint is evaluated by MySQL with a
+		// case-insensitive collation, so the application's duplicate check has to
+		// use the same notion of equality or the user gets a generic 400 from the
+		// constraint instead of the intended 409. The port keeps its original
+		// name and `Optional` shape: what it means here is "the plan this version
+		// would collide with", not "the plan whose version matches character for
+		// character".
+		return jpaRepository.findByProgramIdAndVersionIgnoreCase(programId, version).stream().findFirst();
 	}
 
 	@Override

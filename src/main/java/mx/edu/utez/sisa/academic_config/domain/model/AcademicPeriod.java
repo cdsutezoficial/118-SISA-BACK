@@ -37,8 +37,11 @@ import java.util.UUID;
  * fixed external constant, not two fields of the same entity):
  * <ul>
  * <li>Date-range validation ({@link #validateDateRanges}): {@code startDate <
- * endDate}, {@code enrollmentStart < enrollmentEnd}, and {@code enrollmentEnd
- * <= endDate} (plan §4 — proposed, applied as the working assumption).
+ * endDate}, {@code enrollmentStart < enrollmentEnd} and {@code enrollmentEnd
+ * <= endDate} (plan §4 — proposed, applied as the working assumption). The two
+ * enrollment dates are optional (user decision 2026-10-06): each of those two
+ * rules only applies when both sides of the comparison are present, so a period
+ * can live without an enrollment window.
  * Reuses {@link InvalidPlanDataException} rather than a new type — same
  * "simple caller-input range validation" class of error it already covers for
  * {@code AcademicPlan}/{@code PlanLevel}/{@code GradeScale} range checks.
@@ -78,7 +81,12 @@ public class AcademicPeriod {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false)
+	// `length` replica el `@Size(max = …)` del DTO, para que el techo no viva
+	// sólo en la validación de entrada (mismo criterio que `AcademicDivision`,
+	// `AcademicProgram` y `SubjectClassification`). `ddl-auto: update` no encoge
+	// columnas existentes, así que bajarlo de 255 no toca los registros ya
+	// guardados.
+	@Column(nullable = false, length = 150)
 	private String name;
 
 	/**
@@ -107,10 +115,10 @@ public class AcademicPeriod {
 	@Column(name = "end_date", nullable = false)
 	private LocalDate endDate;
 
-	@Column(name = "enrollment_start", nullable = false)
+	@Column(name = "enrollment_start")
 	private LocalDate enrollmentStart;
 
-	@Column(name = "enrollment_end", nullable = false)
+	@Column(name = "enrollment_end")
 	private LocalDate enrollmentEnd;
 
 	@Enumerated(EnumType.STRING)
@@ -192,7 +200,10 @@ public class AcademicPeriod {
 	 * catches up several elapsed stages in one run when the server was off or
 	 * the cycle simply matured — a real elapsed time-span, not the user-action
 	 * "skip" the PO rule forbids. It never moves backward and never touches a
-	 * terminal ({@code CLOSED}) period.
+	 * terminal ({@code CLOSED}) period. When {@code enrollmentStart} is absent
+	 * (optional since 2026-10-06), the ENROLLMENT threshold falls back to
+	 * {@code startDate}, so a period without an enrollment window still leaves
+	 * {@code CONFIGURATION} on time instead of freezing there.
 	 *
 	 * @return whether the status changed
 	 */
@@ -204,7 +215,12 @@ public class AcademicPeriod {
 				break;
 			}
 			LocalDate threshold = switch (next) {
-				case ENROLLMENT -> this.enrollmentStart;
+				// Sin ventana de inscripciones configurada (opcional desde
+				// 2026-10-06), el paso ENROLLMENT se resuelve contra startDate:
+				// el periodo sale de CONFIGURATION cuando abre, en lugar de
+				// atascarse para siempre o saltar a "inscripciones abiertas" el
+				// mismo día en que se creó. startDate/endDate nunca son nulos.
+				case ENROLLMENT -> this.enrollmentStart != null ? this.enrollmentStart : this.startDate;
 				case ACTIVE -> this.startDate;
 				case CLOSED -> this.endDate;
 				case CONFIGURATION -> throw new IllegalStateException(
@@ -221,10 +237,14 @@ public class AcademicPeriod {
 	}
 
 	/**
-	 * Plan §4: {@code startDate < endDate} and {@code enrollmentStart <
-	 * enrollmentEnd} (both confirmed, unambiguous), plus {@code enrollmentEnd
-	 * <= endDate} (proposed-not-confirmed, applied as the working assumption
-	 * — enrollment cannot close after the period itself ends).
+	 * Plan §4: {@code startDate < endDate}, plus {@code enrollmentStart <
+	 * enrollmentEnd} and {@code enrollmentEnd <= endDate} (both confirmed,
+	 * unambiguous) — enrollment cannot close after the period itself ends.
+	 *
+	 * <p>Las dos fechas de inscripción son opcionales (decisión del usuario
+	 * 2026-10-06), así que las dos últimas reglas sólo corren cuando están las
+	 * dos caras de la comparación presentes: una ventana de inscripciones vacía
+	 * no es un error, y una ventana a medias tampoco viola ninguna regla.
 	 */
 	private static void validateDateRanges(LocalDate startDate, LocalDate endDate, LocalDate enrollmentStart,
 			LocalDate enrollmentEnd) {
@@ -232,11 +252,11 @@ public class AcademicPeriod {
 			throw new InvalidPlanDataException("La fecha de inicio debe ser anterior a la fecha de fin: [" + startDate
 					+ ", " + endDate + "].");
 		}
-		if (enrollmentStart == null || enrollmentEnd == null || !enrollmentStart.isBefore(enrollmentEnd)) {
+		if (enrollmentStart != null && enrollmentEnd != null && !enrollmentStart.isBefore(enrollmentEnd)) {
 			throw new InvalidPlanDataException("El inicio de inscripciones debe ser anterior al cierre: ["
 					+ enrollmentStart + ", " + enrollmentEnd + "].");
 		}
-		if (enrollmentEnd.isAfter(endDate)) {
+		if (enrollmentEnd != null && enrollmentEnd.isAfter(endDate)) {
 			throw new InvalidPlanDataException("El cierre de inscripciones no puede ser posterior a la fecha de fin del periodo: cierre="
 					+ enrollmentEnd + ", fin=" + endDate + ".");
 		}

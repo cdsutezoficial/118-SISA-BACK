@@ -6,5 +6,5 @@ import java.util.UUID;
  * The current period for the dashboard — which one the "grupos" counter is
  * scoped to. {@code null} when no period has ever been configured.
  */
-public record CurrentPeriodResponse(UUID id, String name) {
+public record CurrentPeriodResponse(UUID id, String name, boolean active) {
 }

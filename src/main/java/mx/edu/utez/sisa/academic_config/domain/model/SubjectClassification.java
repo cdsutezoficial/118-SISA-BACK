@@ -33,10 +33,14 @@ public class SubjectClassification {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false)
+	// `length` replica los `@Size(max = …)` de los DTOs, para que el techo no viva
+	// sólo en la validación de entrada (mismo criterio que `AcademicDivision` y
+	// `AcademicProgram`). `ddl-auto: update` no encoge columnas existentes, así
+	// que bajarlos de 255 no toca los registros ya guardados.
+	@Column(nullable = false, length = 150)
 	private String name;
 
-	@Column(nullable = false, unique = true)
+	@Column(nullable = false, unique = true, length = 20)
 	private String code;
 
 	@Enumerated(EnumType.STRING)

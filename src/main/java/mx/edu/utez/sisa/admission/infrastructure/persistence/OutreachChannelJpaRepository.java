@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -39,6 +40,16 @@ public interface OutreachChannelJpaRepository extends JpaRepository<OutreachChan
 			""")
 	Page<OutreachChannel> search(@Param("status") OutreachChannelStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Case-insensitive lookup on {@code name}, backing
+	 * {@code OutreachChannelRepository#findByName} and therefore the duplicate
+	 * 409 of Create/Update (Fase 9). The {@code IgnoreCase} suffix is what makes
+	 * {@code "facebook"} collide with {@code "Facebook"}: the stored name keeps
+	 * its casing because it is displayed, so the comparison is what ignores it.
+	 * Mirrors {@code AcademicDivisionJpaRepository#findByNameIgnoreCase}.
+	 */
+	Optional<OutreachChannel> findByNameIgnoreCase(String name);
 
 	/**
 	 * Reference-catalog read backing {@code GET /outreach-channels/options}

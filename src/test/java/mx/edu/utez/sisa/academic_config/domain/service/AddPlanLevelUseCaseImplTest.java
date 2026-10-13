@@ -62,10 +62,24 @@ class AddPlanLevelUseCaseImplTest {
 	}
 
 	@Test
-	void addLevel_rejectsLevelNumberOutsideTotalLevelsRange() {
+	void addLevel_acceptsLevelNumberBeyondTotalLevels() {
+		// El número de nivel es una etiqueta libre: un plan de 6 niveles puede
+		// usar 7, 8, ... sin que `totalLevels` limite la numeración.
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+		when(planRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		PlanLevelResult result = useCase
+				.addLevel(new AddPlanLevelCommand(planId, 7, PlanLevelType.REGULAR, "Séptimo cuatrimestre"));
+
+		assertThat(result.levelNumber()).isEqualTo(7);
+		assertThat(plan.getLevels()).hasSize(1);
+	}
+
+	@Test
+	void addLevel_rejectsLevelNumberBelowOne() {
 		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
 
-		assertThatThrownBy(() -> useCase.addLevel(new AddPlanLevelCommand(planId, 7, PlanLevelType.REGULAR, null)))
+		assertThatThrownBy(() -> useCase.addLevel(new AddPlanLevelCommand(planId, 0, PlanLevelType.REGULAR, null)))
 				.isInstanceOf(InvalidPlanDataException.class);
 
 		verify(planRepository, never()).save(any());

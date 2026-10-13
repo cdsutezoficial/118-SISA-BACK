@@ -7,8 +7,11 @@ import java.util.UUID;
 /**
  * Updates an existing {@code HighSchoolType}'s {@code name}. {@code status}
  * is deliberately absent — status transitions are the sole responsibility of
- * {@code ChangeHighSchoolTypeStatusUseCase}. No uniqueness to revalidate,
- * same convention as {@code UpdateOutreachChannelUseCase}.
+ * {@code ChangeHighSchoolTypeStatusUseCase}.
+ *
+ * <p>The {@code name} is revalidated for uniqueness by the implementation (Fase
+ * 10), excluding the row being edited so saving an unchanged entry is not a
+ * conflict — the same self-exclusion {@code UpdateAcademicDivisionUseCase} does.
  */
 public interface UpdateHighSchoolTypeUseCase {
 

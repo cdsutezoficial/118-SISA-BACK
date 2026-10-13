@@ -66,6 +66,22 @@ class UpdateAcademicPlanUseCaseImplTest {
 	}
 
 	@Test
+	void updatePlan_trimsTextLabelsBeforeCheckingAndSaving() {
+		when(planRepository.findById(planAId)).thenReturn(Optional.of(planA));
+		when(planRepository.findByProgramIdAndVersion(programId, "2023-A")).thenReturn(Optional.empty());
+		when(planRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		AcademicPlanResult result = useCase.updatePlan(new UpdateAcademicPlanCommand(planAId, " 2023-A ",
+				" Enero 2023 ", " TIT-002 ", LocalDate.of(2023, 1, 1), 7, BigDecimal.valueOf(7.0), 2, false,
+				null));
+
+		assertThat(result.version()).isEqualTo("2023-A");
+		assertThat(result.validityPeriod()).isEqualTo("Enero 2023");
+		assertThat(result.titulationKey()).isEqualTo("TIT-002");
+		verify(planRepository).findByProgramIdAndVersion(programId, "2023-A");
+	}
+
+	@Test
 	void updatePlan_allowsKeepingItsOwnCurrentVersion() {
 		when(planRepository.findById(planAId)).thenReturn(Optional.of(planA));
 		when(planRepository.findByProgramIdAndVersion(programId, "2022-A")).thenReturn(Optional.of(planA));
@@ -122,6 +138,23 @@ class UpdateAcademicPlanUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.updatePlan(new UpdateAcademicPlanCommand(planAId, "2022-A",
 				"Septiembre 2022", "TIT-001", LocalDate.of(2022, 9, 1), 6, BigDecimal.valueOf(6.0), 3, true,
 				levelOfBId))).isInstanceOf(InvalidSocialServiceLevelException.class);
+	}
+
+	@Test
+	void updatePlan_rejectsSocialServiceMinLevelIdWhenSocialServiceIsDisabled() {
+		when(planRepository.findById(planAId)).thenReturn(Optional.of(planA));
+		when(planRepository.findByProgramIdAndVersion(programId, "2022-A")).thenReturn(Optional.of(planA));
+
+		UUID levelId = UUID.randomUUID();
+		assertThatThrownBy(() -> updatePlanWithSocialServiceLevel(false, levelId))
+				.isInstanceOf(InvalidSocialServiceLevelException.class);
+
+		verify(planRepository, never()).save(any());
+	}
+
+	private void updatePlanWithSocialServiceLevel(boolean requiresSocialService, UUID levelId) {
+		useCase.updatePlan(new UpdateAcademicPlanCommand(planAId, "2022-A", "Septiembre 2022", "TIT-001",
+				LocalDate.of(2022, 9, 1), 6, BigDecimal.valueOf(6.0), 3, requiresSocialService, levelId));
 	}
 
 	@Test

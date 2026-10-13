@@ -13,11 +13,10 @@ import java.util.UUID;
 /**
  * JPA-backed {@link OutreachChannelRepository} adapter delegating to
  * {@link OutreachChannelJpaRepository}. Results are sorted by {@code name}
- * ascending then {@code id} ascending — {@code name} has NO uniqueness
- * constraint on this aggregate and there is no {@code code}-equivalent
- * tie-breaker field (unlike {@code SubjectClassificationRepositoryAdapter}),
- * so the surrogate {@code id} is used instead for deterministic pagination
- * across pages.
+ * ascending then {@code id} ascending. The {@code id} tie-breaker was added
+ * before {@code name} had any uniqueness constraint and is now redundant on
+ * that count, but it stays: it costs nothing and keeps the sort total even if
+ * the constraint is ever dropped.
  */
 @Component
 public class OutreachChannelRepositoryAdapter implements OutreachChannelRepository {
@@ -36,6 +35,11 @@ public class OutreachChannelRepositoryAdapter implements OutreachChannelReposito
 	@Override
 	public Optional<OutreachChannel> findById(UUID id) {
 		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public Optional<OutreachChannel> findByName(String name) {
+		return jpaRepository.findByNameIgnoreCase(name);
 	}
 
 	@Override

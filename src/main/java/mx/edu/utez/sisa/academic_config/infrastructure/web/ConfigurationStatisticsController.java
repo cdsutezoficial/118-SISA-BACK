@@ -42,6 +42,6 @@ public class ConfigurationStatisticsController {
 		}
 		CurrentPeriodStatistics period = result.currentPeriod();
 		return new ConfigurationStatisticsResponse(result.divisions(), result.programs(), result.subjects(),
-				result.groupsForCurrentPeriod(), new CurrentPeriodResponse(period.id(), period.name()));
+				result.groupsForCurrentPeriod(), new CurrentPeriodResponse(period.id(), period.name(), period.active()));
 	}
 }

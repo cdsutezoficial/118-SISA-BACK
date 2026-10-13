@@ -13,9 +13,10 @@ import java.util.UUID;
 /**
  * JPA-backed {@link HighSchoolTypeRepository} adapter delegating to
  * {@link HighSchoolTypeJpaRepository}. Results are sorted by {@code name}
- * ascending then {@code id} ascending — same "no uniqueness, id as
- * deterministic tie-breaker" rationale as
- * {@code OutreachChannelRepositoryAdapter}.
+ * ascending then {@code id} ascending. The {@code id} tie-breaker predates the
+ * unique constraint added in Fase 10 and is now redundant on that count, but it
+ * stays: it costs nothing and keeps the sort total even if the constraint is ever
+ * dropped.
  */
 @Component
 public class HighSchoolTypeRepositoryAdapter implements HighSchoolTypeRepository {
@@ -34,6 +35,11 @@ public class HighSchoolTypeRepositoryAdapter implements HighSchoolTypeRepository
 	@Override
 	public Optional<HighSchoolType> findById(UUID id) {
 		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public Optional<HighSchoolType> findByName(String name) {
+		return jpaRepository.findByNameIgnoreCase(name);
 	}
 
 	@Override

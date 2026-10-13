@@ -22,8 +22,13 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateSubjectUseCase;
 import mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicPlanJpaRepository;
 import mx.edu.utez.sisa.academic_config.shared.exception.ClassificationNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGradeScaleException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateLevelNumberException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicatePlanVersionException;
+import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateSubjectCodeException;
 import mx.edu.utez.sisa.academic_config.shared.exception.GradeScaleNotFoundException;
 import mx.edu.utez.sisa.academic_config.shared.exception.InvalidGradeScaleEntriesException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelHasSubjectsException;
+import mx.edu.utez.sisa.academic_config.shared.exception.PlanLevelInUseException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
 import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
@@ -177,7 +182,75 @@ class AcademicPlanControllerTest {
 						BigDecimal.valueOf(100),
 						List.of(new EntryBody(BigDecimal.valueOf(0), BigDecimal.valueOf(100), "CO", "Competente",
 								true))))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe un rango de calificación con esa clasificación en este plan."));
+	}
+
+	@Test
+	void createPlanWithDuplicateVersionReturns409() throws Exception {
+		UUID programId = UUID.randomUUID();
+		when(createAcademicPlanUseCase.createPlan(any()))
+				.thenThrow(new DuplicatePlanVersionException("Duplicate plan version"));
+
+		mockMvc.perform(post("/plans").contentType("application/json")
+				.content(objectMapper.writeValueAsString(new CreatePlanBody(programId, "2024-1", "Cuatrimestral",
+						"T001", java.time.LocalDate.of(2024, 1, 1), 9, new BigDecimal("60"), 2, false, null))))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe un plan de estudios con esa versión para esta carrera."));
+	}
+
+	@Test
+	void addLevelWithDuplicateNumberReturns409() throws Exception {
+		UUID planId = UUID.randomUUID();
+		when(addPlanLevelUseCase.addLevel(any()))
+				.thenThrow(new DuplicateLevelNumberException("Duplicate level number"));
+
+		mockMvc.perform(post("/plans/{id}/levels", planId).contentType("application/json")
+				.content(objectMapper.writeValueAsString(
+						new AddLevelBody(1, mx.edu.utez.sisa.academic_config.domain.model.PlanLevelType.REGULAR,
+								"Primer semestre"))))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe un nivel con ese número en este plan de estudios."));
+	}
+
+	@Test
+	void addSubjectWithDuplicateCodeReturns409() throws Exception {
+		UUID planId = UUID.randomUUID();
+		UUID levelId = UUID.randomUUID();
+		when(addSubjectToPlanUseCase.addSubject(any()))
+				.thenThrow(new DuplicateSubjectCodeException("Duplicate subject code"));
+
+		mockMvc.perform(post("/plans/{id}/levels/{levelId}/subjects", planId, levelId).contentType("application/json")
+				.content(objectMapper.writeValueAsString(
+						new AddSubjectBody("MAT101", "Matemáticas", 5, 4, 3, 1,
+								mx.edu.utez.sisa.academic_config.domain.model.SubjectType.CORE, true,
+								UUID.randomUUID()))))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Ya existe una materia con ese código en este plan de estudios."));
+	}
+
+	@Test
+	void removeLevelWithSubjectsReturns409() throws Exception {
+		UUID planId = UUID.randomUUID();
+		UUID levelId = UUID.randomUUID();
+		org.mockito.Mockito.doThrow(new PlanLevelHasSubjectsException("Level has subjects"))
+				.when(removePlanLevelUseCase).removeLevel(any());
+
+		mockMvc.perform(delete("/plans/{id}/levels/{levelId}", planId, levelId))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("No se puede eliminar el nivel porque tiene materias asignadas."));
+	}
+
+	@Test
+	void removeLevelInUseReturns409() throws Exception {
+		UUID planId = UUID.randomUUID();
+		UUID levelId = UUID.randomUUID();
+		org.mockito.Mockito.doThrow(new PlanLevelInUseException("Level is in use"))
+				.when(removePlanLevelUseCase).removeLevel(any());
+
+		mockMvc.perform(delete("/plans/{id}/levels/{levelId}", planId, levelId))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("No se puede eliminar el nivel porque está en uso."));
 	}
 
 	@Test
@@ -287,5 +360,19 @@ class AcademicPlanControllerTest {
 
 	private record EntryBody(BigDecimal fromValue, BigDecimal toValue, String letter, String description,
 			boolean passed) {
+	}
+
+	private record CreatePlanBody(UUID programId, String version, String validityPeriod, String titulationKey,
+			java.time.LocalDate effectiveFrom, int totalLevels, BigDecimal minPassingGrade,
+			int maxExtraordinaryExamsPerPeriod, boolean requiresSocialService, UUID socialServiceMinLevelId) {
+	}
+
+	private record AddLevelBody(int levelNumber,
+			mx.edu.utez.sisa.academic_config.domain.model.PlanLevelType type, String description) {
+	}
+
+	private record AddSubjectBody(String code, String name, int credits, int weeklyHours, int evaluationUnits,
+			int displayOrder, mx.edu.utez.sisa.academic_config.domain.model.SubjectType type,
+			Boolean isRetakeable, UUID classificationId) {
 	}
 }

@@ -47,7 +47,7 @@ class ConfigurationStatisticsControllerTest {
 		UUID periodId = UUID.randomUUID();
 		when(getConfigurationStatisticsUseCase.getStatistics())
 				.thenReturn(new GetConfigurationStatisticsResult(4, 12, 148, 36,
-						new CurrentPeriodStatistics(periodId, "Mayo-Agosto 2026")));
+						new CurrentPeriodStatistics(periodId, "Mayo-Agosto 2026", true)));
 
 		mockMvc.perform(get("/config-academica/statistics"))
 				.andExpect(status().isOk())
@@ -56,7 +56,8 @@ class ConfigurationStatisticsControllerTest {
 				.andExpect(jsonPath("$.subjects").value(148))
 				.andExpect(jsonPath("$.groupsForCurrentPeriod").value(36))
 				.andExpect(jsonPath("$.currentPeriod.id").value(periodId.toString()))
-				.andExpect(jsonPath("$.currentPeriod.name").value("Mayo-Agosto 2026"));
+				.andExpect(jsonPath("$.currentPeriod.name").value("Mayo-Agosto 2026"))
+				.andExpect(jsonPath("$.currentPeriod.active").value(true));
 	}
 
 	@Test

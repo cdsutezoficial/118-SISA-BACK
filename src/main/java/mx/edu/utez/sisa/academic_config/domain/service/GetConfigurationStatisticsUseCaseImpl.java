@@ -40,7 +40,7 @@ public class GetConfigurationStatisticsUseCaseImpl implements GetConfigurationSt
 		Optional<AcademicPeriod> current = currentPeriod();
 		long groups = current.map(period -> statisticsRepository.countGroupsForPeriod(period.getId())).orElse(0L);
 		CurrentPeriodStatistics period = current.map(
-				p -> new CurrentPeriodStatistics(p.getId(), p.getName())).orElse(null);
+				p -> new CurrentPeriodStatistics(p.getId(), p.getName(), p.getStatus() == PeriodStatus.ACTIVE)).orElse(null);
 		return new GetConfigurationStatisticsResult(statisticsRepository.countDivisions(),
 				statisticsRepository.countPrograms(), statisticsRepository.countSubjects(), groups, period);
 	}

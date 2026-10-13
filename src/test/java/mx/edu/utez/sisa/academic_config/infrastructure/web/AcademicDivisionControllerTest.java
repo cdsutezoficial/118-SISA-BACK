@@ -136,7 +136,8 @@ class AcademicDivisionControllerTest {
 
 		mockMvc.perform(post("/divisions").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateDivisionBody("Name", "ISW", "desc", null))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("La clave de la división ya está en uso."));
 	}
 
 	@Test
@@ -146,7 +147,8 @@ class AcademicDivisionControllerTest {
 
 		mockMvc.perform(post("/divisions").contentType("application/json")
 				.content(objectMapper.writeValueAsString(new CreateDivisionBody("Name", "ISW", "desc", null))))
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("El nombre de la división ya está en uso."));
 	}
 
 	@Test
@@ -212,7 +214,7 @@ class AcademicDivisionControllerTest {
 	void listDivisionsReturns200WithItemsAndPaginationMetadata() throws Exception {
 		UUID divisionId = UUID.randomUUID();
 		DivisionSummary summary = new DivisionSummary(divisionId, "Ingeniería en Software", "ISW", "desc", null,
-				DivisionStatus.ACTIVE, 0);
+				DivisionStatus.ACTIVE, 2);
 		when(listAcademicDivisionsUseCase
 				.listDivisions(new ListAcademicDivisionsQuery(DivisionStatus.ACTIVE, "software", 0, 20)))
 				.thenReturn(new ListAcademicDivisionsResult(List.of(summary), 1L, 1, 0, 20));
@@ -220,7 +222,7 @@ class AcademicDivisionControllerTest {
 		mockMvc.perform(get("/divisions").param("status", "ACTIVE").param("search", "software"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].id").value(divisionId.toString()))
-				.andExpect(jsonPath("$.items[0].programCount").value(0))
+				.andExpect(jsonPath("$.items[0].programCount").value(2))
 				.andExpect(jsonPath("$.totalElements").value(1))
 				.andExpect(jsonPath("$.totalPages").value(1))
 				.andExpect(jsonPath("$.page").value(0))

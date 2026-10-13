@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -37,6 +38,16 @@ public interface HighSchoolTypeJpaRepository extends JpaRepository<HighSchoolTyp
 			""")
 	Page<HighSchoolType> search(@Param("status") HighSchoolTypeStatus status, @Param("search") String search,
 			Pageable pageable);
+
+	/**
+	 * Case-insensitive lookup on {@code name}, backing the duplicate 409 of
+	 * Create/Update (Fase 10). Mirrors
+	 * {@code OutreachChannelJpaRepository#findByNameIgnoreCase}.
+	 *
+	 * <p>Case-insensitivity comes from MySQL's collation rather than an explicit
+	 * {@code LOWER()} — see {@code HighSchoolType}'s {@code name} javadoc.
+	 */
+	Optional<HighSchoolType> findByNameIgnoreCase(String name);
 
 	/**
 	 * Reference-catalog read backing {@code GET /high-school-types/options}

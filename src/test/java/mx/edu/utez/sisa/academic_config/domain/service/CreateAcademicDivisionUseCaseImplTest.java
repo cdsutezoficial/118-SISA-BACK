@@ -71,6 +71,22 @@ class CreateAcademicDivisionUseCaseImplTest {
 	}
 
 	@Test
+	void createDivision_normalizesTextBeforeCheckingAndSaving() {
+		when(divisionRepository.findByName("Diseno")).thenReturn(Optional.empty());
+		when(divisionRepository.findByCode("DSC")).thenReturn(Optional.empty());
+		when(divisionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		AcademicDivisionResult result = useCase.createDivision(new CreateAcademicDivisionCommand(
+				"  Diseno  ", " dsc ", "  Division de diseno  ", null));
+
+		assertThat(result.name()).isEqualTo("Diseno");
+		assertThat(result.code()).isEqualTo("DSC");
+		assertThat(result.description()).isEqualTo("Division de diseno");
+		verify(divisionRepository).findByName("Diseno");
+		verify(divisionRepository).findByCode("DSC");
+	}
+
+	@Test
 	void createDivision_rejectsDuplicateCode() {
 		AcademicDivision existing = new AcademicDivision("Otra", "DSC", "desc", null);
 		when(divisionRepository.findByName("Diseno")).thenReturn(Optional.empty());

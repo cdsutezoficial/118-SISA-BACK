@@ -83,7 +83,9 @@ class UpdateGroupUseCaseImplTest {
 	void updateGroup_successfulUpdateReResolvesProgramId() {
 		Group existing = existingGroup();
 		AcademicPlan plan = newPlan();
-		UUID levelId = addLevel(plan, 4);
+		// Nivel 3 a propósito: la clave "3B" tiene que describir el nivel
+		// elegido (requireCodeMatchesLevel), igual que en create.
+		UUID levelId = addLevel(plan, 3);
 		when(groupRepository.findById(groupId)).thenReturn(Optional.of(existing));
 		when(generationRepository.findById(generationId)).thenReturn(Optional.of(newGeneration()));
 		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));

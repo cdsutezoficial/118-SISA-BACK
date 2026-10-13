@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,6 +34,16 @@ public class GroupRepositoryAdapter implements GroupRepository {
 	@Override
 	public Optional<Group> findById(UUID id) {
 		return jpaRepository.findById(id);
+	}
+
+	@Override
+	public Optional<Group> findByGenerationIdAndCode(UUID generationId, String code) {
+		return jpaRepository.findByGenerationIdAndCode(generationId, code);
+	}
+
+	@Override
+	public List<String> findCodesByGenerationId(UUID generationId) {
+		return jpaRepository.findCodesByGenerationId(generationId);
 	}
 
 	@Override

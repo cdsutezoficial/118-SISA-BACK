@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,14 +24,14 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 	 * across all programs"). No case-insensitivity requirement for this
 	 * aggregate — unlike {@code AcademicDivisionJpaRepository#findByCodeIgnoreCase}.
 	 */
-	Optional<AcademicProgram> findByCode(String code);
+	Optional<AcademicProgram> findByCodeIgnoreCase(String code);
 
 	/**
 	 * Backs the {@code (offerName, modality)} composite uniqueness check
 	 * (spec: "The pair (offerName, modality) MUST be unique across all
 	 * programs").
 	 */
-	Optional<AcademicProgram> findByOfferNameAndModality(String offerName, ProgramModality modality);
+	Optional<AcademicProgram> findByOfferNameIgnoreCaseAndModality(String offerName, ProgramModality modality);
 
 	/**
 	 * Backs {@code ListAcademicProgramsUseCase}. {@code divisionId} is a plain
@@ -60,6 +61,19 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 			@Param("search") String search, Pageable pageable);
 
 	/**
+	 * Grouped count backing {@code AcademicProgramRepository#countProgramsByDivisionIds}
+	 * — one aggregate query for the whole page of {@code GET /divisions},
+	 * instead of a {@code COUNT} per division.
+	 */
+	@Query("""
+			SELECT p.divisionId, COUNT(p)
+			FROM AcademicProgram p
+			WHERE p.divisionId IN :divisionIds
+			GROUP BY p.divisionId
+			""")
+	List<Object[]> countProgramsByDivisionIdIn(@Param("divisionIds") Collection<UUID> divisionIds);
+
+	/**
 	 * Reference-catalog read backing {@code GET /programs/options} (transversal
 	 * design: "Roles y Permisos — patrón reference"). Returns only
 	 * {@code ACTIVE} programs as a minimal {@link ProgramOptionProjection}, so
@@ -81,8 +95,10 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 
 	/**
 	 * Minimal projection for reference pickers — {@code id}, {@code name}
-	 * (the label) and {@code code}. Maps to {@code OptionResponse}. Interface
-	 * projection is deliberate (design.md — glide-light reads).
+	 * (the label), {@code code} and {@code modality} (the picker renders
+	 * "DSM — Desarrollo de Software (Presencial)"). Maps to
+	 * {@code ProgramOptionResponse}. Interface projection is deliberate
+	 * (design.md — glide-light reads).
 	 */
 	interface ProgramOptionProjection {
 		UUID getId();
@@ -90,5 +106,7 @@ public interface AcademicProgramJpaRepository extends JpaRepository<AcademicProg
 		String getName();
 
 		String getCode();
+
+		ProgramModality getModality();
 	}
 }

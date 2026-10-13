@@ -63,6 +63,7 @@ class GetConfigurationStatisticsUseCaseImplTest {
 		assertThat(result.currentPeriod()).isNotNull();
 		assertThat(result.currentPeriod().id()).isEqualTo(current.getId());
 		assertThat(result.currentPeriod().name()).isEqualTo("Mayo-Agosto 2026");
+		assertThat(result.currentPeriod().active()).isTrue();
 		verify(statisticsRepository).countGroupsForPeriod(current.getId());
 	}
 
@@ -79,6 +80,7 @@ class GetConfigurationStatisticsUseCaseImplTest {
 		GetConfigurationStatisticsResult result = useCase.getStatistics();
 
 		assertThat(result.currentPeriod().name()).isEqualTo("Septiembre-Diciembre 2026");
+		assertThat(result.currentPeriod().active()).isFalse();
 		assertThat(result.groupsForCurrentPeriod()).isEqualTo(9);
 		verify(statisticsRepository).countGroupsForPeriod(latest.getId());
 	}
