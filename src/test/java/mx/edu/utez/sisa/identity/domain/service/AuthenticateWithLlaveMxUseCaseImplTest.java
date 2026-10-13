@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.L
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.StartResult;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort;
+import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort.LlaveMxPrefill;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort.LlaveMxProfile;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort.LlaveMxTokenSet;
 import mx.edu.utez.sisa.identity.domain.port.out.RefreshTokenGenerator;
@@ -51,6 +52,10 @@ class AuthenticateWithLlaveMxUseCaseImplTest {
 	private static final String SUBJECT = "morelos-subject-abc";
 	private static final String CODE = "authorization-code-from-provider";
 	private static final String VERIFIER = "pkce-verifier-value";
+
+	/** El subconjunto que RF-AUTH-003 prellena en el formulario del candidato. */
+	private static final LlaveMxPrefill PREFILL = new LlaveMxPrefill("Ada", "Lovelace", "Byron", "10/12/1815",
+			"Femenino", "Ciudad de Mexico", "Cuauhtemoc", "ada@utez.edu.mx", "5512345678");
 
 	@Mock
 	private LlaveMxOAuthPort llaveMxOAuthPort;
@@ -221,7 +226,8 @@ class AuthenticateWithLlaveMxUseCaseImplTest {
 		when(llaveMxOAuthPort.isConfigured()).thenReturn(true);
 		when(llaveMxOAuthPort.exchangeAuthorizationCode(CODE, VERIFIER)).thenReturn(tokenSet());
 		when(llaveMxOAuthPort.fetchProfile("provider-access-token"))
-				.thenReturn(new LlaveMxProfile(null, "correo@utez.edu.mx", "Nombre", "CURP1234", List.of(), Map.of()));
+				.thenReturn(new LlaveMxProfile(null, "correo@utez.edu.mx", "Nombre", "CURP1234", List.of(), null,
+						Map.of()));
 
 		assertThatThrownBy(() -> useCase.complete(CODE, "state-value", VERIFIER))
 				.isInstanceOf(LlaveMxIntegrationException.class)
@@ -246,6 +252,9 @@ class AuthenticateWithLlaveMxUseCaseImplTest {
 		assertThat(result.curp()).isEqualTo("CURP123456HDFRPN01");
 		assertThat(result.fullName()).isEqualTo("Ada Lovelace");
 		assertThat(result.roles()).containsExactly("DOCENTE");
+		// RF-AUTH-003: the profile the provider proved travels with the
+		// verification so the wizard can pre-fill from it.
+		assertThat(result.prefill()).isEqualTo(PREFILL);
 		verifyNoInteractions(userRepository, userRoleRepository, roleRepository, accessTokenIssuer,
 				refreshTokenRepository);
 	}
@@ -322,7 +331,7 @@ class AuthenticateWithLlaveMxUseCaseImplTest {
 
 	private static LlaveMxProfile profile() {
 		return new LlaveMxProfile(SUBJECT, "ada@utez.edu.mx", "Ada Lovelace", "CURP123456HDFRPN01",
-				List.of("DOCENTE"), Map.of());
+				List.of("DOCENTE"), PREFILL, Map.of());
 	}
 
 	private static Role role(RoleType roleType) {

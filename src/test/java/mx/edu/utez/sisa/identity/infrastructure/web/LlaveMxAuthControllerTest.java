@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.L
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.LlaveMxProfileVerification;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.StartResult;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort;
+import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort.LlaveMxPrefill;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxPkceGenerator;
 import mx.edu.utez.sisa.identity.infrastructure.config.LlaveMxProperties;
 import mx.edu.utez.sisa.identity.infrastructure.security.LlaveMxVerificationTicketService;
@@ -61,6 +62,10 @@ class LlaveMxAuthControllerTest {
 	private static final String CODE = "code-123";
 	private static final String STATE = "s1";
 	private static final String VERIFIER = "verifier-abc";
+
+	/** El subconjunto que RF-AUTH-003 prellena en el formulario del candidato. */
+	private static final LlaveMxPrefill PREFILL = new LlaveMxPrefill("Ada", "Lovelace", "Byron", "10/12/1815",
+			"Femenino", "Ciudad de Mexico", "Cuauhtemoc", "ada@utez.edu.mx", "5512345678");
 
 	@Mock
 	private AuthenticateWithLlaveMxUseCase authenticateWithLlaveMxUseCase;
@@ -235,9 +240,9 @@ class LlaveMxAuthControllerTest {
 	void callback_candidateFlowIssuesAVerificationTicketInsteadOfASession() throws Exception {
 		when(authenticateWithLlaveMxUseCase.verifyIdentity(CODE, STATE, VERIFIER))
 				.thenReturn(new LlaveMxProfileVerification("subject-1", "ada@utez.edu.mx", "Ada Lovelace",
-						"CURP123456HDFRPN01", List.of("DOCENTE")));
-		when(verificationTicketService.issue("subject-1", "CURP123456HDFRPN01", "Ada Lovelace", "ada@utez.edu.mx"))
-				.thenReturn("signed-ticket");
+						"CURP123456HDFRPN01", List.of("DOCENTE"), PREFILL));
+		when(verificationTicketService.issue("subject-1", "CURP123456HDFRPN01", "Ada Lovelace", "ada@utez.edu.mx",
+				PREFILL)).thenReturn("signed-ticket");
 		MockHttpServletResponse response = new MockHttpServletResponse();
 
 		controller(FRONT).callback(CODE, STATE, null, request(), response);
@@ -259,8 +264,8 @@ class LlaveMxAuthControllerTest {
 	@Test
 	void callback_candidateFlowCannotBeTurnedIntoASessionByReplayingTheStaffFlavor() throws Exception {
 		when(authenticateWithLlaveMxUseCase.verifyIdentity(CODE, STATE, VERIFIER))
-				.thenReturn(new LlaveMxProfileVerification("subject-1", "a@b.mx", "Nombre", "CURP", List.of()));
-		when(verificationTicketService.issue(anyString(), any(), any(), any())).thenReturn("signed-ticket");
+				.thenReturn(new LlaveMxProfileVerification("subject-1", "a@b.mx", "Nombre", "CURP", List.of(), null));
+		when(verificationTicketService.issue(anyString(), any(), any(), any(), any())).thenReturn("signed-ticket");
 		MockHttpServletResponse response = new MockHttpServletResponse();
 
 		controller(FRONT).callback(CODE, STATE, null, request(), response);

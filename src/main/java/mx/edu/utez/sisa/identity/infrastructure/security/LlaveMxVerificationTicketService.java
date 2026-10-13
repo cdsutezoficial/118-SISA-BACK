@@ -132,6 +132,16 @@ public class LlaveMxVerificationTicketService {
 				orEmpty(email), orEmpty(celular));
 	}
 
+	/**
+	 * The CURP the provider attested, or {@code null} when the ticket carries
+	 * none. Separate from {@link #prefillOf(Claims)} because it is not a field
+	 * the wizard pre-fills but the key that binds this ticket to a ficha: it is
+	 * read even when there is nothing to pre-fill at all.
+	 */
+	public String curpOf(Claims claims) {
+		return claims.get(CURP_CLAIM, String.class);
+	}
+
 	private static String orEmpty(String value) {
 		return value == null ? "" : value;
 	}

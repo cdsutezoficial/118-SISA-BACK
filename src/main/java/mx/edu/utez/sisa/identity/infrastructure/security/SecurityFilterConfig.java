@@ -261,8 +261,15 @@ public class SecurityFilterConfig {
 						// /usuarios/detalle screen that hosts the button already
 						// requires.
 						.requestMatchers(HttpMethod.POST, "/auth/llave-mx/link").hasRole("ADMIN")
+						// Prefill is public for the same reason the callbacks are:
+						// it answers after the provider round-tripped, when there is
+						// still no session. Its credential is not the missing JWT but
+						// the signed, HttpOnly verification ticket the callback left
+						// behind, so an unauthenticated caller without that cookie
+						// gets 403 from the ticket check, not anonymous data.
 						.requestMatchers("/auth/llave-mx/start", "/auth/llave-mx/status",
-								"/auth/llave-mx/callback", "/oauth/llave/digital/callback",
+								"/auth/llave-mx/prefill", "/auth/llave-mx/callback",
+								"/oauth/llave/digital/callback",
 								"/SISAVA/oauth/llave/digital/callback")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")

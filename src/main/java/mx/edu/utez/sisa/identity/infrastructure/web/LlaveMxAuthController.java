@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.web;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -8,12 +9,14 @@ import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.L
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.LlaveMxProfileVerification;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase.StartResult;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort;
+import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort.LlaveMxPrefill;
 import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxPkceGenerator;
 import mx.edu.utez.sisa.identity.infrastructure.config.LlaveMxProperties;
 import mx.edu.utez.sisa.identity.infrastructure.security.LlaveMxVerificationTicketService;
 import mx.edu.utez.sisa.identity.shared.exception.LlaveMxAccountNotLinkedException;
 import mx.edu.utez.sisa.identity.shared.exception.LlaveMxIntegrationException;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LlaveMxAvailabilityResponse;
+import mx.edu.utez.sisa.identity.infrastructure.web.dto.LlaveMxPrefillResponse;
 import mx.edu.utez.sisa.identity.infrastructure.web.dto.LlaveMxStartResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,6 +94,68 @@ public class LlaveMxAuthController {
 	@GetMapping("/auth/llave-mx/status")
 	public ResponseEntity<LlaveMxAvailabilityResponse> status() {
 		return ResponseEntity.ok(new LlaveMxAvailabilityResponse(llaveMxOAuthPort.isConfigured()));
+	}
+
+	/**
+	 * What LlaveMX said about the person who just verified, so the registration
+	 * wizard can pre-fill and lock those fields (RF-AUTH-003: "el candidato no
+	 * los captura manualmente").
+	 *
+	 * <p>The credential is the ticket cookie the callback just set — there is no
+	 * user id to look up, because a candidate has a folio, not a login. An
+	 * absent, tampered or expired ticket raises
+	 * {@link LlaveMxVerificationRequiredException}, which answers 403 and reads
+	 * to the wizard as "verify again", not as a failed prefetch: the applicant
+	 * is already on that screen and the round simply has to be redone.
+	 *
+	 * <p>Every field comes back as a string and every one may be empty — which
+	 * of them the provider returns is not contractual. An empty value is
+	 * "not provided", and the front keeps that input editable rather than
+	 * locking a box nobody can leave.
+	 */
+	@GetMapping("/auth/llave-mx/prefill")
+	public ResponseEntity<LlaveMxPrefillResponse> prefill(HttpServletRequest request) {
+		Claims claims = verificationTicketService.verify(readTicket(request));
+		LlaveMxPrefill prefill = verificationTicketService.prefillOf(claims);
+		return ResponseEntity.ok(toPrefill(claims, prefill));
+	}
+
+	/**
+	 * The ticket rides in an HttpOnly cookie, so it is read here by name rather
+	 * than passed in as a parameter: the browser cannot supply it any other way.
+	 */
+	private static String readTicket(HttpServletRequest request) {
+		Cookie[] cookies = request.getCookies();
+		if (cookies == null) {
+			return null;
+		}
+		for (Cookie cookie : cookies) {
+			if (LlaveMxVerificationTicketService.COOKIE_NAME.equals(cookie.getName())
+					&& cookie.getValue() != null && !cookie.getValue().isBlank()) {
+				return cookie.getValue();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Curp and email are read from the claims directly rather than through the
+	 * prefill: a ticket issued before the prefill feature still proves
+	 * <em>who</em> verified, and the curp is what the wizard must show matched
+	 * even when there is nothing else to pre-fill.
+	 */
+	private LlaveMxPrefillResponse toPrefill(Claims claims, LlaveMxPrefill prefill) {
+		String curp = orEmpty(verificationTicketService.curpOf(claims));
+		if (prefill == null) {
+			return new LlaveMxPrefillResponse("", "", "", curp, "", "", "", "", "", "");
+		}
+		return new LlaveMxPrefillResponse(prefill.nombres(), prefill.apellidoPaterno(), prefill.apellidoMaterno(),
+				curp, prefill.fechaNacimiento(), prefill.sexo(), prefill.estadoNacimiento(),
+				prefill.municipioNacimiento(), prefill.email(), prefill.celular());
+	}
+
+	private static String orEmpty(String value) {
+		return value == null ? "" : value;
 	}
 
 	/**
@@ -258,13 +323,14 @@ public class LlaveMxAuthController {
 		// Referer headers, and an applicant could hand-edit one to claim a CURP
 		// they never proved.
 		String ticket = verificationTicketService.issue(verification.subject(), verification.curp(),
-				verification.fullName(), verification.institutionalEmail());
+				verification.fullName(), verification.institutionalEmail(), verification.prefill());
 
 		Cookie ticketCookie = new Cookie(LlaveMxVerificationTicketService.COOKIE_NAME, ticket);
 		ticketCookie.setHttpOnly(true);
-		// Path is the registration endpoint, not "/": the ticket is only ever
-		// needed by that POST, and narrowing it keeps the value from riding along
-		// on every other request the browser makes.
+		// Path is "/", not just the registration endpoint: the same ticket also
+		// answers GET /auth/llave-mx/prefill, and scoping it to either one would
+		// make the other silently see no ticket. The value is signed, HttpOnly and
+		// short-lived, so there is nothing to protect against by narrowing it.
 		ticketCookie.setPath(LlaveMxVerificationTicketService.COOKIE_PATH);
 		ticketCookie.setMaxAge((int) properties.verificationTicketTtl().toSeconds());
 		ticketCookie.setSecure(isHttps());
