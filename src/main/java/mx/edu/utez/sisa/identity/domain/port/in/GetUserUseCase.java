@@ -28,8 +28,15 @@ public interface GetUserUseCase {
 	record GetUserQuery(UUID callerId, UUID userId) {
 	}
 
+	/**
+	 * @param llaveMxLinked whether {@code llave_mx_subject} is already bound, so
+	 *                      the detail screen can show the badge and decide
+	 *                      between "Vincular" and "Re-vincular" without a second
+	 *                      request
+	 */
 	record UserDetailResult(UUID userId, UUID personId, String fullName, String username, UserStatus status,
-			boolean mustChangePassword, Instant lastLoginAt, Instant createdAt, List<UserRoleDetail> roles) {
+			boolean mustChangePassword, boolean llaveMxLinked, Instant lastLoginAt, Instant createdAt,
+			List<UserRoleDetail> roles) {
 	}
 
 	record UserRoleDetail(UUID userRoleId, UUID roleId, String roleKey, String roleName, UUID divisionId) {

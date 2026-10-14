@@ -79,4 +79,9 @@ public class UserRepositoryAdapter implements UserRepository {
 	public Optional<User> findByPersonId(UUID personId) {
 		return jpaRepository.findByPersonId(personId);
 	}
+
+	@Override
+	public Optional<User> findByLlaveMxSubject(String llaveMxSubject) {
+		return jpaRepository.findByLlaveMxSubject(llaveMxSubject);
+	}
 }

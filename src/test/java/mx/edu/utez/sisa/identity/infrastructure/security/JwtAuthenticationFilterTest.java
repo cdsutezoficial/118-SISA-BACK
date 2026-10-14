@@ -23,8 +23,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Verifies task 5.3: Bearer header -> {@code JwtService.parse} -> {@code
- * roles} claim mapped to {@code SecurityContext} authorities.
+ * Verifies task 5.3: Bearer header -> {@code JwtService.parseAccessToken} ->
+ * {@code roles} claim mapped to {@code SecurityContext} authorities.
  */
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterTest {
@@ -57,7 +57,7 @@ class JwtAuthenticationFilterTest {
 		Claims claims = mock(Claims.class);
 		when(claims.getSubject()).thenReturn(userId);
 		when(claims.get("roles", List.class)).thenReturn(List.of("ADMIN", "DOCENTE"));
-		when(jwtService.parse("valid-token")).thenReturn(claims);
+		when(jwtService.parseAccessToken("valid-token")).thenReturn(claims);
 
 		filter.doFilterInternal(request, response, filterChain);
 
@@ -82,11 +82,34 @@ class JwtAuthenticationFilterTest {
 	@Test
 	void invalidTokenClearsSecurityContextAndContinuesChain() throws Exception {
 		when(request.getHeader("Authorization")).thenReturn("Bearer bad-token");
-		when(jwtService.parse(anyString())).thenThrow(new JwtException("malformed"));
+		when(jwtService.parseAccessToken(anyString())).thenThrow(new JwtException("malformed"));
 
 		filter.doFilterInternal(request, response, filterChain);
 
 		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+		verify(filterChain).doFilter(request, response);
+	}
+
+	/**
+	 * The bearer slot accepts access tokens and nothing else.
+	 *
+	 * <p>SISA signs every token family with one secret, so the candidate identity
+	 * ticket (same secret, valid, unexpired, no {@code roles}) would otherwise be
+	 * accepted here as an authenticated principal with zero authorities — enough
+	 * to reach any endpoint gated only on {@code authenticated()}, for someone who
+	 * has no SISA account at all. `parseAccessToken` is what refuses it.
+	 */
+	@Test
+	void aValidTokenOfAnotherFamilyIsNotAcceptedAsASession() throws Exception {
+		when(request.getHeader("Authorization")).thenReturn("Bearer candidate-verification-ticket");
+		when(jwtService.parseAccessToken("candidate-verification-ticket"))
+				.thenThrow(new JwtException("El token no es un token de acceso."));
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+		// Still anonymous, not a hard failure: role-gated endpoints answer 401/403
+		// on their own terms and the chain is never interrupted.
 		verify(filterChain).doFilter(request, response);
 	}
 

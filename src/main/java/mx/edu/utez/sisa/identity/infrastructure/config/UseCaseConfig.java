@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.AdminResetPasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AssignPermissionsToRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateUseCase;
+import mx.edu.utez.sisa.identity.domain.port.in.AuthenticateWithLlaveMxUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePermissionStatusUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangePasswordUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.ChangeRoleStatusUseCase;
@@ -27,6 +28,7 @@ import mx.edu.utez.sisa.identity.domain.port.in.UnlockUserUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UpdatePermissionUseCase;
 import mx.edu.utez.sisa.identity.domain.port.in.UpdateRoleUseCase;
 import mx.edu.utez.sisa.identity.domain.port.out.AccessTokenIssuer;
+import mx.edu.utez.sisa.identity.domain.port.out.LlaveMxOAuthPort;
 import mx.edu.utez.sisa.identity.domain.port.out.NotificationPort;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordHasher;
 import mx.edu.utez.sisa.identity.domain.port.out.PasswordResetTokenGenerator;
@@ -44,6 +46,7 @@ import mx.edu.utez.sisa.identity.domain.port.out.UserRoleRepository;
 import mx.edu.utez.sisa.identity.domain.service.AssignRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.AssignPermissionsToRoleUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.AuthenticateUseCaseImpl;
+import mx.edu.utez.sisa.identity.domain.service.AuthenticateWithLlaveMxUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ChangePermissionStatusUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ChangePasswordUseCaseImpl;
 import mx.edu.utez.sisa.identity.domain.service.ChangeRoleStatusUseCaseImpl;
@@ -100,6 +103,16 @@ public class UseCaseConfig {
 	@Bean
 	public ChangePasswordUseCase changePasswordUseCase(UserRepository userRepository, PasswordHasher passwordHasher) {
 		return new ChangePasswordUseCaseImpl(userRepository, passwordHasher);
+	}
+
+	@Bean
+	public AuthenticateWithLlaveMxUseCase authenticateWithLlaveMxUseCase(LlaveMxOAuthPort llaveMxOAuthPort,
+			UserRepository userRepository, UserRoleRepository userRoleRepository, RoleRepository roleRepository,
+			AccessTokenIssuer accessTokenIssuer, RefreshTokenGenerator refreshTokenGenerator,
+			RefreshTokenRepository refreshTokenRepository,
+			@Value("${sisa.security.jwt.refresh-token-ttl}") Duration refreshTokenTtl) {
+		return new AuthenticateWithLlaveMxUseCaseImpl(llaveMxOAuthPort, userRepository, userRoleRepository,
+				roleRepository, accessTokenIssuer, refreshTokenGenerator, refreshTokenRepository, refreshTokenTtl);
 	}
 
 	@Bean

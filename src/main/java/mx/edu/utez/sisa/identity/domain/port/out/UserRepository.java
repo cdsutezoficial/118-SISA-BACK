@@ -23,6 +23,13 @@ public interface UserRepository {
 	Optional<User> findByPersonId(UUID personId);
 
 	/**
+	 * Looks up the account whose {@code user.llave_mx_subject} equals the given
+	 * OAuth subject id. Backs LlaveMX login and linking (RF-AUTH-002); the
+	 * column is unique, so at most one account can ever claim a subject.
+	 */
+	Optional<User> findByLlaveMxSubject(String llaveMxSubject);
+
+	/**
 	 * Filterable, paginated query backing {@code ListUsersUseCase}
 	 * (01-identidad.md). {@code roleKey} is matched via an EXISTS-style
 	 * predicate against the one-to-many {@code UserRole} relation — never a

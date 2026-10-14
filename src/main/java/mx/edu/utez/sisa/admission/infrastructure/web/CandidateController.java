@@ -1,5 +1,7 @@
 package mx.edu.utez.sisa.admission.infrastructure.web;
 
+import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
@@ -43,6 +45,9 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
+import mx.edu.utez.sisa.identity.infrastructure.security.LlaveMxVerificationTicketService;
+import mx.edu.utez.sisa.identity.shared.exception.LlaveMxVerificationRequiredException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -113,6 +118,8 @@ public class CandidateController {
 	private final CandidateFichaPdfService fichaPdfService;
 
 	private final PaymentAccessRateLimiter paymentAccessRateLimiter;
+	private final LlaveMxVerificationTicketService verificationTicketService;
+	private final boolean llaveMxRequired;
 
 	public CandidateController(RegisterCandidateUseCase registerCandidateUseCase,
 			AccessFichaPaymentUseCase accessFichaPaymentUseCase,
@@ -121,7 +128,9 @@ public class CandidateController {
 			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
 			CandidateFichaMailService fichaMailService,
-			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter) {
+			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
+			LlaveMxVerificationTicketService verificationTicketService,
+			@Value("${sisa.admission.candidate.llave-mx-required:false}") boolean llaveMxRequired) {
 		this.registerCandidateUseCase = registerCandidateUseCase;
 		this.accessFichaPaymentUseCase = accessFichaPaymentUseCase;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
@@ -132,6 +141,8 @@ public class CandidateController {
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
+		this.verificationTicketService = verificationTicketService;
+		this.llaveMxRequired = llaveMxRequired;
 	}
 
 	/**
@@ -161,12 +172,104 @@ public class CandidateController {
 				result.totalPages(), result.page(), result.size()));
 	}
 
+	/**
+	 * Public, unauthenticated ficha registration (RF-AUTH-003).
+	 *
+	 * <p>{@code llaveMxVerified} is no longer taken on faith. It is derived from
+	 * the signed, short-lived ticket the Llave Morelos callback leaves in an
+	 * HttpOnly cookie: a client cannot mint one, so nobody can post
+	 * {@code true} and claim a verification that never happened.
+	 *
+	 * <p>{@code @Value} flag {@code sisa.admission.candidate.llave-mx-required}
+	 * gates how strict that is. While OFF — the default, preserving the interim
+	 * manual registration that shipped before the integration — a missing ticket
+	 * still falls back to the flag in the body, so existing deployments and
+	 * environments without LlaveMX credentials keep working. Once the hub
+	 * credentials are in place, turn it ON and the request boolean is ignored
+	 * entirely: no ticket, no ficha.
+	 */
 	@PostMapping
 	public ResponseEntity<CandidateRegistrationResponse> register(
-			@Valid @RequestBody RegisterCandidateRequest request) {
-		RegisterCandidateCommand command = toCommand(request);
+			@Valid @RequestBody RegisterCandidateRequest request, HttpServletRequest httpRequest) {
+		boolean verified = resolveLlaveMxVerification(request, httpRequest);
+		RegisterCandidateCommand command = toCommand(request, verified);
 		RegisterCandidateUseCase.CandidateRegistrationResult result = registerCandidateUseCase.register(command);
 		return ResponseEntity.status(HttpStatus.CREATED).body(CandidateRegistrationResponse.from(result));
+	}
+
+	/**
+	 * @return whether the ficha may be recorded as LlaveMX-verified
+	 * @throws LlaveMxVerificationRequiredException when this environment demands
+	 *                                             a ticket and the browser has
+	 *                                             none (or a stale one)
+	 */
+	private boolean resolveLlaveMxVerification(RegisterCandidateRequest request, HttpServletRequest httpRequest) {
+		String ticket = readVerificationTicket(httpRequest);
+		if (ticket != null) {
+			// Throws on an invalid or expired ticket. Not swallowed: an expired
+			// one must not quietly downgrade to "unverified" and let a
+			// half-verified applicant through.
+			Claims claims = verificationTicketService.verify(ticket);
+			assertTicketMatchesTheFicha(claims, request);
+			return true;
+		}
+		if (llaveMxRequired) {
+			throw new LlaveMxVerificationRequiredException(
+					"Debes verificar tu identidad con Llave Morelos antes de registrar tu ficha.");
+		}
+		return request.llaveMxVerified();
+	}
+
+	/**
+	 * Binds the ticket to the ficha it is being used for.
+	 *
+	 * <p>A valid ticket only proves that <em>someone</em> proved their identity to
+	 * Morelos in this browser. Without this check the obvious abuse is trivial:
+	 * verify your own account once, then submit any other CURP in the body and
+	 * the ficha is stored as {@code llaveMxVerified} while describing a different
+	 * person entirely. Comparing the CURP the provider attested with the CURP in
+	 * the request closes that gap, and it is the one claim worth enforcing
+	 * because CURP is what identifies a ficha in this system.
+	 *
+	 * <p>A ticket carrying no CURP (the provider did not return one) is NOT
+	 * allowed to pass here: it cannot be bound to anything, so it is treated as
+	 * unproven rather than as good-enough.
+	 */
+	private static void assertTicketMatchesTheFicha(Claims claims, RegisterCandidateRequest request) {
+		String attested = claims.get("curp", String.class);
+		if (attested == null || attested.isBlank()) {
+			throw new LlaveMxVerificationRequiredException(
+					"La verificacion con Llave Morelos no incluye una CURP, asi que no confirma tu identidad. Intenta de nuevo.");
+		}
+		if (!normalizeCurp(attested).equals(normalizeCurp(request.datosGenerales().curp()))) {
+			throw new LlaveMxVerificationRequiredException(
+					"La CURP que registraste no coincide con la verificada con Llave Morelos.");
+		}
+	}
+
+	/**
+	 * CURPs are compared case- and whitespace-insensitively: the provider may
+	 * return lower-case or spaced, the applicant may type either, and none of
+	 * that is a different person. Whitespace inside the string is stripped
+	 * rather than trimmed, because a CURP is fixed-width — a value that needs
+	 * interior characters removed was mistyped, not reformatted.
+	 */
+	private static String normalizeCurp(String curp) {
+		return curp == null ? "" : curp.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+	}
+
+	private static String readVerificationTicket(HttpServletRequest request) {
+		Cookie[] cookies = request.getCookies();
+		if (cookies == null) {
+			return null;
+		}
+		for (Cookie cookie : cookies) {
+			if (LlaveMxVerificationTicketService.COOKIE_NAME.equals(cookie.getName())
+					&& cookie.getValue() != null && !cookie.getValue().isBlank()) {
+				return cookie.getValue();
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -300,7 +403,7 @@ public class CandidateController {
 				.contentType(MediaType.APPLICATION_PDF).body(pdf);
 	}
 
-	private static RegisterCandidateCommand toCommand(RegisterCandidateRequest request) {
+	private static RegisterCandidateCommand toCommand(RegisterCandidateRequest request, boolean llaveMxVerified) {
 		return new RegisterCandidateCommand(
 				toDatosGenerales(request.datosGenerales()),
 				toDomicilio(request.domicilio()),
@@ -309,7 +412,7 @@ public class CandidateController {
 				toIngresos(request.ingresos()),
 				toAntecedentesEscolares(request.antecedentesEscolares()),
 				toSeleccionCarrera(request.seleccionCarrera()),
-				request.llaveMxVerified());
+				llaveMxVerified);
 	}
 
 	private static DatosGenerales toDatosGenerales(RegisterCandidateRequest.DatosGenerales d) {
