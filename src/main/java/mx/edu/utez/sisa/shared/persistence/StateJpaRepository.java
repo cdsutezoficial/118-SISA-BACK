@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.shared.model.State;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -22,4 +23,6 @@ public interface StateJpaRepository extends JpaRepository<State, UUID> {
 	 * (only 32 rows, fixed size).
 	 */
 	List<State> findAllByOrderByNameAsc();
+
+	Optional<State> findByInegiCode(String inegiCode);
 }

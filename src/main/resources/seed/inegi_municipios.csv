@@ -16,6 +16,7 @@ state_inegi_code,inegi_code,name
 02,004,Tijuana
 02,005,Playas de Rosarito
 02,006,San Quintín
+02,007,San Felipe
 03,001,Comondú
 03,002,Mulegé
 03,003,La Paz
@@ -33,6 +34,7 @@ state_inegi_code,inegi_code,name
 04,010,Calakmul
 04,011,Candelaria
 04,012,Seybaplaya
+04,013,Dzitbalché
 05,001,Abasolo
 05,002,Acuña
 05,003,Allende
@@ -97,7 +99,7 @@ state_inegi_code,inegi_code,name
 07,014,El Bosque
 07,015,Cacahoatán
 07,016,Catazajá
-07,017,Cintalapa
+07,017,Cintalapa de Figueroa
 07,018,Coapilla
 07,019,Comitán de Domínguez
 07,020,La Concordia
@@ -260,7 +262,7 @@ state_inegi_code,inegi_code,name
 08,053,Praxedis G. Guerrero
 08,054,Riva Palacio
 08,055,Rosales
-08,056,Rosario
+08,056,Valle del Rosario
 08,057,San Francisco de Borja
 08,058,San Francisco de Conchos
 08,059,San Francisco del Oro
@@ -358,7 +360,7 @@ state_inegi_code,inegi_code,name
 11,029,San Diego de la Unión
 11,030,San Felipe
 11,031,San Francisco del Rincón
-11,032,San José Iturbide
+11,032,San José de Iturbide
 11,033,San Luis de la Paz
 11,034,Santa Catarina
 11,035,Santa Cruz de Juventino Rosas
@@ -378,7 +380,7 @@ state_inegi_code,inegi_code,name
 12,003,Ajuchitlán del Progreso
 12,004,Alcozauca de Guerrero
 12,005,Alpoyeca
-12,006,Apaxtla
+12,006,Apaxtla de Castrejón
 12,007,Arcelia
 12,008,Atenango del Río
 12,009,Atlamajalcingo del Monte
@@ -454,6 +456,10 @@ state_inegi_code,inegi_code,name
 12,079,José Joaquín de Herrera
 12,080,Juchitán
 12,081,Iliatenco
+12,082,Las Vigas
+12,083,Ñuu Savi
+12,084,Santa Cruz del Rincón
+12,085,San Nicolás
 13,001,Acatlán
 13,002,Acaxochitlán
 13,003,Actopan
@@ -947,7 +953,7 @@ state_inegi_code,inegi_code,name
 18,008,Xalisco
 18,009,Del Nayar
 18,010,Rosamorada
-18,011,Ruíz
+18,011,Ruiz
 18,012,San Blas
 18,013,San Pedro Lagunillas
 18,014,Santa María del Oro
@@ -1045,14 +1051,14 @@ state_inegi_code,inegi_code,name
 20,035,Guelatao de Juárez
 20,036,Guevea de Humboldt
 20,037,Mesones Hidalgo
-20,038,Villa Hidalgo
+20,038,Villa Hidalgo Yalálag
 20,039,Heroica Ciudad de Huajuapan de León
 20,040,Huautepec
 20,041,Huautla de Jiménez
 20,042,Ixtlán de Juárez
-20,043,Juchitán de Zaragoza
+20,043,Heroica Ciudad de Juchitán de Zaragoza
 20,044,Loma Bonita
-20,045,Magdalena Apasco
+20,045,Magdalena Apazco
 20,046,Magdalena Jaltepec
 20,047,Santa Magdalena Jicotlán
 20,048,Magdalena Mixtepec
@@ -1066,7 +1072,7 @@ state_inegi_code,inegi_code,name
 20,056,Mártires de Tacubaya
 20,057,Matías Romero Avendaño
 20,058,Mazatlán Villa de Flores
-20,059,Miahuatlán de Porfirio Díaz
+20,059,Heroica Ciudad de Miahuatlán de Porfirio Díaz
 20,060,Mixistlán de la Reforma
 20,061,Monjas
 20,062,Natividad
@@ -1131,7 +1137,7 @@ state_inegi_code,inegi_code,name
 20,121,San Bartolo Soyaltepec
 20,122,San Bartolo Yautepec
 20,123,San Bernardo Mixtepec
-20,124,San Blas Atempa
+20,124,Heroica Villa de San Blas Atempa
 20,125,San Carlos Yautepec
 20,126,San Cristóbal Amatlán
 20,127,San Cristóbal Amoltepec
@@ -1245,7 +1251,7 @@ state_inegi_code,inegi_code,name
 20,235,San Luis Amatlán
 20,236,San Marcial Ozolotepec
 20,237,San Marcos Arteaga
-20,238,San Martín de los Cansecos
+20,238,Heroico San Martín de los Cansecos
 20,239,San Martín Huamelúlpam
 20,240,San Martín Itunyoso
 20,241,San Martín Lachilá
@@ -1820,11 +1826,11 @@ state_inegi_code,inegi_code,name
 23,005,Benito Juárez
 23,006,José María Morelos
 23,007,Lázaro Cárdenas
-23,008,Solidaridad
+23,008,Playa del Carmen
 23,009,Tulum
 23,010,Bacalar
 23,011,Puerto Morelos
-24,001,Ahualulco
+24,001,Ahualulco del Sonido 13
 24,002,Alaquines
 24,003,Aquismón
 24,004,Armadillo de los Infante
@@ -1882,6 +1888,7 @@ state_inegi_code,inegi_code,name
 24,056,Villa de Arista
 24,057,Matlapa
 24,058,El Naranjo
+24,059,Villa de Pozos
 25,001,Ahome
 25,002,Angostura
 25,003,Badiraguato
@@ -1900,6 +1907,8 @@ state_inegi_code,inegi_code,name
 25,016,San Ignacio
 25,017,Sinaloa
 25,018,Navolato
+25,019,Eldorado
+25,020,Juan José Ríos
 26,001,Aconchi
 26,002,Agua Prieta
 26,003,Álamos
@@ -2328,7 +2337,7 @@ state_inegi_code,inegi_code,name
 31,022,Chikindzonot
 31,023,Chocholá
 31,024,Chumayel
-31,025,Dzán
+31,025,Dzan
 31,026,Dzemul
 31,027,Dzidzantún
 31,028,Dzilam de Bravo
@@ -2397,8 +2406,8 @@ state_inegi_code,inegi_code,name
 31,091,Tinum
 31,092,Tixcacalcupul
 31,093,Tixkokob
-31,094,Tixmehuac
-31,095,Tixpéhual
+31,094,Tixméhuac
+31,095,Tixpéual
 31,096,Tizimín
 31,097,Tunkás
 31,098,Tzucacab
