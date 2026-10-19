@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -39,6 +40,7 @@ import java.util.UUID;
  * Fase B).
  */
 @Component
+@Order(1)
 public class StateAndMunicipalitySeedRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(StateAndMunicipalitySeedRunner.class);
@@ -60,7 +62,7 @@ public class StateAndMunicipalitySeedRunner implements ApplicationRunner {
 	@Override
 	public void run(ApplicationArguments args) throws IOException {
 		if (stateRepository.count() > 0) {
-			log.info("The state catalog is already seeded; skipping INEGI catalogs bootstrap seed");
+			log.info("El catálogo de estados ya está cargado; se omite el sembrado de los catálogos INEGI");
 			return;
 		}
 
@@ -82,14 +84,14 @@ public class StateAndMunicipalitySeedRunner implements ApplicationRunner {
 			states.add(new State(name, inegiCode));
 		}
 
-		List<State> saved = stateRepository.saveAll(states);
+		List<State> saved = stateRepository.saveAllAndFlush(states);
 
 		Map<String, UUID> stateIdByInegiCode = new HashMap<>();
 		for (State state : saved) {
 			stateIdByInegiCode.put(state.getInegiCode(), state.getId());
 		}
 
-		log.info("Seeded {} states from {}", saved.size(), STATES_CSV_LOCATION);
+		log.info("Se sembraron {} estados desde {}", saved.size(), STATES_CSV_LOCATION);
 		return stateIdByInegiCode;
 	}
 
@@ -97,8 +99,8 @@ public class StateAndMunicipalitySeedRunner implements ApplicationRunner {
 	 * Reads {@code inegi_municipios.csv} (columns:
 	 * {@code state_inegi_code,inegi_code,name}), resolves each row's
 	 * {@code state_inegi_code} against the map built by {@link #seedStates()},
-	 * and batches all 2,469 rows into a single {@code saveAll} call — not one
-	 * row at a time, which would be 2,469 individual inserts.
+	 * and batches all 2,478 rows into a single {@code saveAll} call — not one
+	 * row at a time, which would be 2,478 individual inserts.
 	 */
 	private void seedMunicipalities(Map<String, UUID> stateIdByInegiCode) throws IOException {
 		List<Municipality> municipalities = new ArrayList<>();
@@ -110,14 +112,14 @@ public class StateAndMunicipalitySeedRunner implements ApplicationRunner {
 			UUID stateId = stateIdByInegiCode.get(stateInegiCode);
 			if (stateId == null) {
 				throw new IllegalStateException(
-						"Municipality row '" + name + "' references unknown state INEGI code: " + stateInegiCode);
+						"El municipio '" + name + "' referencia un estado INEGI desconocido: " + stateInegiCode);
 			}
 
 			municipalities.add(new Municipality(stateId, name, inegiCode));
 		}
 
-		List<Municipality> saved = municipalityRepository.saveAll(municipalities);
-		log.info("Seeded {} municipalities from {}", saved.size(), MUNICIPALITIES_CSV_LOCATION);
+		List<Municipality> saved = municipalityRepository.saveAllAndFlush(municipalities);
+		log.info("Se sembraron {} municipios desde {}", saved.size(), MUNICIPALITIES_CSV_LOCATION);
 	}
 
 	/**
