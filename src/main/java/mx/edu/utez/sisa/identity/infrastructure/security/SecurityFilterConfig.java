@@ -391,6 +391,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/postal-codes/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/states").permitAll()
 						.requestMatchers(HttpMethod.GET, "/municipalities").permitAll()
 						.anyRequest().authenticated())
