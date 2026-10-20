@@ -32,9 +32,21 @@ public class GetCurrentProfileUseCaseImpl implements GetCurrentProfileUseCase {
 	public CurrentProfileResult getCurrentProfile(CurrentProfileQuery query) {
 		User user = userRepository.findById(query.userId())
 				.orElseThrow(() -> new UserNotFoundException("User not found: " + query.userId()));
-		Person person = personRepository.findById(user.getPersonId()).orElse(null);
+		Person person = findPerson(user.getPersonId());
 		return new CurrentProfileResult(user.getId(), fullName(person), user.getUsername(),
 				firstEmail(person, user));
+	}
+
+	/**
+	 * The {@code Person} link is optional ({@code personId} may be null for
+	 * accounts without personal data), so both the null id and a missing row
+	 * resolve to "no person" rather than failing.
+	 */
+	private Person findPerson(java.util.UUID personId) {
+		if (personId == null) {
+			return null;
+		}
+		return personRepository.findById(personId).orElse(null);
 	}
 
 	/**

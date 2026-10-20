@@ -48,7 +48,7 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 
 		User target = userRepository.findById(query.userId())
 				.orElseThrow(() -> new UserNotFoundException("User not found: " + query.userId()));
-		Person person = personRepository.findById(target.getPersonId()).orElse(null);
+		Person person = findPerson(target.getPersonId());
 
 		var userRoles = userRoleRepository.findByUserId(target.getId());
 		Map<UUID, Role> rolesById = roleRepository.findByIds(userRoles.stream().map(UserRole::getRoleId).distinct().toList())
@@ -61,6 +61,18 @@ public class GetUserUseCaseImpl implements GetUserUseCase {
 		return new UserDetailResult(target.getId(), target.getPersonId(), fullName(person), target.getUsername(),
 				target.getStatus(), target.isMustChangePassword(), target.isLlaveMxLinked(), target.getLastLoginAt(),
 				target.getCreatedAt(), roles);
+	}
+
+	/**
+	 * The {@code Person} link is optional ({@code personId} may be null for
+	 * accounts without personal data), so both the null id and a missing row
+	 * resolve to "no person" rather than failing.
+	 */
+	private Person findPerson(UUID personId) {
+		if (personId == null) {
+			return null;
+		}
+		return personRepository.findById(personId).orElse(null);
 	}
 
 	/**
