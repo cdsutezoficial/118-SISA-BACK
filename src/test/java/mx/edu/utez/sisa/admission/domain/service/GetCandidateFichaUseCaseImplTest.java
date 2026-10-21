@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -133,9 +134,10 @@ class GetCandidateFichaUseCaseImplTest {
 		ReflectionTestUtils.setField(person, "id", personId);
 		lenient().when(candidatePersonRepository.findById(personId)).thenReturn(Optional.of(person));
 
-		lenient().when(paymentRepository.findByCandidateId(candidateId)).thenReturn(Optional
-				.of(new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA, new BigDecimal("500.00"),
-						"REF-20260922-000001", REGISTRATION_DEADLINE)));
+		lenient().when(paymentRepository.findByCandidateIdAndConcept(candidateId,
+				AdmissionPaymentConcept.ADMISSION_FICHA))
+				.thenReturn(Optional.of(new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA,
+						new BigDecimal("500.00"), "REF-20260922-000001", REGISTRATION_DEADLINE)));
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
@@ -147,8 +149,9 @@ class GetCandidateFichaUseCaseImplTest {
 
 		// The amount is resolved live from the catalog too: a price edit after
 		// the ficha was issued has to show up on the reprint.
-		lenient().when(fichaAmountResolver.resolve(programId, LocalDate.now(CLOCK)))
-				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Admisión"));
+		lenient().when(fichaAmountResolver.resolve(any(), any(), any()))
+				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, new BigDecimal("0.00"), LIVE_AMOUNT, null,
+						false, "Admisión"));
 	}
 
 	/**
@@ -234,7 +237,8 @@ class GetCandidateFichaUseCaseImplTest {
 		AdmissionPayment payment = new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA,
 				new BigDecimal("500.00"), "REF-20260922-000001", REGISTRATION_DEADLINE);
 		ReflectionTestUtils.setField(payment, "orderId", "TESTUTEZ-ADM-2026-000001");
-		when(paymentRepository.findByCandidateId(candidateId)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByCandidateIdAndConcept(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA))
+				.thenReturn(Optional.of(payment));
 
 		when(placeNameLookupPort.findStateName(stateId)).thenReturn(Optional.of("Michoacán"));
 		when(placeNameLookupPort.findMunicipalityName(municipalityId)).thenReturn(Optional.of("Jiquilpan"));

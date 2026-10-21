@@ -158,8 +158,9 @@ class InitiateFichaPaymentUseCaseImplTest {
 		// lenient: the 404/409 guard cases throw before the builder is ever consulted
 		lenient().when(orderIdBuilder.build(any())).thenReturn(ORDER_ID);
 		// lenient: only the paths that clear all gates price the checkout
-		lenient().when(fichaAmountResolver.resolve(any(), any()))
-				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Inscripción"));
+		lenient().when(fichaAmountResolver.resolve(any(), any(), any()))
+				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, new BigDecimal("0.00"), LIVE_AMOUNT, null,
+						false, "Inscripción"));
 		// lenient: only the paths that get past the PAID check resolve the config
 		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
@@ -699,7 +700,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		// resolve() is consulted for the candidate's program today, the claim is
 		// told the same number (so it is committed before Evo), and that number is
 		// what Evo is asked to charge — not the 500.00 the ficha was issued with.
-		verify(fichaAmountResolver).resolve(PROGRAM_ID, TODAY);
+		verify(fichaAmountResolver).resolve(CANDIDATE_ID, PROGRAM_ID, TODAY);
 		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
 				LIVE_AMOUNT.compareTo(order.amount()) == 0));

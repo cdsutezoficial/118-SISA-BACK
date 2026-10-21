@@ -30,7 +30,13 @@ public interface InitiateFichaPaymentUseCase {
 	 */
 	InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath);
 
+	/**
+	 * @param exempt {@code true} when a {@code FULL} discount settled the ficha at
+	 *               {@code $0} with no gateway session: {@code orderId},
+	 *               {@code sessionId}, {@code merchant} and {@code successIndicator}
+	 *               are all {@code null} and the front must not open the checkout.
+	 */
 	record InitiateCheckoutResult(UUID candidateId, String orderId, String sessionId, String merchant,
-			String successIndicator, String checkoutJsUrl) {
+			String successIndicator, String checkoutJsUrl, boolean exempt) {
 	}
 }

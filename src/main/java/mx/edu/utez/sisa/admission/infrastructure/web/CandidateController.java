@@ -539,8 +539,8 @@ public class CandidateController {
 	}
 
 	private static CandidateListItemResponse toItem(CandidateListItem item) {
-		return new CandidateListItemResponse(item.id(), item.folio(), item.fullName(), item.curp(), item.programId(),
-				item.programName(), item.status(), item.registeredAt());
+		return new CandidateListItemResponse(item.id(), item.personId(), item.folio(), item.fullName(), item.curp(),
+				item.programId(), item.programName(), item.status(), item.registeredAt());
 	}
 
 	private static String fullName(FichaData ficha) {

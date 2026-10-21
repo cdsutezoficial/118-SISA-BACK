@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort.FichaDiscount;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
@@ -49,22 +50,45 @@ public class FichaAmountResolver {
 
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+	/**
+	 * The concept code a ficha discount is scoped to. Matches
+	 * {@link mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept#ADMISSION_FICHA}
+	 * and the free-text {@code payment_benefit.scope_concept_code} finance stores,
+	 * so the applicant's ficha discount resolves.
+	 */
+	private static final String ADMISSION_FICHA = "ADMISSION_FICHA";
+
 	private final PaymentConceptQueryPort paymentConceptQueryPort;
 
-	public FichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort) {
+	private final mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort fichaBenefitQueryPort;
+
+	public FichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort,
+			mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort fichaBenefitQueryPort) {
 		this.paymentConceptQueryPort = paymentConceptQueryPort;
+		this.fichaBenefitQueryPort = fichaBenefitQueryPort;
 	}
 
 	/**
+	 * Prices the ficha <em>with the applicant's discount applied</em>.
+	 *
+	 * <p>The rate is the catalog tariff; the discount is finance's. This resolver
+	 * owns the rate and asks {@link FichaBenefitQueryPort} what the person's
+	 * discount does to it, so registration, the public preview, and the checkout
+	 * all price the ficha with the same rule and a discount can never apply at
+	 * one step but not another.
+	 *
+	 * @param candidateId the applicant's candidate, used to look up discounts;
+	 *                    may be {@code null} (quotes with no candidate to look up)
 	 * @param programId the program whose admission concept prices the ficha
-	 * @param onDate    the date the concept must be active on (the registration
-	 *                  date; concept windows are period-scoped)
+	 * @param onDate    the date the concept must be active on
 	 */
-	public FichaAmount resolve(UUID programId, LocalDate onDate) {
+	public FichaAmount resolve(UUID candidateId, UUID programId, LocalDate onDate) {
 		PaymentConceptQueryPort.FichaConcept concept = requireSingleActiveConcept(programId, onDate);
-		BigDecimal amount = paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
+		BigDecimal rate = paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
 				.orElseThrow(() -> describeMissingRate(concept.name()));
-		return new FichaAmount(amount, concept.name());
+		FichaDiscount discount = fichaBenefitQueryPort.resolve(candidateId, ADMISSION_FICHA, rate, onDate);
+		return new FichaAmount(discount.originalAmount(), discount.discountAmount(), discount.amountDue(),
+				discount.benefitId(), discount.exempt(), concept.name());
 	}
 
 	/**
@@ -213,10 +237,21 @@ public class FichaAmountResolver {
 	}
 
 	/**
-	 * @param amount     what the applicant must pay, resolved from the concept's
-	 *                   rate for this program on this date
-	 * @param conceptName the catalog concept's name, shown to the applicant
+	 * @param amount         what the applicant must pay, resolved from the concept's
+	 *                       rate for this program on this date and net of any
+	 *                       discount in force
+	 * @param conceptName    the catalog concept's name, shown to the applicant
+	 * @param originalAmount the tariff before the discount
+	 * @param discountAmount the discount applied ({@code 0} when none)
+	 * @param benefitId      the discount's id, or {@code null} when none
+	 * @param exempt         {@code true} when a FULL discount covered the tariff
 	 */
-	public record FichaAmount(BigDecimal amount, String conceptName) {
+	public record FichaAmount(BigDecimal originalAmount, BigDecimal discountAmount, BigDecimal amount,
+			java.util.UUID benefitId, boolean exempt, String conceptName) {
+
+		/** Whether the applicant has a discount that changed the price. */
+		public boolean hasDiscount() {
+			return benefitId != null;
+		}
 	}
 }

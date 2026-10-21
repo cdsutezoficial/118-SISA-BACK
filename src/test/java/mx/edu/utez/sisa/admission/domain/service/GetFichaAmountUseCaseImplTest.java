@@ -69,15 +69,16 @@ class GetFichaAmountUseCaseImplTest {
 				.thenReturn(Optional.of(new AdmissionConfigInfo(CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
 						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, null, WINDOW_OPEN,
 						WINDOW_CLOSE, MAX_CANDIDATES)));
-		when(fichaAmountResolver.resolve(PROGRAM_ID, QUOTE_DATE))
-				.thenReturn(new FichaAmountResolver.FichaAmount(new BigDecimal("1578.00"), "Inscripción"));
+		when(fichaAmountResolver.resolve(null, PROGRAM_ID, QUOTE_DATE))
+				.thenReturn(new FichaAmountResolver.FichaAmount(new BigDecimal("1578.00"), new BigDecimal("0.00"),
+						new BigDecimal("1578.00"), null, false, "Inscripción"));
 
 		FichaAmountQuote quote = useCase.quote(CONFIG_ID);
 
 		assertThat(quote.amount()).isEqualByComparingTo("1578.00");
 		assertThat(quote.conceptName()).isEqualTo("Inscripción");
 		assertThat(quote.programName()).isEqualTo("Ingeniería en Desarrollo y Gestión de Software");
-		verify(fichaAmountResolver).resolve(PROGRAM_ID, QUOTE_DATE);
+		verify(fichaAmountResolver).resolve(null, PROGRAM_ID, QUOTE_DATE);
 	}
 
 	@Test

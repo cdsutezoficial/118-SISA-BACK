@@ -1,5 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort.FichaDiscount;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
@@ -44,16 +46,21 @@ class FichaAmountResolverTest {
 
 	private static final UUID CONCEPT_ID = UUID.randomUUID();
 
+	private static final UUID CANDIDATE_ID = UUID.randomUUID();
+
 	private static final LocalDate ON_DATE = LocalDate.of(2026, 9, 25);
 
 	@Mock
 	private PaymentConceptQueryPort paymentConceptQueryPort;
 
+	@Mock
+	private FichaBenefitQueryPort fichaBenefitQueryPort;
+
 	private FichaAmountResolver resolver;
 
 	@BeforeEach
 	void setUp() {
-		resolver = new FichaAmountResolver(paymentConceptQueryPort);
+		resolver = new FichaAmountResolver(paymentConceptQueryPort, fichaBenefitQueryPort);
 	}
 
 	private static PaymentConceptQueryPort.FichaConcept concept(LocalDate from, LocalDate until) {
@@ -66,13 +73,15 @@ class FichaAmountResolverTest {
 				.thenReturn(List.of(concept(null, null)));
 		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
 				.thenReturn(Optional.of(new BigDecimal("1578.00")));
+		when(fichaBenefitQueryPort.resolve(any(), any(), any(), any()))
+				.thenAnswer(invocation -> FichaDiscount.none(invocation.getArgument(2)));
 	}
 
 	@Test
 	void pricesTheFichaFromTheConceptsRate() {
 		givenPricedConcept();
 
-		FichaAmountResolver.FichaAmount amount = resolver.resolve(PROGRAM_ID, ON_DATE);
+		FichaAmountResolver.FichaAmount amount = resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE);
 
 		assertThat(amount.amount()).isEqualByComparingTo("1578.00");
 		assertThat(amount.conceptName()).isEqualTo("Inscripción");
@@ -85,7 +94,7 @@ class FichaAmountResolverTest {
 		// for the program only would ignore which concept is being charged.
 		givenPricedConcept();
 
-		resolver.resolve(PROGRAM_ID, ON_DATE);
+		resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE);
 
 		verify(paymentConceptQueryPort).findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE);
 	}
@@ -100,7 +109,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
 				.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
 				.hasMessageContaining("no tiene una tarifa configurada para esta carrera");
 	}
@@ -115,7 +124,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
 				.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.hasMessageContaining("Inscripción");
 	}
 
@@ -126,7 +135,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
 				.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.hasMessageNotContaining(PROGRAM_ID.toString())
 				.hasMessageNotContaining(CONCEPT_ID.toString());
 	}
@@ -136,7 +145,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of());
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID)).thenReturn(List.of());
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
 				.hasMessageContaining("no tiene un concepto de inscripción activo");
 	}
@@ -147,7 +156,7 @@ class FichaAmountResolverTest {
 				new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, "Inscripción", null, null),
 				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), "Reinscripción", null, null)));
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(AmbiguousFichaPaymentConceptException.class)
 				.hasMessageContaining("más de un concepto de inscripción activo");
 	}
@@ -161,7 +170,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID)).thenReturn(List.of(concept(null,
 				until)));
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(PaymentConceptExpiredException.class)
 				.hasMessageContaining("cerró el 20/09/2026");
 	}
@@ -173,7 +182,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
 				.thenReturn(List.of(concept(from, null)));
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(PaymentConceptExpiredException.class)
 				.hasMessageContaining("abre el 01/10/2026");
 	}
@@ -247,7 +256,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
 				.thenReturn(List.of(concept(null, LocalDate.of(2026, 9, 20))));
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(PaymentConceptExpiredException.class)
 				.hasMessageNotContaining(PROGRAM_ID.toString());
 	}
@@ -257,7 +266,7 @@ class FichaAmountResolverTest {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of());
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID)).thenReturn(List.of());
 
-		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
+		assertThatThrownBy(() -> resolver.resolve(CANDIDATE_ID, PROGRAM_ID, ON_DATE))
 				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
 				.hasMessageNotContaining(PROGRAM_ID.toString());
 	}

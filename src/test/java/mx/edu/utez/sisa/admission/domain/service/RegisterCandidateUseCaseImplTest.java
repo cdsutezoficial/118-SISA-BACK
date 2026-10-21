@@ -221,8 +221,8 @@ class RegisterCandidateUseCaseImplTest {
 		when(candidatePersonRepository.save(any())).thenReturn(person);
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		stubConfigLookup(config);
-		when(fichaAmountResolver.resolve(PROGRAM_ID, REGISTRATION_DATE))
-				.thenReturn(new FichaAmountResolver.FichaAmount(CONCEPT_COST, "Inscripción"));
+		when(fichaAmountResolver.resolve(any(), any(), any())).thenReturn(new FichaAmountResolver.FichaAmount(
+				CONCEPT_COST, new BigDecimal("0.00"), CONCEPT_COST, null, false, "Inscripción"));
 		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(PAYMENT_CLOSES_ON);
 	}
 

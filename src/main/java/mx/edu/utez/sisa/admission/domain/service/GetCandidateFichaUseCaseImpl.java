@@ -139,8 +139,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
 				: config.closesAt().atZone(clock.getZone()).toLocalDate();
 		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
-		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
+		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getPersonId(), candidate.getFolio(),
+				candidate.getStatus(), candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
 				config == null ? null : config.divisionName(), person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
 				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(),
@@ -211,7 +211,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 			return payment.getAmount();
 		}
 		try {
-			return fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+			return fichaAmountResolver.resolve(payment.getCandidateId(), config.programId(), LocalDate.now(clock))
+					.amount();
 		} catch (FichaPaymentConceptNotFoundException | PaymentConceptExpiredException
 				| AmbiguousFichaPaymentConceptException ex) {
 			return null;

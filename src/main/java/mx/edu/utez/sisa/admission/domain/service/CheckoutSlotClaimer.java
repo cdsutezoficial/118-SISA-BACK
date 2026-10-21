@@ -143,6 +143,48 @@ public class CheckoutSlotClaimer {
 	}
 
 	/**
+	 * Discount-aware sibling of {@link #claim}: takes the slot service-wise only
+	 * to release it immediately, and settles the ficha as {@code PAID} at
+	 * {@code $0} because a {@code FULL} discount covers the whole tariff (Fase 2).
+	 *
+	 * <p>Runs in its own transaction because the settlement is a real write the
+	 * caller must not roll back: {@code InitiateFichaPaymentUseCase} is not
+	 * {@code @Transactional}, and the exempt path is terminal. It stamps the
+	 * tariff snapshot, the discount, the benefit id and the receipt in one write,
+	 * then marks the candidate {@code PAID} so the ficha behaves exactly like any
+	 * other paid one downstream (induction eligibility, quota counting).
+	 *
+	 * @param price the discounted quote, whose {@code amount} is {@code $0}
+	 * @return the receipt number minted for the exemption
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public String settleExempt(UUID candidateId, FichaAmountResolver.FichaAmount price) {
+		var candidate = candidateRepository.findById(candidateId)
+				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
+
+		AdmissionPayment payment = requirePendingPayment(candidateId);
+		String receipt = exemptionReceipt(candidate.getFolio());
+		if (!payment.settleByDiscount(price.originalAmount(), price.discountAmount(), price.benefitId(), receipt)) {
+			throw new IllegalStateException("La ficha " + candidate.getFolio() + " ya estaba pagada.");
+		}
+		admissionPaymentRepository.save(payment);
+		candidate.markPaid();
+		candidateRepository.save(candidate);
+		return receipt;
+	}
+
+	/**
+	 * {@code EXE-{yyyyMMdd}-{folioSeq}} — the discount-backed "receipt" minted
+	 * when a {@code FULL} discount settles the ficha, distinct in prefix from the
+	 * {@code REC-} a bank payment mints so the two are never confused in a report.
+	 */
+	private static String exemptionReceipt(String folio) {
+		String seq = folio.substring(folio.lastIndexOf('-') + 1);
+		String today = LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+		return String.format("EXE-%s-%s", today, seq);
+	}
+
+	/**
 	 * Opens the {@link CheckoutAttempt} for an order that is about to be sent to
 	 * EVO, and commits it <em>before</em> the caller makes that call (§3.6).
 	 *

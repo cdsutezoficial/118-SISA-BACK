@@ -225,7 +225,22 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		// pay, not the quote deposited at registration, so a tariff edited in
 		// between must reach them (§1.3). The claim persists it in the same
 		// transaction that takes the slot, before Evo is asked for the money.
-		BigDecimal amount = fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+		// The applicant's discount in force is applied on top (Fase 2), so a
+		// ficha discounted after registration is priced right at the click.
+		FichaAmountResolver.FichaAmount price = fichaAmountResolver.resolve(candidateId,
+				config.programId(), LocalDate.now(clock));
+
+		// A discount that covers the whole tariff (100 %) settles the ficha with
+		// no gateway: nothing is owed, so opening an EVO session would only ask
+		// for $0. The settle-on-grant path normally does this when the discount is
+		// applied, but a discount whose window opened after registration is only
+		// seen here, so the checkout closes it.
+		if (price.exempt()) {
+			checkoutSlotClaimer.settleExempt(candidateId, price);
+			return new InitiateCheckoutResult(candidateId, null, null, null, null, checkoutJsUrl, true);
+		}
+
+		BigDecimal amount = price.amount();
 
 		// The orderId is generated before anything is written, and the attempt that
 		// carries it is committed before the gateway is called (§3.6). Generating it
@@ -256,7 +271,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		checkoutSlotClaimer.persistCheckoutSession(candidateId, orderId, session.id());
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.merchant(),
-				session.successIndicator(), checkoutJsUrl);
+				session.successIndicator(), checkoutJsUrl, false);
 	}
 
 	/**

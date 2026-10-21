@@ -93,7 +93,7 @@ public class ListCandidatesUseCaseImpl implements ListCandidatesUseCase {
 	}
 
 	private static CandidateListItem toItem(Candidate candidate, Person person, ProgramRef programRef) {
-		return new CandidateListItem(candidate.getId(), candidate.getFolio(), fullName(person),
+		return new CandidateListItem(candidate.getId(), candidate.getPersonId(), candidate.getFolio(), fullName(person),
 				person == null ? null : person.getCurp(), programRef == null ? null : programRef.programId(),
 				programRef == null ? null : programRef.programName(), candidate.getStatus(),
 				candidate.getRegisteredAt());

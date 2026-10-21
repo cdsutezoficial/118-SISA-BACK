@@ -199,8 +199,9 @@ public class UseCaseConfig {
 	 * price and the charged price can never diverge.
 	 */
 	@Bean
-	public FichaAmountResolver fichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort) {
-		return new FichaAmountResolver(paymentConceptQueryPort);
+	public FichaAmountResolver fichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort,
+			mx.edu.utez.sisa.admission.domain.port.out.FichaBenefitQueryPort fichaBenefitQueryPort) {
+		return new FichaAmountResolver(paymentConceptQueryPort, fichaBenefitQueryPort);
 	}
 
 	@Bean

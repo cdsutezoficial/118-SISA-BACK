@@ -70,6 +70,30 @@ public class AdmissionPayment {
 	@Column(nullable = false, precision = 12, scale = 2)
 	private BigDecimal amount;
 
+	/**
+	 * The catalog tariff before any discount, frozen alongside {@link #amount}.
+	 *
+	 * <p>Kept so the discount has a rastro: {@link #amount} is what is charged
+	 * (rate minus discount), and this is the rate it came from. Nullable for the
+	 * rows that existed before the discount feature — a null simply means "no
+	 * discount was ever considered", and readers fall back to {@link #amount}.
+	 */
+	@Column(name = "original_amount", precision = 12, scale = 2)
+	private BigDecimal originalAmount;
+
+	/** The discount applied to the tariff ({@code 0} when none); {@link #amount} = original − this. */
+	@Column(name = "discount_amount", precision = 12, scale = 2)
+	private BigDecimal discountAmount;
+
+	/**
+	 * The {@code payment_benefit} that produced this ficha's discount, when one
+	 * did — the relation the product asks for so a 100 % ficha keeps who granted
+	 * the exemption. Bare {@code UUID} (no FK across contexts), same convention
+	 * as every cross-context reference in this module.
+	 */
+	@Column(name = "benefit_id")
+	private UUID benefitId;
+
 	@Column(name = "reference_number", nullable = false, length = 40)
 	private String referenceNumber;
 
@@ -178,6 +202,21 @@ public class AdmissionPayment {
 		return amount;
 	}
 
+	/** Pre-discount tariff; {@code null} on rows created before the discount feature. */
+	public BigDecimal getOriginalAmount() {
+		return originalAmount;
+	}
+
+	/** Discount applied ({@code 0} when none); {@code null} on legacy rows. */
+	public BigDecimal getDiscountAmount() {
+		return discountAmount;
+	}
+
+	/** The {@code payment_benefit} behind the discount, or {@code null} when none. */
+	public UUID getBenefitId() {
+		return benefitId;
+	}
+
 	public String getReferenceNumber() {
 		return referenceNumber;
 	}
@@ -247,6 +286,59 @@ public class AdmissionPayment {
 			throw new IllegalStateException("La ficha ya está pagada; no se puede re-cotizar.");
 		}
 		this.amount = amount;
+	}
+
+	/**
+	 * Re-quotes the ficha with the discount in force: freezes the pre-discount
+	 * tariff, the discount, the final amount and the discount's id in one step.
+	 *
+	 * <p>Used both at registration and at checkout, and by the settle-on-grant
+	 * path when a discount is applied after the ticket was issued, so all three
+	 * write the same four numbers. When the discount covers the whole tariff
+	 * ({@code amountDue = 0}) the caller transitions the ficha to {@code PAID}
+	 * via {@link #settleByDiscount} rather than re-pricing a zero.
+	 *
+	 * @throws IllegalStateException if the ficha is already {@code PAID}
+	 */
+	public void reprice(BigDecimal originalAmount, BigDecimal discountAmount, BigDecimal amountDue, UUID benefitId) {
+		if (this.paymentStatus == AdmissionPaymentStatus.PAID) {
+			throw new IllegalStateException("La ficha ya está pagada; no se puede re-cotizar.");
+		}
+		this.originalAmount = originalAmount;
+		this.discountAmount = discountAmount;
+		this.amount = amountDue;
+		this.benefitId = benefitId;
+	}
+
+	/**
+	 * Settles the ficha with a discount that covers the whole tariff: records the
+	 * original amount, the full discount, the benefit id, marks the ficha
+	 * {@code PAID} at {@code $0} with the given receipt, and stamps
+	 * {@code paidAt}.
+	 *
+	 * <p>This is the exemption path the product describes ("se marca como paga
+	 * con 0 y la relación a ese descuento"). No gateway is involved — nothing is
+	 * owed — so there is no bank receipt; the receipt argument is the
+	 * discount-backed receipt the caller mints and is stored for the rastro.
+	 *
+	 * <p>A no-op on an already-{@code PAID} ficha (returns {@code false}), same
+	 * idempotence contract as {@link #markPaid}.
+	 *
+	 * @return {@code true} if the {@code PENDING → PAID} transition happened
+	 */
+	public boolean settleByDiscount(BigDecimal originalAmount, BigDecimal discountAmount, UUID benefitId,
+			String receiptNumber) {
+		if (this.paymentStatus == AdmissionPaymentStatus.PAID) {
+			return false;
+		}
+		this.originalAmount = originalAmount;
+		this.discountAmount = discountAmount;
+		this.amount = BigDecimal.ZERO.setScale(2);
+		this.benefitId = benefitId;
+		this.paymentStatus = AdmissionPaymentStatus.PAID;
+		this.paidAt = Instant.now();
+		this.receiptNumber = receiptNumber;
+		return true;
 	}
 
 	/**

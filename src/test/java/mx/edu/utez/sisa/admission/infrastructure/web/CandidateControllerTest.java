@@ -134,7 +134,7 @@ class CandidateControllerTest {
 	void checkoutReturnsSessionAndSdkUrl() throws Exception {
 		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null)).thenReturn(new InitiateCheckoutResult(ID, ORDER_ID,
 				"SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
-				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js"));
+				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js", false));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
@@ -150,7 +150,8 @@ class CandidateControllerTest {
 	@Test
 	void checkoutPassesTheReturnPathThroughToTheUseCase() throws Exception {
 		when(initiateFichaPaymentUseCase.initiateCheckout(ID, "/portal/ficha/pago"))
-				.thenReturn(new InitiateCheckoutResult(ID, ORDER_ID, "SESSION0001BR", "TESTUTEZ", "OK", "https://x/y.js"));
+				.thenReturn(new InitiateCheckoutResult(ID, ORDER_ID, "SESSION0001BR", "TESTUTEZ", "OK", "https://x/y.js",
+						false));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"returnPath\":\"/portal/ficha/pago\"}"))
@@ -490,9 +491,9 @@ class CandidateControllerTest {
 	void listCandidatesUsesThePrincipalAsCallerId() throws Exception {
 		UUID callerId = UUID.randomUUID();
 		when(listCandidatesUseCase.listCandidates(any())).thenReturn(
-				new ListCandidatesResult(List.of(new CandidateListItem(ID, "ADM-2026-000001", "Ana Torres Ramos",
-						"GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI", CandidateStatus.REGISTERED,
-						Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
+				new ListCandidatesResult(List.of(new CandidateListItem(ID, UUID.randomUUID(), "ADM-2026-000001",
+						"Ana Torres Ramos", "GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI",
+						CandidateStatus.REGISTERED, Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
 
 		mockMvc.perform(get("/candidates").principal(authentication(callerId))).andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].folio").value("ADM-2026-000001"))

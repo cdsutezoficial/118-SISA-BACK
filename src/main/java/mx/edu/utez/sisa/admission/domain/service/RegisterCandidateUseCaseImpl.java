@@ -165,9 +165,11 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				command.seleccionCarrera().outreachChannelId());
 		Candidate savedCandidate = candidateRepository.save(candidate);
 
-		BigDecimal fichaAmount = fichaAmountResolver.resolve(config.programId(), registrationDate).amount();
+		FichaAmountResolver.FichaAmount ficha = fichaAmountResolver.resolve(savedCandidate.getId(), config.programId(),
+				registrationDate);
 		AdmissionPayment payment = new AdmissionPayment(savedCandidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA,
-				fichaAmount, generateReference(savedCandidate.getFolio()), registrationDeadline(config));
+				ficha.amount(), generateReference(savedCandidate.getFolio()), registrationDeadline(config));
+		payment.reprice(ficha.originalAmount(), ficha.discountAmount(), ficha.amount(), ficha.benefitId());
 		admissionPaymentRepository.save(payment);
 
 		return toResult(savedCandidate, payment, config);

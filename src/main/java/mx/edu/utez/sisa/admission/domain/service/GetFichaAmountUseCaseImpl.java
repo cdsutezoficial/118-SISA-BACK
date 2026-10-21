@@ -45,7 +45,7 @@ public class GetFichaAmountUseCaseImpl implements GetFichaAmountUseCase {
 				.findById(admissionConfigId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + admissionConfigId));
-		FichaAmountResolver.FichaAmount fichaAmount = fichaAmountResolver.resolve(config.programId(),
+		FichaAmountResolver.FichaAmount fichaAmount = fichaAmountResolver.resolve(null, config.programId(),
 				LocalDate.now(clock));
 		return new FichaAmountQuote(fichaAmount.amount(), fichaAmount.conceptName(), config.programName());
 	}

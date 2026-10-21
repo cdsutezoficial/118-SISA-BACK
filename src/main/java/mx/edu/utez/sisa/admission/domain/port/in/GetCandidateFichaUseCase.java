@@ -48,7 +48,7 @@ public interface GetCandidateFichaUseCase {
 	 * PDF prints {@code paymentDeadline} under "Fecha límite de pago", and only
 	 * when it differs from {@code registrationDeadline}.
 	 */
-	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
+	record FichaData(UUID candidateId, UUID personId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
 			UUID admissionConfigId, String programName, String divisionName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
 			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
