@@ -363,6 +363,32 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						// finance — núcleo de cobro (Fase 1, plan:
+						// docs/design/pendientes/pagos/fases/fase-01-nucleo-cobro.md).
+						// Primera superficie del bounded context `finance`; igual que
+						// /payment-concepts, la Administra Finanzas, así que reutiliza
+						// el par ADMIN/PERSONAL_FINANZAS. Un solo matcher por verbo
+						// (GET y POST) sobre "/finance/**": cubre cotización, adeudos,
+						// abonos y estado de cuenta sin listar cada ruta, y se apoya
+						// en el permiso fino PAYMENTS_* (PermissionRegistry) para el
+						// detalle. Debe preceder a anyRequest().
+						// Los descuentos (Fase 2) los administra SE además de
+						// Finanzas, así que su subárbol se autoriza por delante con
+						// los tres roles: el matcher sin verbo cubre GET/POST/PUT/
+						// PATCH de /finance/benefits/** y debe preceder a los de
+						// /finance/** para ganar el first-match. El resto de
+						// /finance/** (adeudos, cotización, saldo a favor) sigue en
+						// el par ADMIN/PERSONAL_FINANZAS.
+						.requestMatchers("/finance/benefits/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PUT, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PATCH, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/*/ficha-amount").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")

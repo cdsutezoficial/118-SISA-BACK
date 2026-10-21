@@ -79,4 +79,24 @@ class PermissionRegistryTest {
 		assertThat(PermissionRegistry.resolve("GET", "/users/" + USER_ID + "/reset-password"))
 				.contains("USERS_READ");
 	}
+
+	// ── finance ───────────────────────────────────────────────────────────────
+
+	/**
+	 * The four adeudo operations share the {@code /finance} prefix and two of
+	 * them share the {@code /payments} segment, so the specificity order is the
+	 * whole point: a broad {@code GET /finance/payments/**} must not shadow the
+	 * exact {@code GET /finance/payments}, and the nested entries path must win
+	 * over the create path.
+	 */
+	@Test
+	void financeRoutesResolveToTheirOwnPermissions() {
+		assertThat(PermissionRegistry.resolve("GET", "/finance/quote")).contains("PAYMENTS_QUOTE");
+		assertThat(PermissionRegistry.resolve("GET", "/finance/account-statement")).contains("PAYMENTS_READ");
+		assertThat(PermissionRegistry.resolve("GET", "/finance/payments")).contains("PAYMENTS_READ");
+		assertThat(PermissionRegistry.resolve("GET", "/finance/payments/" + USER_ID)).contains("PAYMENTS_READ");
+		assertThat(PermissionRegistry.resolve("POST", "/finance/payments")).contains("PAYMENTS_CREATE");
+		assertThat(PermissionRegistry.resolve("POST", "/finance/payments/" + USER_ID + "/entries"))
+				.contains("PAYMENTS_SETTLE");
+	}
 }
