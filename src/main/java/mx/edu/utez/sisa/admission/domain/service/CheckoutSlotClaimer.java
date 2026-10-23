@@ -1,22 +1,20 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
-
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
@@ -24,301 +22,169 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Owns the two ficha writes that must commit <em>before</em> the gateway is
- * called: its hold on one of the program's quota slots and the checkout price
- * snapshot. Nothing else.
+ * The short, committed writes around the EVO call of a ficha checkout.
  *
- * <p>This exists as its own bean for one reason that a private method could not
- * solve: {@code REQUIRES_NEW} works through the Spring proxy, so a
- * {@code @Transactional} method called from inside the same object would silently
- * join the caller's transaction instead of starting its own. The claim has to
- * commit <em>before</em> the gateway is called, and the release has to commit
- * <em>after</em> the caller's transaction has already rolled back — neither is
- * reachable without a separate proxied bean.
+ * <p>Since 2026-10-23 the ficha has no table of its own: a quota place is held
+ * by the <b>checkout attempt</b> itself (finance's {@code checkout_attempt},
+ * keyed by the ficha's charge). An attempt still open and younger than
+ * the checkout hold ({@code sisa.admission.payment.checkout-hold-minutes}) occupies a place; a settled charge
+ * occupies one for good. So "claiming" a place <em>is</em> opening the
+ * attempt, and "releasing" it is closing the attempt.
  *
- * <p>Three short transactions, and never a fourth that spans the network:
- * <ol>
- * <li>{@link #claim} — lock the config, count what is occupied by others, refuse
- * if the career is full, stamp the claim, commit. The lock is released here;</li>
- * <li>the caller calls Evo with no lock and no transaction held;</li>
- * <li>{@link #persistCheckoutSession} — record {@code orderId}/{@code sessionId}
- * so the confirmation can find the order again.</li>
- * </ol>
- *
- * <p>If Evo refuses the checkout, {@link #release} gives the slot straight back
- * rather than leaving a career one place short until its payment window closes,
- * for an order that does not exist.
+ * <p>Every method runs in its own transaction ({@code REQUIRES_NEW}) because
+ * the caller is deliberately not transactional: it spans a third-party call,
+ * and nothing must be locked while EVO is being contacted.
  */
 @Component
 public class CheckoutSlotClaimer {
 
+	/** Who "collected" a ficha a FULL discount settled at $0, as the receipt shows it. */
+	private static final String EXEMPTION_COLLECTOR = "Descuento 100%";
+
 	private final AdmissionQuotaPort admissionQuotaPort;
-
-	private final AdmissionPaymentRepository admissionPaymentRepository;
-
 	private final CandidateRepository candidateRepository;
-
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
-
-	/**
-	 * Supplies "today" for the claim-expiry comparison, zone-pinned by
-	 * {@code UseCaseConfig} for the same reason the checkout's window check is:
-	 * a quota boundary decided from the server's default zone is one the
-	 * applicant cannot see on any screen.
-	 */
+	private final FichaPaymentPort fichaPaymentPort;
 	private final Clock clock;
 
-	/**
-	 * Days a ficha may take to be paid, counting from the day it was registered.
-	 * Needed here because a claim stops occupying a slot once its ficha's own
-	 * window is over — otherwise a career would stay short for ten days waiting
-	 * for somebody who is no longer allowed to pay.
-	 */
-	private final int paymentWindowDays;
+	/** Minutes an open checkout attempt holds a quota place. */
+	private final int checkoutHoldMinutes;
 
-	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort,
-			AdmissionPaymentRepository admissionPaymentRepository, CandidateRepository candidateRepository,
-			CheckoutAttemptRepository checkoutAttemptRepository, Clock clock,
-			@Value("${sisa.admission.payment.deadline-days:10}") int paymentWindowDays) {
+	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
+			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
 		this.admissionQuotaPort = admissionQuotaPort;
-		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.clock = clock;
-		this.paymentWindowDays = paymentWindowDays;
+		this.checkoutHoldMinutes = checkoutHoldMinutes;
 	}
 
 	/**
-	 * Takes one of the program's last slots for this candidate, or refuses.
+	 * Takes one of the program's places for this candidate by opening the
+	 * checkout attempt that will be sent to EVO, or refuses.
 	 *
 	 * <p>Refusing here rather than at registration is the policy: a program may
-	 * take far more registrations than it sells, and only these who get as far as
-	 * asking to pay are competing for a place. It is also the last point at which
-	 * refusing is free — once {@code INITIATE_CHECKOUT} has run, Evo holds an
-	 * order, and telling the applicant no would mean a refund.
+	 * take far more registrations than it sells, and only those who get as far
+	 * as paying compete for a place. It is also the last point at which refusing
+	 * is free — once the order exists at EVO, saying no would mean a refund.
+	 *
+	 * <p>The attempt is committed <em>before</em> the caller contacts EVO, so a
+	 * held place always has an {@code orderId} the bank can be asked about. A
+	 * full career leaves no attempt behind: the count is checked first.
 	 *
 	 * <p>Concurrency: the lock on the config row is taken before the count and
-	 * held until this transaction commits, so two candidates racing for the final
-	 * slot are serialised. The second one to arrive re-reads the count and is
-	 * refused. Nothing is oversold, and the loser loses a slot they never had.
+	 * held until commit, so two candidates racing for the final place are
+	 * serialised. {@code READ_COMMITTED} makes the count a current read (under
+	 * MySQL's {@code REPEATABLE READ} the snapshot fixed by the candidate lookup
+	 * would hide the winner's committed attempt and both would pass).
 	 *
-	 * <p>The lock is only half of that, and the isolation level is the other half.
-	 * Under MySQL's default {@code REPEATABLE READ}, the candidate lookup above runs
-	 * first and fixes the transaction's read snapshot <em>before</em> the lock is
-	 * taken. The count is a plain {@code SELECT}, so it then reads that stale
-	 * snapshot rather than the row the winner just committed — and the second
-	 * candidate counts zero occupied, sees a free slot, and claims. Both leave.
-	 * {@code CheckoutSlotClaimerConcurrencyIT} reproduced exactly that: two
-	 * candidates, one place, zero refusals. {@code READ_COMMITTED} makes the count
-	 * a current read, which is what the lock needs it to be; correctness here comes
-	 * from the lock, and the isolation level only has to stop hiding it.
+	 * <p>The candidate's own attempts are left out of the count, so a retry of
+	 * their own checkout never competes with the place they already hold.
 	 *
-	 * <p>Also stamps {@code amount} — the live tariff the caller resolved for
-	 * this checkout — in the same transaction, so the price sent to Evo is
-	 * committed before the order exists and the confirmation can later compare
-	 * the bank's capture against a stored value. A refusal never reaches this
-	 * write, because the capacity check runs first.
-	 *
-	 * @param amount the tariff quoted for this checkout, to store on the ficha
+	 * @param orderId the id the order will carry at EVO
+	 * @param price   the quote frozen for this checkout; the attempt keeps its
+	 *                own snapshot so whichever attempt captures is booked with
+	 *                the numbers it charged
 	 * @throws ProgramAdmissionConfigCapacityReachedException if the career is full
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
-	public void claim(UUID candidateId, BigDecimal amount) {
-		var candidate = candidateRepository.findById(candidateId)
-				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
-
+	public void claim(UUID candidateId, String orderId, FichaPaymentPort.FichaQuote price) {
+		Candidate candidate = requireCandidate(candidateId);
 		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
-
-		long occupiedByOthers = admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(
-				candidate.getAdmissionConfigId(), candidateId, LocalDate.now(clock), paymentWindowDays);
-
+		Instant now = Instant.now(clock);
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidateId, FichaPaymentWindow.attemptsHoldingSince(now, checkoutHoldMinutes));
 		if (occupiedByOthers >= quota.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
 		}
-
-		AdmissionPayment payment = requirePendingPayment(candidateId);
-		payment.reprice(amount);
-		payment.claimCheckoutSlot();
-		admissionPaymentRepository.save(payment);
+		requirePendingCharge(candidate);
+		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, price.financePaymentId(), candidateId, null,
+				price.amountDue(), now, price.rateId(), price.originalAmount(), price.discountAmount(),
+				price.benefitId()));
 	}
 
 	/**
-	 * Discount-aware sibling of {@link #claim}: takes the slot service-wise only
-	 * to release it immediately, and settles the ficha as {@code PAID} at
-	 * {@code $0} because a {@code FULL} discount covers the whole tariff (Fase 2).
+	 * Settles the ficha at {@code $0} because a {@code FULL} discount covers the
+	 * whole tariff: the exemption is booked on the finance charge (its $0 entry
+	 * carries the receipt) and the candidate becomes {@code PAID}, so the ficha
+	 * behaves like any other paid one downstream (quota, induction).
 	 *
-	 * <p>Runs in its own transaction because the settlement is a real write the
-	 * caller must not roll back: {@code InitiateFichaPaymentUseCase} is not
-	 * {@code @Transactional}, and the exempt path is terminal. It stamps the
-	 * tariff snapshot, the discount, the benefit id and the receipt in one write,
-	 * then marks the candidate {@code PAID} so the ficha behaves exactly like any
-	 * other paid one downstream (induction eligibility, quota counting).
-	 *
-	 * @param price the discounted quote, whose {@code amount} is {@code $0}
+	 * @param price the frozen quote, whose {@code amountDue} is {@code $0}
 	 * @return the receipt number minted for the exemption
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public String settleExempt(UUID candidateId, FichaAmountResolver.FichaAmount price) {
-		var candidate = candidateRepository.findById(candidateId)
-				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
-
-		AdmissionPayment payment = requirePendingPayment(candidateId);
+	public String settleExempt(UUID candidateId, FichaPaymentPort.FichaQuote price) {
+		Candidate candidate = requireCandidate(candidateId);
+		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
 		String receipt = exemptionReceipt(candidate.getFolio());
-		if (!payment.settleByDiscount(price.originalAmount(), price.discountAmount(), price.benefitId(), receipt)) {
-			throw new IllegalStateException("La ficha " + candidate.getFolio() + " ya estaba pagada.");
-		}
-		admissionPaymentRepository.save(payment);
+		fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(price.financePaymentId(), price.charged(),
+				false, null, receipt, charge.referenceNumber(), null, EXEMPTION_COLLECTOR));
 		candidate.markPaid();
 		candidateRepository.save(candidate);
 		return receipt;
 	}
 
 	/**
-	 * {@code EXE-{yyyyMMdd}-{folioSeq}} — the discount-backed "receipt" minted
-	 * when a {@code FULL} discount settles the ficha, distinct in prefix from the
-	 * {@code REC-} a bank payment mints so the two are never confused in a report.
+	 * {@code EXE-{yyyyMMdd}-{folioSeq}} — the discount-backed "receipt", distinct
+	 * in prefix from the {@code REC-} a bank payment mints.
 	 */
-	private static String exemptionReceipt(String folio) {
+	private String exemptionReceipt(String folio) {
 		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+		String today = LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE);
 		return String.format("EXE-%s-%s", today, seq);
 	}
 
 	/**
-	 * Opens the {@link CheckoutAttempt} for an order that is about to be sent to
-	 * EVO, and commits it <em>before</em> the caller makes that call (§3.6).
-	 *
-	 * <p>The ordering is the whole reason this method exists. The moment
-	 * {@code INITIATE_CHECKOUT} runs, Evo may hold an order whose money is
-	 * capturable at any second; a slot held with no recorded {@code orderId} can
-	 * then only be released by guessing, which is what the old "release it after
-	 * 30 minutes" rule was compensating for. Writing the attempt first closes
-	 * that hole on its own — if the process dies at any step, the attempt is
-	 * already in the database with the id the bank will answer to.
-	 *
-	 * <p>Separate from {@link #claim} rather than inside it because the two
-	 * failures are different and both must be recoverable: a full career should
-	 * not leave behind an attempt for an order that was never created, and the
-	 * attempt must exist before any network call. Splitting them keeps each
-	 * transaction to one reason.
-	 *
-	 * @param orderId     the id the order will be known by at EVO; generated by
-	 *                    {@code OrderIdBuilder} with a random suffix, which is why
-	 *                    attempts never overwrite each other
-	 * @param candidateId whose ficha is being paid
-	 * @param amount      the live tariff being charged, snapshotted so the sweep
-	 *                    compares the capture against the number the applicant
-	 *                    actually saw
-	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void openAttempt(String orderId, UUID candidateId, BigDecimal amount) {
-		Instant now = Instant.now(clock);
-		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, candidateId, amount, now));
-	}
-
-	/**
-	 * Closes an open attempt with the reason it ended.
-	 *
-	 * <p>Called by the caller on the two outcomes it can already tell: the
-	 * browser reported a timeout or an error (§3.5), and EVO definitively refused
-	 * to create the order at all. Everything else — a captured payment, a
-	 * {@code FAILURE}, a process that died mid-call — belongs to the daily sweep,
-	 * which asks the bank rather than inferring.
-	 *
-	 * <p>A missing attempt is not an error. By the time anything can report a
-	 * timeout the row is committed, so absence means a caller with no attempt to
-	 * close; there is nothing to reconcile and nothing to hold.
-	 *
-	 * @param orderId the attempt to settle; ignored when no such attempt exists
-	 * @param reason  why it is over; must be a terminal reason
+	 * Closes an open attempt with the reason it ended — which also hands its
+	 * place back, since only open attempts hold one. A missing or already
+	 * closed attempt is left alone.
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void closeAttempt(String orderId, CheckoutAttemptCloseReason reason) {
 		checkoutAttemptRepository.findByOrderId(orderId).ifPresent(attempt -> {
+			if (!attempt.isOpen()) {
+				return;
+			}
 			attempt.close(reason, Instant.now(clock));
 			checkoutAttemptRepository.save(attempt);
 		});
 	}
 
-	/**
-	 * Stores the gateway identifiers on the ficha so the confirmation flow can
-	 * find the order it must verify.
-	 */
+	/** Stores the hosted-checkout session EVO opened on the attempt. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void persistCheckoutSession(UUID candidateId, String orderId, String checkoutSessionId) {
-		AdmissionPayment payment = requirePendingPayment(candidateId);
-		payment.registerCheckout(orderId, checkoutSessionId);
-		admissionPaymentRepository.save(payment);
+	public void persistCheckoutSession(String orderId, String checkoutSessionId) {
+		checkoutAttemptRepository.findByOrderId(orderId).ifPresent(attempt -> {
+			attempt.registerSession(checkoutSessionId);
+			checkoutAttemptRepository.save(attempt);
+		});
+	}
+
+	private Candidate requireCandidate(UUID candidateId) {
+		return candidateRepository.findById(candidateId)
+				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 	}
 
 	/**
-	 * Hands the slot back after the gateway refused the checkout, if it is still the
-	 * same claim the caller asked the bank about.
-	 *
-	 * <p>Called only for a <em>definitive</em> refusal. A timeout or a dropped
-	 * response is not one: Evo may have created the order anyway and captured the
-	 * payment later, so releasing on an ambiguous failure would trade a stuck
-	 * career for a possible oversell. Those go to reconciliation instead.
-	 *
-	 * <p>The expected claim is not ceremony. Every caller reads the ficha, asks the
-	 * bank, and only then writes — and the applicant can start a second checkout in
-	 * between, which stamps a fresh {@code checkoutClaimedAt}. Without this guard a
-	 * release decided about an old attempt would give back the claim a live attempt is
-	 * holding, so the value the decision was made on travels with it.
-	 *
-	 * @param expectedClaimedAt the {@code checkoutClaimedAt} the caller read before
-	 *                          asking the bank
-	 * @return whether this call is the one that gave the place back; {@code false}
-	 *         means the claim moved in the meantime and nothing was written
+	 * Every candidate has a ficha charge by the time they can reach checkout, so
+	 * a missing one is reported rather than skipped.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public boolean release(UUID candidateId, Instant expectedClaimedAt) {
-		AdmissionPayment payment = requirePendingPayment(candidateId);
-		if (!payment.releaseCheckoutSlotIfClaimedAt(expectedClaimedAt)) {
-			return false;
-		}
-		admissionPaymentRepository.save(payment);
-		return true;
-	}
-
-	/**
-	 * A missing ficha here is not "no payment yet, nothing to do" — every
-	 * candidate has one by the time they can reach checkout — so it is reported
-	 * rather than silently skipped. A silent skip would leave the caller's
-	 * release-then-retry loop with nothing to release and a claim held forever.
-	 */
-	private AdmissionPayment requirePendingPayment(UUID candidateId) {
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId)
+	private FichaPaymentPort.FichaCharge requirePendingCharge(Candidate candidate) {
+		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
-						"El candidato no tiene ficha de pago: " + candidateId));
-		if (payment.getPaymentStatus() != AdmissionPaymentStatus.PENDING) {
-			throw new IllegalStateException(
-					"El pago " + candidateId + " no está PENDING, no se puede modificar la reserva de cupo");
+						"El candidato no tiene ficha de pago: " + candidate.getId()));
+		if (charge.isPaid() || charge.cancelled()) {
+			throw new IllegalStateException("La ficha " + candidate.getFolio()
+					+ " no está pendiente de pago; no se puede iniciar el cobro.");
 		}
-		return payment;
+		return charge;
 	}
 
 	/**
-	 * The only sentence a candidate ever reads for a full career, so it is built in
-	 * one place and pinned by a test.
-	 *
-	 * <p>It says neither what is filling the quota nor how big the quota is. The first
-	 * because the count includes in-progress checkouts, so claiming they were beaten by
-	 * "paid" registrations would be wrong whenever the last slot is still settling —
-	 * and it would turn a working rule into a race they lost. The second because a
-	 * number invites the only follow-up question the system cannot answer: "so when
-	 * does a place free up?" There is no waiting list to join — the quota is a cap, not
-	 * a queue — so any figure next to it reads as a position in a line that does not
-	 * exist. The cap is staff's business, and it moves when they edit
-	 * {@code maxCandidates}.
-	 *
-	 * <p>It promises no retry either, for the same reason. Nothing schedules a
-	 * release, so "try again later" would be a promise the code cannot keep.
-	 *
-	 * <p>No parameter: the sentence used to end in "de N fichas" and needed a
-	 * singular/plural branch for a career capped at one. With the number gone that
-	 * branch had nothing left to switch on, and the method is no longer a function of
-	 * the quota at all.
+	 * The only sentence a candidate ever reads for a full career. It says neither
+	 * what fills the quota (in-progress checkouts count) nor its size (there is
+	 * no waiting list to join), and promises no retry.
 	 */
 	private static String quotaReachedMessage() {
 		return "El cupo de esta carrera se agotó.";

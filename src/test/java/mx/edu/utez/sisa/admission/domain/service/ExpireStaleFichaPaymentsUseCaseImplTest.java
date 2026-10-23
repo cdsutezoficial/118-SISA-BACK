@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatu
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
@@ -42,12 +43,16 @@ class ExpireStaleFichaPaymentsUseCaseImplTest {
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+
+	@Mock
+	private FichaPaymentPort fichaPaymentPort;
+
 	private ExpireStaleFichaPaymentsUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, CLOCK,
-				DEADLINE_DAYS);
+				DEADLINE_DAYS, fichaPaymentPort);
 	}
 
 	/**
@@ -216,5 +221,25 @@ class ExpireStaleFichaPaymentsUseCaseImplTest {
 
 		assertThat(useCase.expireOverdue()).isZero();
 		verify(candidateRepository, never()).save(any());
+	}
+
+	/**
+	 * A lapsed ficha's finance charge stops being a debt: it is cancelled, so the
+	 * person does not keep an adeudo they can no longer pay.
+	 */
+	@Test
+	void expireOverdue_cancelsTheExpiredFichasFinanceCharge() {
+		UUID configId = UUID.randomUUID();
+		closesOn(configId, TODAY.plusDays(30));
+		Candidate expired = registeredDaysAgo(configId, DEADLINE_DAYS + 1);
+		UUID candidateId = UUID.randomUUID();
+		ReflectionTestUtils.setField(expired, "id", candidateId);
+		UUID chargeId = UUID.randomUUID();
+		expired.linkFichaPayment(chargeId);
+		when(candidateRepository.findAllByStatus(CandidateStatus.REGISTERED)).thenReturn(List.of(expired));
+
+		useCase.expireOverdue();
+
+		verify(fichaPaymentPort).cancel(chargeId);
 	}
 }

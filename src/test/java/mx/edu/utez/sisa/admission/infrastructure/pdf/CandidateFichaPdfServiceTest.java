@@ -314,12 +314,12 @@ class CandidateFichaPdfServiceTest {
 						"Jiquilpan"),
 				new InformacionComplementaria(true, "Asma leve", false, null, true, "Purépecha", true, "Purépecha",
 						true, false, true, true, true),
-new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
+				new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 					new BigDecimal("6500.00"), "Ferretería López", "Cajero", LocalTime.of(9, 0), LocalTime.of(18, 0)),
 				new SeleccionCarrera("Mixta", "Amigo que estudia aquí", true, "Enero – Abril 2026"),
 				new AntecedentesEscolares("CBTis 121", "Bachillerato General", true, "Michoacán de Ocampo", "Jiquilpan",
 						null, null, new BigDecimal("8.90"), "16DCT0121B"),
-				null);
+				null, null, null, null);
 	}
 
 	private static FichaData minimalFicha() {
@@ -355,6 +355,6 @@ new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 				new Ingresos(null, false, null, "", null, "", "", null, null),
 				new SeleccionCarrera("", "", false, ""),
 				new AntecedentesEscolares("", "", true, "", "", null, "", null, ""),
-				null);
+				null, null, null, null);
 	}
 }

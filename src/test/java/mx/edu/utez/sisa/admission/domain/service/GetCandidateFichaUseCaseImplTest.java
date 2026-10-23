@@ -1,12 +1,14 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.util.List;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
+import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -89,7 +91,12 @@ class GetCandidateFichaUseCaseImplTest {
 	private CandidatePersonRepository candidatePersonRepository;
 
 	@Mock
-	private AdmissionPaymentRepository paymentRepository;
+	private FichaPaymentPort fichaPaymentPort;
+
+	@Mock
+	private CheckoutAttemptRepository checkoutAttemptRepository;
+
+	private final UUID chargeId = UUID.randomUUID();
 
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
@@ -115,18 +122,19 @@ class GetCandidateFichaUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository, paymentRepository,
-				programAdmissionConfigQueryPort, placeNameLookupPort, outreachChannelRepository,
-				highSchoolTypeRepository, fichaAmountResolver, CLOCK, DEADLINE_DAYS);
+		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository, fichaPaymentPort,
+				checkoutAttemptRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
+				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, null, CLOCK, DEADLINE_DAYS);
 		candidateId = UUID.randomUUID();
 		personId = UUID.randomUUID();
 		configId = UUID.randomUUID();
 		programId = UUID.randomUUID();
 
-		var candidate = new mx.edu.utez.sisa.admission.domain.model.Candidate(personId, configId, "ADM-2026-000001",
+		var candidate = new Candidate(personId, configId, "ADM-2026-000001",
 				true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+		candidate.linkFichaPayment(chargeId);
 		lenient().when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
 
 		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
@@ -134,10 +142,7 @@ class GetCandidateFichaUseCaseImplTest {
 		ReflectionTestUtils.setField(person, "id", personId);
 		lenient().when(candidatePersonRepository.findById(personId)).thenReturn(Optional.of(person));
 
-		lenient().when(paymentRepository.findByCandidateIdAndConcept(candidateId,
-				AdmissionPaymentConcept.ADMISSION_FICHA))
-				.thenReturn(Optional.of(new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA,
-						new BigDecimal("500.00"), "REF-20260922-000001", REGISTRATION_DEADLINE)));
+		lenient().when(fichaPaymentPort.findCharge(chargeId)).thenReturn(Optional.of(pendingFicha()));
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
@@ -149,9 +154,8 @@ class GetCandidateFichaUseCaseImplTest {
 
 		// The amount is resolved live from the catalog too: a price edit after
 		// the ficha was issued has to show up on the reprint.
-		lenient().when(fichaAmountResolver.resolve(any(), any(), any()))
-				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, new BigDecimal("0.00"), LIVE_AMOUNT, null,
-						false, "Admisión"));
+		lenient().when(fichaAmountResolver.resolve(any(), any()))
+				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Admisión"));
 	}
 
 	/**
@@ -206,10 +210,11 @@ class GetCandidateFichaUseCaseImplTest {
 		UUID schoolTypeId = UUID.randomUUID();
 
 		// Enrich the shared Person fixture with the Fase 7 profile fields.
-		var candidate = new mx.edu.utez.sisa.admission.domain.model.Candidate(personId, configId, "ADM-2026-000001",
+		var candidate = new Candidate(personId, configId, "ADM-2026-000001",
 				true, true, channelId);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+		candidate.linkFichaPayment(chargeId);
 		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
 
 		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
@@ -233,12 +238,11 @@ class GetCandidateFichaUseCaseImplTest {
 				new BigDecimal("8.9"), true, stateId, municipalityId, "16DCT0121B", true, null, null, null, null));
 		when(candidatePersonRepository.findById(personId)).thenReturn(Optional.of(person));
 
-		// Payment carries the EVO order id when an online checkout ran.
-		AdmissionPayment payment = new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA,
-				new BigDecimal("500.00"), "REF-20260922-000001", REGISTRATION_DEADLINE);
-		ReflectionTestUtils.setField(payment, "orderId", "TESTUTEZ-ADM-2026-000001");
-		when(paymentRepository.findByCandidateIdAndConcept(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA))
-				.thenReturn(Optional.of(payment));
+				// The ficha shows the EVO order id when an online checkout ran.
+		var attempt = FichaTestData.attempt("TESTUTEZ-ADM-2026-000001", chargeId, candidateId,
+				new BigDecimal("500.00"));
+		attempt.close(CheckoutAttemptCloseReason.CAPTURED, REGISTERED_AT);
+		when(checkoutAttemptRepository.findAllByCandidateId(candidateId)).thenReturn(List.of(attempt));
 
 		when(placeNameLookupPort.findStateName(stateId)).thenReturn(Optional.of("Michoacán"));
 		when(placeNameLookupPort.findMunicipalityName(municipalityId)).thenReturn(Optional.of("Jiquilpan"));
@@ -292,5 +296,10 @@ class GetCandidateFichaUseCaseImplTest {
 		assertThat(ficha.antecedentesEscolares().schoolName()).isNull();
 		assertThat(ficha.ingresos().isEmployed()).isFalse();
 		assertThat(ficha.orderId()).isNull();
+	}
+
+	private FichaPaymentPort.FichaCharge pendingFicha() {
+		return new FichaPaymentPort.FichaCharge(chargeId, "REF-20260922-000001", AdmissionPaymentStatus.PENDING, false,
+				REGISTRATION_DEADLINE.atTime(LocalTime.MAX).atZone(ZONE).toInstant(), REGISTERED_AT, null, null);
 	}
 }

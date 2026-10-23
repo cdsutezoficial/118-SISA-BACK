@@ -3,7 +3,6 @@ package mx.edu.utez.sisa.admission.infrastructure.pdf;
 import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
-import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
@@ -185,6 +184,16 @@ public class CandidateFichaPdfService {
 		// Live price: the catalog can be re-priced after the ficha was issued.
 		// Omitted when the program has no price today rather than printed as "-",
 		// which would read as a number that got lost.
+		// With a discount the breakdown is printed — cost, discount and its
+		// reason — so the ficha carries why the applicant pays less.
+		boolean discounted = ficha.discountAmount() != null && ficha.discountAmount().signum() > 0;
+		if (discounted && ficha.originalAmount() != null) {
+			pagoRow(table, "Costo", ficha.originalAmount());
+			pagoRow(table, "Descuento", ficha.discountAmount());
+			if (ficha.discountReason() != null && !ficha.discountReason().isBlank()) {
+				pagoRow(table, "Motivo del descuento", ficha.discountReason());
+			}
+		}
 		if (ficha.amount() != null) {
 			pagoRow(table, "Monto a pagar", ficha.amount());
 		}

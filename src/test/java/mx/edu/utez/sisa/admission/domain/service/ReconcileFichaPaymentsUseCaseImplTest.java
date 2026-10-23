@@ -2,7 +2,6 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,16 +10,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
@@ -62,7 +59,11 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	private CheckoutAttemptRepository checkoutAttemptRepository;
 
 	@Mock
-	private AdmissionPaymentRepository admissionPaymentRepository;
+	private FichaPaymentPort fichaPaymentPort;
+
+	private static final UUID CHARGE_ID = UUID.randomUUID();
+
+	private static final UUID OTHER_CHARGE_ID = UUID.randomUUID();
 
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
@@ -77,59 +78,33 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, admissionPaymentRepository,
+		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
 				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
 	}
 
+	private static UUID chargeOf(UUID candidateId) {
+		return candidateId.equals(CANDIDATE_ID) ? CHARGE_ID : OTHER_CHARGE_ID;
+	}
+
 	private static CheckoutAttempt openAttempt(String orderId, UUID candidateId) {
-		return new CheckoutAttempt(orderId, candidateId, QUOTED, OPENED);
+		return FichaTestData.attempt(orderId, chargeOf(candidateId), candidateId, QUOTED, OPENED);
 	}
 
-	/** Memoised by {@link #claimedPayment()}; see why there. */
-	private AdmissionPayment claimed;
-
-	private static AdmissionPayment pendingPayment() {
-		AdmissionPayment payment = new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA,
-				QUOTED, "REF-2026-000001", LocalDate.now().plusDays(10));
-		payment.registerCheckout(ORDER_ID, "SESSION0001BR");
-		return payment;
+	/** A ficha mid-checkout: its open attempts are what hold the place. */
+	private static FichaPaymentPort.FichaCharge pendingPayment() {
+		return FichaTestData.pendingCharge(CHARGE_ID);
 	}
 
-	/**
-	 * A ficha mid-checkout with the place actually taken.
-	 *
-	 * <p>Separate from {@link #pendingPayment()} because the two answer different
-	 * questions: a capture case only cares about the status, while anything that releases a
-	 * place has to hand the claimer a {@code checkoutClaimedAt} to compare against.
-	 *
-	 * <p>Memoised, because claiming stamps the current instant: building it twice would
-	 * hand a verify a different claim than the stub answered with, and the comparison it
-	 * pins would silently stop being tested.
-	 */
-	private AdmissionPayment claimedPayment() {
-		if (claimed == null) {
-			claimed = pendingPayment();
-			claimed.claimCheckoutSlot();
-		}
-		return claimed;
+	private static FichaPaymentPort.FichaCharge claimedPayment() {
+		return pendingPayment();
 	}
 
-	/**
-	 * The same claim stamped for a second applicant, so a ficha-per-group case can put two
-	 * groups side by side without sharing an instant by accident.
-	 */
-	private AdmissionPayment claimedPaymentFor(UUID candidateId) {
-		AdmissionPayment payment = new AdmissionPayment(candidateId, AdmissionPaymentConcept.ADMISSION_FICHA, QUOTED,
-				"REF-2026-000002", LocalDate.now().plusDays(10));
-		payment.registerCheckout(ORDER_ID, "SESSION0001BR");
-		payment.claimCheckoutSlot();
-		return payment;
+	private static FichaPaymentPort.FichaCharge claimedPaymentFor(UUID candidateId) {
+		return FichaTestData.pendingCharge(chargeOf(candidateId));
 	}
 
-	private static AdmissionPayment paidPayment() {
-		AdmissionPayment payment = pendingPayment();
-		payment.markPaid("REC-20260930-000001");
-		return payment;
+	private static FichaPaymentPort.FichaCharge paidPayment() {
+		return FichaTestData.paidCharge(CHARGE_ID);
 	}
 
 	/** {@code SUCCESS} with the captured amount, as the three-arg shape reports it. */
@@ -141,12 +116,12 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		when(checkoutAttemptRepository.findOpenAttempts()).thenReturn(List.of(attempts));
 	}
 
-	private void givenPayment(AdmissionPayment payment) {
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment));
+	private void givenPayment(FichaPaymentPort.FichaCharge payment) {
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment));
 	}
 
-	private void givenPaymentFor(UUID candidateId, AdmissionPayment payment) {
-		when(admissionPaymentRepository.findByCandidateId(candidateId)).thenReturn(Optional.of(payment));
+	private void givenPaymentFor(UUID candidateId, FichaPaymentPort.FichaCharge payment) {
+		when(fichaPaymentPort.findCharge(chargeOf(candidateId))).thenReturn(Optional.of(payment));
 	}
 
 	/**
@@ -167,15 +142,12 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		// payment paid, or the day the two disagree a capture yields a paid ficha with no
 		// receipt.
 		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, ORDER_ID);
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 	}
 
 	@Test
 	void aDefinitiveRefusalHandsThePlaceBackAndClosesTheRow() {
 		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
 		givenPayment(claimedPayment());
-		when(checkoutSlotClaimer.release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt()))
-				.thenReturn(true);
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(
 				new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "FAILURE", null));
 
@@ -184,7 +156,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		assertThat(result.releasedSlots()).isEqualTo(1);
 		// The claim it read travels with the decision, so a claim stamped since then is not
 		// the one this release is allowed to touch.
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt());
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.REJECTED);
 		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
 	}
@@ -206,7 +177,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.heldAttempts()).isEqualTo(1);
 		assertThat(result.closedRows()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
 		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
 	}
@@ -230,7 +200,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.failedAttempts()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
 	}
 
@@ -255,7 +224,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.releasedSlots()).isZero();
 		assertThat(result.closedRows()).isEqualTo(1);
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		// REJECTED, because that is what the bank said about THIS order. Recording CAPTURED
 		// here would put a lie on the row to make the counts prettier.
 		verify(checkoutSlotClaimer).closeAttempt(abandoned, CheckoutAttemptCloseReason.REJECTED);
@@ -272,7 +240,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.closedRows()).isEqualTo(1);
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		// The browser got there in the seconds between the query and this write.
 		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
 	}
@@ -296,7 +263,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		// while asking the bank, before any ficha is read, and a stub left behind would be
 		// a promise the code never asked for.
 		givenPaymentFor(OTHER_CANDIDATE_ID, claimedPaymentFor(OTHER_CANDIDATE_ID));
-		when(checkoutSlotClaimer.release(any(), any())).thenReturn(true);
 		when(evoPaymentsGateway.retrieveOrder(first))
 				.thenThrow(new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó."));
 		when(evoPaymentsGateway.retrieveOrder(second)).thenReturn(
@@ -339,7 +305,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		// failed because it was never acted on, not because the bank misbehaved on it.
 		assertThat(result.failedAttempts()).isEqualTo(2);
 		assertThat(result.heldAttempts()).isEqualTo(2);
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
 	}
 
@@ -366,7 +331,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.settledCaptures()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		// Marked paid once, through the browser's own interactor: this sweep must not be a
 		// second way of marking a payment paid, or the day the two disagree a capture
 		// yields a paid ficha with no receipt.
@@ -392,7 +356,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.settledCaptures()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 	}
 
 	/**
@@ -408,7 +371,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		String second = "TESTUTEZ-ADM-2026-000001-B";
 		givenOpenAttempts(openAttempt(first, CANDIDATE_ID), openAttempt(second, CANDIDATE_ID));
 		givenPayment(claimedPayment());
-		when(checkoutSlotClaimer.release(any(), any())).thenReturn(true);
 		when(evoPaymentsGateway.retrieveOrder(first)).thenReturn(
 				new EvoPaymentsGatewayPort.EvoOrderStatus(first, "FAILURE", null));
 		when(evoPaymentsGateway.retrieveOrder(second)).thenReturn(
@@ -418,34 +380,8 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.releasedSlots()).isEqualTo(1);
 		assertThat(result.closedRows()).isEqualTo(2);
-		verify(checkoutSlotClaimer, times(1)).release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt());
 		verify(checkoutSlotClaimer).closeAttempt(first, CheckoutAttemptCloseReason.REJECTED);
 		verify(checkoutSlotClaimer).closeAttempt(second, CheckoutAttemptCloseReason.REJECTED);
-	}
-
-	/**
-	 * The claim the sweep read is not necessarily the claim in force when it writes.
-	 *
-	 * <p>Between asking the bank and writing, the applicant started another checkout and
-	 * stamped a fresh claim with a live order on it. Releasing anyway would hand that
-	 * order's place away, so the compare-and-set declines — and the refused rows still
-	 * close, because what the bank said about them has not changed.
-	 */
-	@Test
-	void aClaimThatMovedWhileAskingTheBankIsNotReleased() {
-		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
-		givenPayment(claimedPayment());
-		when(checkoutSlotClaimer.release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt()))
-				.thenReturn(false);
-		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(
-				new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "FAILURE", null));
-
-		var result = useCase.reconcile();
-
-		assertThat(result.releasedSlots()).isZero();
-		assertThat(result.failedAttempts()).isZero();
-		assertThat(result.closedRows()).isEqualTo(1);
-		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.REJECTED);
 	}
 
 	/**
@@ -539,7 +475,6 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.releasedSlots()).isZero();
 		assertThat(result.settledCaptures()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 		verify(checkoutSlotClaimer).closeAttempt(refused, CheckoutAttemptCloseReason.REJECTED);
 	}
 
@@ -588,22 +523,18 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.settledCaptures()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isZero();
-		verify(checkoutSlotClaimer, never()).release(any(), any());
 	}
 
 	@Test
 	void anErrorNodeWithoutMoneyAlsoReleasesThePlace() {
 		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
 		givenPayment(claimedPayment());
-		when(checkoutSlotClaimer.release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt()))
-				.thenReturn(true);
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(
 				ORDER_ID, "PENDING", null, null, BigDecimal.ZERO, null, null, null, null, "Pago rechazado"));
 
 		var result = useCase.reconcile();
 
 		assertThat(result.releasedSlots()).isEqualTo(1);
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID, claimedPayment().getCheckoutClaimedAt());
 	}
 
 	@Test
@@ -624,27 +555,21 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	@Test
 	void aMissingPaymentRowDoesNotStopTheRun() {
 		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.empty());
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(
 				new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "FAILURE", null));
 
 		var result = useCase.reconcile();
 
-		// A missing row is neither "not paid" nor a licence to invent a release: the
-		// claimer is the component that reports it, as its javadoc says it should, instead
-		// of the sweep pretending the ficha exists. Here it is a mock, so what this pins is
-		// that the run completed rather than aborting — one unreconcilable ficha does not
-		// stop the other thirty-nine. The expected claim is null because there was no row to
-		// read one from, and a claimer that finds nothing refuses rather than frees.
+				// A charge that cannot be read is not a paid one: the refused attempt is closed
+		// on what the bank said, which is what frees the place, and the run goes on.
 		assertThat(result.failedAttempts()).isZero();
-		assertThat(result.releasedSlots()).isZero();
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID, null);
+		assertThat(result.releasedSlots()).isEqualTo(1);
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.REJECTED);
 	}
 
 	/**
-	 * The same situation with the real claimer behaviour: {@code requirePendingPayment}
-	 * throws rather than skipping, so the sweep's write for that ficha fails and has to be
-	 * counted, not fatal.
+	 	 * A write that fails for one ficha (closing its attempt) is counted, not fatal.
 	 */
 	@Test
 	void aFichaWhoseClaimCannotBeReleasedIsCountedNotFatal() {
@@ -657,10 +582,8 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(broken, "FAILURE", null));
 		when(evoPaymentsGateway.retrieveOrder(fine))
 				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(fine, "FAILURE", null));
-		org.mockito.Mockito.doThrow(new IllegalStateException(
-				"El pago " + CANDIDATE_ID + " no está PENDING, no se puede modificar la reserva de cupo"))
-				.when(checkoutSlotClaimer).release(eq(CANDIDATE_ID), any());
-		when(checkoutSlotClaimer.release(eq(OTHER_CANDIDATE_ID), any())).thenReturn(true);
+				Mockito.doThrow(new IllegalStateException("No se pudo cerrar el intento " + broken))
+				.when(checkoutSlotClaimer).closeAttempt(eq(broken), any());
 
 		var result = useCase.reconcile();
 

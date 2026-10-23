@@ -19,11 +19,8 @@ import java.util.UUID;
  * {@code PersonLookupJpaRepository}).
  *
  * <p>The cap is not resolved here: {@code maxCandidates} comes across on the
- * projection, but the paid-ficha count it is compared against belongs to
- * {@code admission}'s own tables, so the use case asks
- * {@code AdmissionPaymentRepository} for it. The rule reads "PAID fichas <
- * maxCandidates" and each side of that comparison is owned by the context that
- * owns its data.
+ * projection, but the occupied-place count it is compared against is taken by
+ * {@link AdmissionQuotaPort#countOccupiedExcluding} under the config's lock.
  */
 public interface ProgramAdmissionConfigQueryPort {
 

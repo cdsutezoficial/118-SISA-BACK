@@ -2,28 +2,33 @@ package mx.edu.utez.sisa.admission.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * JPA-backed {@link AdmissionQuotaPort}: the lock is
- * {@link ProgramAdmissionConfigLookupJpaRepository#findByIdForUpdate}, and the
- * cap is read from that same locked entity.
- *
- * <p>Reading the cap from the locked row instead of issuing a second query is
- * what makes the comparison trustworthy. If the cap came from anywhere else, a
- * staff member editing {@code maxCandidates} concurrently could widen or narrow
- * the limit between the count and the decision without anyone holding a lock
- * against it.
+ * Locks the config row for the cap and counts occupancy over finance's
+ * charges and checkout attempts (see {@link FichaOccupancyJpaRepository}).
  */
 @Component
 public class AdmissionQuotaAdapter implements AdmissionQuotaPort {
 
-	private final ProgramAdmissionConfigLookupJpaRepository configJpaRepository;
+	/** No candidate has this id, so "excluding nobody" is a plain comparison. */
+	private static final UUID NOBODY = new UUID(0L, 0L);
 
-	public AdmissionQuotaAdapter(ProgramAdmissionConfigLookupJpaRepository configJpaRepository) {
+	private static final List<PaymentStatus> SETTLED = List.of(PaymentStatus.PAID, PaymentStatus.EXEMPT);
+
+	private final ProgramAdmissionConfigLookupJpaRepository configJpaRepository;
+	private final FichaOccupancyJpaRepository occupancyJpaRepository;
+
+	public AdmissionQuotaAdapter(ProgramAdmissionConfigLookupJpaRepository configJpaRepository,
+			FichaOccupancyJpaRepository occupancyJpaRepository) {
 		this.configJpaRepository = configJpaRepository;
+		this.occupancyJpaRepository = occupancyJpaRepository;
 	}
 
 	@Override
@@ -32,5 +37,11 @@ public class AdmissionQuotaAdapter implements AdmissionQuotaPort {
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"Program admission config not found: " + admissionConfigId));
 		return new QuotaState(config.getMaxCandidates());
+	}
+
+	@Override
+	public long countOccupiedExcluding(UUID admissionConfigId, UUID candidateId, Instant attemptsOpenedSince) {
+		return occupancyJpaRepository.countOccupied(admissionConfigId, candidateId == null ? NOBODY : candidateId,
+				SETTLED, CheckoutAttemptCloseReason.STARTED, attemptsOpenedSince);
 	}
 }

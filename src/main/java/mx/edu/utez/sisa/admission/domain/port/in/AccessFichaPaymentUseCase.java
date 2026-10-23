@@ -80,6 +80,8 @@ public interface AccessFichaPaymentUseCase {
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
-			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired) {
+			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
+			BigDecimal originalAmount, BigDecimal discountAmount, String discountReason) {
+
 	}
 }

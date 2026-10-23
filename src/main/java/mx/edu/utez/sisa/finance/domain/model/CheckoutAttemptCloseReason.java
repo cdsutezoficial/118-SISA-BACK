@@ -1,4 +1,4 @@
-package mx.edu.utez.sisa.admission.domain.model;
+package mx.edu.utez.sisa.finance.domain.model;
 
 /**
  * Why a {@link CheckoutAttempt} stopped being an open question, per

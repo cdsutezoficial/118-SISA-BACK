@@ -8,7 +8,7 @@ import java.util.UUID;
  * amount/currency/description/return/cancelUrl per config), asks the gateway
  * for a checkout {@code session}, and — the concept that registers the
  * transaction — persists both {@code order.id} and {@code session.id} on the
- * {@code AdmissionPayment}. Governs {@code POST /candidates/{id}/payments/checkout}.
+ * checkout attempt of the ficha's finance charge. Governs {@code POST /candidates/{id}/payments/checkout}.
  *
  * <p>Validations, in order: the candidate and its ADMISSION_FICHA payment must
  * exist (404); the payment must still be {@code PENDING} (409); then the

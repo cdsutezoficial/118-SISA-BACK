@@ -89,6 +89,14 @@ public class Candidate {
 	@Column(name = "is_enabled_for_induction", nullable = false)
 	private boolean isEnabledForInduction;
 
+	/**
+	 * The ficha's charge in finance ({@code payment.id}). Since 2026-10-23 the
+	 * ficha has no table of its own: its reference, deadline, status, receipt
+	 * and price all live on that charge, and this is the only link to it.
+	 */
+	@Column(name = "ficha_payment_id")
+	private UUID fichaPaymentId;
+
 	protected Candidate() {
 		// JPA
 	}
@@ -112,6 +120,20 @@ public class Candidate {
 
 	public UUID getPersonId() {
 		return personId;
+	}
+
+	public UUID getFichaPaymentId() {
+		return fichaPaymentId;
+	}
+
+	/**
+	 * Links the ficha's finance charge once; a different second charge is refused.
+	 */
+	public void linkFichaPayment(UUID paymentId) {
+		if (this.fichaPaymentId != null && !this.fichaPaymentId.equals(paymentId)) {
+			throw new IllegalStateException("La ficha ya está ligada a otro cargo: " + this.fichaPaymentId);
+		}
+		this.fichaPaymentId = paymentId;
 	}
 
 	public UUID getAdmissionConfigId() {
@@ -160,9 +182,9 @@ public class Candidate {
 
 	/**
 	 * Marks the candidate's ficha as paid ({@code REGISTERED → PAID}), per
-	 * {@code 03-admision.md} — the payment's {@code markPaid} must already have
-	 * succeeded (the use case enforces the invariant: no {@code PAID} without a
-	 * paid {@code AdmissionPayment}). Idempotent: re-invoking on an already
+	  * {@code 03-admision.md} — the ficha's finance charge must already be settled
+	 * (the use case enforces the invariant: no {@code PAID} candidate without a
+	 * paid or exempt charge). Idempotent: re-invoking on an already
 	 * {@code PAID} candidate is a no-op.
 	 */
 	public void markPaid() {

@@ -7,7 +7,6 @@ package mx.edu.utez.sisa.academic_config.domain.model;
  * <p>{@link #ADMISSION} is what the admission flow prices the ficha from, and it
  * is on its own the whole discriminator: the admission queries
  * ({@code PaymentConceptQueryAdapter},
- * {@code AdmissionPaymentRepositoryAdapter},
  * {@code ProgramAdmissionConfigJpaRepository}) look up an {@code ACTIVE}
  * {@code ADMISSION} concept belonging to the program, expecting exactly one.
  * They deliberately do not also require {@code is_tuition} — that flag marks a

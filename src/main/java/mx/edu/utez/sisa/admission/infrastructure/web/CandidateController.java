@@ -74,9 +74,9 @@ import java.util.UUID;
  * {@code identity.SecurityFilterConfig} grants {@code POST /candidates},
  * the ficha read/PDF and the payment endpoints {@code permitAll} (the
  * applicant has no session); every admin-facing endpoint stays on the
-* {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
-  *
-  * <p>This controller is the WEB layer's translation boundary: it maps the
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
+ *
+ * <p>This controller is the WEB layer's translation boundary: it maps the
  * frontend ficha payload ({@code RegisterCandidateRequest}, string-typed:
  * {@code fechaNacimiento} {@code dd/MM/yyyy}, {@code sexo}
  * {"Femenino"/"Masculino"/"Hombre"/"Mujer"}, {@code estadoCivil}
@@ -255,7 +255,7 @@ public class CandidateController {
 	 * interior characters removed was mistyped, not reformatted.
 	 */
 	private static String normalizeCurp(String curp) {
-		return curp == null ? "" : curp.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+		return curp == null ? "" : curp.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
 	}
 
 	private static String readVerificationTicket(HttpServletRequest request) {

@@ -1,10 +1,8 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
@@ -41,24 +39,31 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 
 	private final CandidatePersonRepository candidatePersonRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+	private final FichaPaymentPort fichaPaymentPort;
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final FichaAmountResolver fichaAmountResolver;
 
+	private final FichaDisplayPrice fichaDisplayPrice;
+
 	private final Clock clock;
 
 	private final int fichaDeadlineDays;
 
+	/**
+	 * @param fichaDisplayPrice prices the ficha from its finance charge, live
+	 *                          (tarifa vigente − descuento vigente)
+	 */
 	public AccessFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
+			FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
-			Clock clock, int fichaDeadlineDays) {
+			FichaDisplayPrice fichaDisplayPrice, Clock clock, int fichaDeadlineDays) {
+		this.fichaDisplayPrice = fichaDisplayPrice;
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
 		this.clock = clock;
@@ -67,14 +72,20 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 
 	@Override
 	@Transactional(readOnly = true)
-	public PaymentAccess access(String folio, String curpSuffix) {
+		public PaymentAccess access(String folio, String curpSuffix) {
 		Candidate candidate = resolveCandidate(folio);
 		verifyCurpSuffix(candidate, curpSuffix);
+		return paymentAccessOf(candidate);
+	}
 
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidate.getId())
+	/** Priced live on every call: the tariff and the discount in force today. */
+	private PaymentAccess paymentAccessOf(Candidate candidate) {
+
+		FichaPaymentPort.FichaCharge payment = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> notFound());
 
-		boolean alreadyPaid = payment.getPaymentStatus() == AdmissionPaymentStatus.PAID;
+		boolean alreadyPaid = payment.isPaid();
+		LocalDate registrationDeadline = payment.registrationDeadline(clock.getZone());
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(candidate.getAdmissionConfigId()).orElse(null);
 
@@ -86,19 +97,27 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 		// Read live, with the ticket's snapshot only as the fallback: closing a
 		// cohort early has to shorten the window the screen promises, and that is a
 		// config edit made after the ficha was issued.
-		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
+		LocalDate processClosesOn = config == null ? registrationDeadline
 				: config.closesAt().atZone(clock.getZone()).toLocalDate();
 		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
 		boolean paymentExpired = !FichaPaymentWindow.isPayableOn(candidate, processClosesOn, fichaDeadlineDays,
 				LocalDate.now(clock), clock.getZone());
 
+		// The price is the ficha charge's, computed live: what the applicant sees
+		// here is what the checkout will charge a moment later (it re-computes it
+		// at the click anyway, and never trusts this screen).
+		FichaDisplayPrice.Price price = fichaDisplayPrice != null
+				? fichaDisplayPrice.of(payment.financePaymentId(), config == null ? null : config.programId())
+				: FichaDisplayPrice.Price.NONE;
+
 		return new PaymentAccess(candidate.getId(), candidate.getFolio(),
 				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)),
-				config == null ? null : config.programName(), payment.getAmount(), payment.getReferenceNumber(),
-				payment.getRegistrationDeadline(), payment.getPaymentStatus(), payment.getReceiptNumber(),
+				config == null ? null : config.programName(), price.amount(), payment.referenceNumber(),
+				registrationDeadline, payment.status(), payment.receiptNumber(),
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
-				alreadyPaid ? payment.getPaidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
-				candidate.getStatus(), paymentExpired);
+				alreadyPaid ? payment.paidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
+				candidate.getStatus(), paymentExpired, price.originalAmount(), price.discountAmount(),
+				price.discountReason());
 	}
 
 	/**

@@ -1,17 +1,14 @@
-package mx.edu.utez.sisa.admission.infrastructure.persistence;
+package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * JPA-backed adapter for {@link CheckoutAttemptRepository}.
- */
 @Component
 public class CheckoutAttemptRepositoryAdapter implements CheckoutAttemptRepository {
 
@@ -28,22 +25,23 @@ public class CheckoutAttemptRepositoryAdapter implements CheckoutAttemptReposito
 
 	@Override
 	public Optional<CheckoutAttempt> findByOrderId(String orderId) {
-		CheckoutAttempt attempt = jpaRepository.findByOrderId(orderId);
-		return Optional.ofNullable(attempt);
+		return Optional.ofNullable(jpaRepository.findByOrderId(orderId));
 	}
 
 	@Override
 	public List<CheckoutAttempt> findAllByCandidateId(UUID candidateId) {
-		return jpaRepository.findAllByCandidateId(candidateId);
+		return jpaRepository.findAllByCandidateIdOrderByCreatedAtAsc(candidateId);
 	}
 
 	@Override
 	public List<CheckoutAttempt> findOpenAttempts() {
-		return jpaRepository.findByCloseReason(CheckoutAttemptCloseReason.STARTED);
+		return jpaRepository.findByCloseReasonOrderByCreatedAtAsc(CheckoutAttemptCloseReason.STARTED);
 	}
 
 	@Override
 	public List<CheckoutAttempt> findOpenAttemptsByCandidateId(UUID candidateId) {
-		return jpaRepository.findByCandidateIdAndCloseReason(candidateId, CheckoutAttemptCloseReason.STARTED);
+		return jpaRepository.findByCandidateIdAndCloseReasonOrderByCreatedAtAsc(candidateId,
+				CheckoutAttemptCloseReason.STARTED);
 	}
+
 }

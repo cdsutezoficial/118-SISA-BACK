@@ -21,8 +21,8 @@ import java.util.UUID;
  * {@code docs/plans/2026-07-28-program-admission-config.md}). Owns its own
  * table, repository, and controller. This is the config layer for the future
  * "Admisión" module's ticket-sales window per program — it does NOT belong to
- * the {@code admission} bounded context itself ({@code Candidate},
- * {@code AdmissionPayment}, etc., none of which exist yet); it lives in
+ * the {@code admission} bounded context itself ({@code Candidate} and its
+ * ficha charge); it lives in
  * {@code academic_config} exactly like {@code PaymentConcept} does for
  * Módulo 7 (Pagos).
  *

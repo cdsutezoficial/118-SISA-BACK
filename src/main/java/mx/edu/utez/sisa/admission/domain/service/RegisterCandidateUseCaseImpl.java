@@ -1,8 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
@@ -12,11 +10,12 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosG
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Domicilio;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.InformacionComplementaria;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
@@ -38,9 +37,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -105,11 +104,11 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private final CandidatePersonRepository candidatePersonRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
-
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final FichaAmountResolver fichaAmountResolver;
+
+	private final FichaPaymentPort fichaPaymentPort;
 
 	private final OutreachChannelRepository outreachChannelRepository;
 
@@ -136,16 +135,15 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	public RegisterCandidateUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, OutreachChannelRepository outreachChannelRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
+			FichaPaymentPort fichaPaymentPort, OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock,
 			int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.registrationDate = registrationDate;
@@ -165,14 +163,22 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				command.seleccionCarrera().outreachChannelId());
 		Candidate savedCandidate = candidateRepository.save(candidate);
 
-		FichaAmountResolver.FichaAmount ficha = fichaAmountResolver.resolve(savedCandidate.getId(), config.programId(),
+		// The ficha is a charge of the program's catalog ADMISSION concept (its
+		// real code), raised as a header: no amount is frozen here. It is priced
+		// live (tarifa vigente − descuento vigente) whenever it is looked at, and
+		// photographed only when the applicant clicks "Pagar".
+		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConcept(config.programId(),
 				registrationDate);
-		AdmissionPayment payment = new AdmissionPayment(savedCandidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA,
-				ficha.amount(), generateReference(savedCandidate.getFolio()), registrationDeadline(config));
-		payment.reprice(ficha.originalAmount(), ficha.discountAmount(), ficha.amount(), ficha.benefitId());
-		admissionPaymentRepository.save(payment);
+		LocalDate deadline = registrationDeadline(config);
+		String reference = generateReference(savedCandidate.getFolio());
+		UUID chargeId = fichaPaymentPort.raiseFichaDebt(new FichaPaymentPort.RaiseFichaDebtCommand(
+				savedCandidate.getId(), concept.code(), config.programId(),
+				deadline.atTime(LocalTime.MAX).atZone(clock.getZone()).toInstant(), reference));
+		savedCandidate.linkFichaPayment(chargeId);
+		savedCandidate = candidateRepository.save(savedCandidate);
+		BigDecimal amount = fichaPaymentPort.quote(chargeId).amountDue();
 
-		return toResult(savedCandidate, payment, config);
+		return toResult(savedCandidate, reference, deadline, config, amount);
 	}
 
 	/**
@@ -477,14 +483,14 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 * the applicant is reading this) and when the payment window shuts (live, and
 	 * the only one that still constrains anything).
 	 */
-	private CandidateRegistrationResult toResult(Candidate candidate, AdmissionPayment payment,
-			ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
+	private CandidateRegistrationResult toResult(Candidate candidate, String reference, LocalDate deadline,
+			ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config, BigDecimal amount) {
 		return new CandidateRegistrationResult(candidate.getId(), candidate.getPersonId(),
 				candidate.getAdmissionConfigId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.isLlaveMxVerified(), candidate.getRegisteredAt(), candidate.isFirstChoice(),
 				candidate.getOutreachChannelId(), candidate.isEnabledForInduction(),
-				new FichaPayment(payment.getReferenceNumber(), payment.getAmount(), payment.getRegistrationDeadline(),
-						payment.getPaymentStatus(), fichaAmountResolver.paymentClosesOn(config.programId()),
-						visiblePaymentDeadline(candidate, payment.getRegistrationDeadline())));
+				new FichaPayment(reference, amount, deadline, AdmissionPaymentStatus.PENDING,
+						fichaAmountResolver.paymentClosesOn(config.programId()),
+						visiblePaymentDeadline(candidate, deadline)));
 	}
 }

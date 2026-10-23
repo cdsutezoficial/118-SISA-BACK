@@ -17,7 +17,7 @@ import java.util.UUID;
  * Read query for the admission ficha: the applicant's registration plus her
  * ticket payment and program name. Assembles data owned by different
  * repositories ({@code Candidate}, its {@code Person}, the
- * {@code ADMISSION_FICHA} {@code AdmissionPayment}, and the program name from
+ * ficha's finance charge, and the program name from
  * {@code academic_config}). Governs {@code GET /candidates/{id}}, the ficha
  * PDF and the content of the payment emails — one query the web layer reuses
  * for all three consumers. Missing candidate or payment → empty by design;
@@ -55,7 +55,8 @@ public interface GetCandidateFichaUseCase {
 			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
-			AntecedentesEscolares antecedentesEscolares, PaymentData inductionPayment) {
+			AntecedentesEscolares antecedentesEscolares, PaymentData inductionPayment, BigDecimal originalAmount,
+			BigDecimal discountAmount, String discountReason) {
 
 		public record PaymentData(AdmissionPaymentConcept concept, BigDecimal amount, String referenceNumber,
 				AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {

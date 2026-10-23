@@ -1,12 +1,12 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.time.LocalTime;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
+import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase.PaymentAccess;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
@@ -101,7 +101,9 @@ class AccessFichaPaymentUseCaseImplTest {
 	private CandidatePersonRepository candidatePersonRepository;
 
 	@Mock
-	private AdmissionPaymentRepository admissionPaymentRepository;
+	private FichaPaymentPort fichaPaymentPort;
+
+	private static final UUID CHARGE_ID = UUID.randomUUID();
 
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
@@ -113,9 +115,10 @@ class AccessFichaPaymentUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver, CLOCK,
-				DEADLINE_DAYS);
+		useCase = useCaseAt(CLOCK);
+		lenient().when(fichaPaymentPort.quote(CHARGE_ID)).thenReturn(new FichaPaymentPort.FichaQuote(CHARGE_ID,
+				"FICHA", "Ficha", null, new BigDecimal("500.00"), BigDecimal.ZERO.setScale(2),
+				new BigDecimal("500.00"), null, false, true, null));
 		// Default: the concept closes its window on this date. Every test that
 		// asserts on paymentClosesOn relies on it, and the ones that don't care
 		// are unaffected because a non-stubbed mock would answer null anyway.
@@ -129,7 +132,8 @@ class AccessFichaPaymentUseCaseImplTest {
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		// The ficha's visible plazo is derived from when it was registered, so it
 		// is pinned to a fixed day the same way the clock is.
-		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+				ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+		candidate.linkFichaPayment(CHARGE_ID);
 		return candidate;
 	}
 
@@ -138,15 +142,28 @@ class AccessFichaPaymentUseCaseImplTest {
 		return person;
 	}
 
-	private static AdmissionPayment payment() {
-		return new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA, new BigDecimal("500.00"),
-				"REF-20260924-000101", REGISTRATION_DEADLINE);
+	private AccessFichaPaymentUseCaseImpl useCaseAt(Clock clock) {
+		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository, fichaPaymentPort,
+				programAdmissionConfigQueryPort, fichaAmountResolver,
+				new FichaDisplayPrice(fichaPaymentPort, fichaAmountResolver, clock), clock, DEADLINE_DAYS);
+	}
+
+	private static FichaPaymentPort.FichaCharge payment() {
+		return new FichaPaymentPort.FichaCharge(CHARGE_ID, "REF-20260924-000101", AdmissionPaymentStatus.PENDING,
+				false, REGISTRATION_DEADLINE.atTime(LocalTime.MAX).atZone(ZONE).toInstant(), REGISTERED_AT,
+				null, null);
+	}
+
+	private static FichaPaymentPort.FichaCharge paid(String receipt) {
+		return new FichaPaymentPort.FichaCharge(CHARGE_ID, "REF-20260924-000101", AdmissionPaymentStatus.PAID,
+				false, REGISTRATION_DEADLINE.atTime(LocalTime.MAX).atZone(ZONE).toInstant(), REGISTERED_AT,
+				Instant.now(), receipt);
 	}
 
 	private void givenPendingCandidate() {
 		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.of(candidate()));
 		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.of(configInfo()));
 	}
 
@@ -243,9 +260,7 @@ class AccessFichaPaymentUseCaseImplTest {
 		givenPendingCandidate();
 		// Move the clock past the deadline; the candidate row is untouched and still
 		// REGISTERED, exactly as it would be at 00:05.
-		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				Clock.fixed(PAYMENT_DEADLINE.plusDays(1).atStartOfDay(ZONE).toInstant(), ZONE), DEADLINE_DAYS);
+				useCase = useCaseAt(Clock.fixed(PAYMENT_DEADLINE.plusDays(1).atStartOfDay(ZONE).toInstant(), ZONE));
 
 		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
 
@@ -265,9 +280,7 @@ class AccessFichaPaymentUseCaseImplTest {
 		// the 15th, before that.
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(configClosingOn(LocalDate.of(2026, 9, 15))));
-		useCase = new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
-				Clock.fixed(LocalDate.of(2026, 9, 16).atStartOfDay(ZONE).toInstant(), ZONE), DEADLINE_DAYS);
+				useCase = useCaseAt(Clock.fixed(LocalDate.of(2026, 9, 16).atStartOfDay(ZONE).toInstant(), ZONE));
 
 		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
 
@@ -327,7 +340,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	void aMissingAdmissionConfigStillRendersThePayment() {
 		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.of(candidate()));
 		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.empty());
 
 		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
@@ -343,7 +356,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	void access_normalizesFolioCaseAndSurroundingWhitespace() {
 		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.of(candidate()));
 		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.of(configInfo()));
 
 		PaymentAccess access = useCase.access("  adm-2026-000101  ", " n08 ");
@@ -354,9 +367,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	@Test
 	void access_reportsAlreadyPaidSoTheScreenShowsTheReceipt() {
 		givenPendingCandidate();
-		AdmissionPayment paid = payment();
-		paid.markPaid("REC-20260924-000001");
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(paid("REC-20260924-000001")));
 
 		PaymentAccess access = useCase.access(FOLIO, SUFFIX);
 
@@ -386,7 +397,7 @@ class AccessFichaPaymentUseCaseImplTest {
 				.isInstanceOf(CandidateNotFoundException.class)
 				.hasMessageContaining("No encontramos una ficha de admisión con ese folio y CURP");
 
-		verify(admissionPaymentRepository, never()).findByCandidateId(CANDIDATE_ID);
+		verify(fichaPaymentPort, never()).findCharge(any());
 	}
 
 	/**
@@ -440,7 +451,7 @@ class AccessFichaPaymentUseCaseImplTest {
 	void access_rejectsWhenTheCandidateHasNoPaymentRow() {
 		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.of(candidate()));
 		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.access(FOLIO, SUFFIX)).isInstanceOf(CandidateNotFoundException.class);
 	}
