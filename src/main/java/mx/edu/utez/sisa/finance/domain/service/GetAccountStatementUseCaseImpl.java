@@ -9,7 +9,6 @@ import mx.edu.utez.sisa.finance.domain.port.out.AnchorQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentBenefitRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentEntryRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentRepository;
-import mx.edu.utez.sisa.finance.domain.port.out.PersonQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.PersonQueryPort.PersonView;
 import mx.edu.utez.sisa.finance.shared.exception.PaymentNotFoundException;
 import mx.edu.utez.sisa.finance.shared.exception.PersonNotFoundException;
@@ -71,7 +70,8 @@ public class GetAccountStatementUseCaseImpl implements GetAccountStatementUseCas
 				.toList();
 		BenefitSummary benefit = payment.getBenefitId() == null ? null
 				: BenefitSummaries.from(paymentBenefitRepository.findById(payment.getBenefitId()).orElse(null));
-		BigDecimal balance = payment.getAmountDue().subtract(payment.getAmountPaid());
+		BigDecimal balance = payment.getAmountDue() == null ? null
+				: payment.getAmountDue().subtract(payment.getAmountPaid());
 		return new StatementPayment(payment.getId(), payment.getConceptCode(), payment.getOriginalAmount(),
 				payment.getAmountDue(), payment.getAmountPaid(), balance, payment.getStatus(), payment.getOrigin(),
 				payment.getDueAt(), payment.getCreatedAt(), benefit, entries);

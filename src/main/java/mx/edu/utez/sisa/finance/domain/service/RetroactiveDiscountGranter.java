@@ -45,12 +45,20 @@ public class RetroactiveDiscountGranter {
 	 *         overpaid
 	 */
 	public List<PaymentCredit> grant(PaymentBenefit benefit, Instant now) {
-		List<Payment> candidates = benefit.getCandidateId() != null
-				? paymentRepository.findByCandidateIdAndConceptCode(benefit.getCandidateId(), benefit.getConceptCode())
-				: List.of();
+		// A discount granted on one charge only affects that charge.
+		List<Payment> candidates = benefit.getPaymentId() != null
+				? paymentRepository.findById(benefit.getPaymentId()).map(List::of).orElse(List.of())
+				: benefit.getCandidateId() != null
+						? paymentRepository.findByCandidateIdAndConceptCode(benefit.getCandidateId(),
+								benefit.getConceptCode())
+						: List.of();
 		List<PaymentCredit> credits = new ArrayList<>();
 		for (Payment payment : candidates) {
 			if (payment.getStatus() != PaymentStatus.PAID) {
+				continue;
+			}
+			// A header-only ficha has no frozen tariff to re-quote yet.
+			if (payment.getOriginalAmount() == null || payment.getAmountPaid() == null) {
 				continue;
 			}
 			if (benefit.getId() != null && benefit.getId().equals(payment.getBenefitId())) {

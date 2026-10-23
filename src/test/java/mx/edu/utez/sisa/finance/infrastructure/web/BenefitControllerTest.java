@@ -11,6 +11,7 @@ import mx.edu.utez.sisa.finance.domain.port.in.CreateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.GetDiscountReportUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.GetDiscountReportUseCase.DiscountReport;
 import mx.edu.utez.sisa.finance.domain.port.in.ListBenefitsUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.UpdateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
@@ -72,6 +73,9 @@ class BenefitControllerTest {
 
 	@MockitoBean
 	private PaymentCreditRepository paymentCreditRepository;
+
+	@MockitoBean
+	private QuoteDebtUseCase quoteDebtUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;
@@ -159,7 +163,7 @@ class BenefitControllerTest {
 	private static BenefitView view(UUID id, UUID candidateId, UUID studentId, BenefitStatus status, boolean inForce) {
 		return new BenefitView(id, candidateId, studentId, "TUITION", null, null, BenefitMode.PERCENT,
 				new BigDecimal("50.00"), null, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-12-31"), status,
-				"beca", UUID.randomUUID(), "Finanzas", Instant.parse("2026-10-19T00:00:00Z"), inForce);
+				"beca", UUID.randomUUID(), "Finanzas", Instant.parse("2026-10-19T00:00:00Z"), inForce, null);
 	}
 
 	private BenefitBody createBody(UUID candidateId) {

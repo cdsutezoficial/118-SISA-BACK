@@ -6,7 +6,6 @@ import mx.edu.utez.sisa.finance.domain.model.PaymentEntry;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntryMethod;
 import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
 import mx.edu.utez.sisa.finance.domain.port.in.ApplyCreditToPaymentUseCase;
-import mx.edu.utez.sisa.finance.domain.port.in.CreatePaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.QuotePaymentUseCase.BenefitSummary;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentBenefitRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
@@ -77,7 +76,12 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 			throw new CreditNotApplicableException(
 					"Payment does not accept abonos in status " + payment.getStatus() + ": " + payment.getId());
 		}
-		BigDecimal remaining = payment.getAmountDue().subtract(paymentEntryRepository.sumAmountByPaymentId(payment.getId()));
+		BigDecimal amountDue = payment.getAmountDue();
+		if (amountDue == null) {
+			throw new CreditNotApplicableException(
+					"Payment has no quoted amount yet, start checkout before applying credit: " + payment.getId());
+		}
+		BigDecimal remaining = amountDue.subtract(paymentEntryRepository.sumAmountByPaymentId(payment.getId()));
 		if (remaining.signum() <= 0) {
 			throw new CreditNotApplicableException("Payment has no remaining balance: " + payment.getId());
 		}
@@ -120,7 +124,7 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 		paymentEntryRepository.save(entry);
 
 		BigDecimal paidAfter = paymentEntryRepository.sumAmountByPaymentId(payment.getId());
-		PaymentStatus newStatus = settlementDecider.decide(payment.getAmountDue(), paidAfter);
+		PaymentStatus newStatus = settlementDecider.decide(amountDue, paidAfter);
 		payment.settle(paidAfter, newStatus);
 		Payment saved = paymentRepository.save(payment);
 

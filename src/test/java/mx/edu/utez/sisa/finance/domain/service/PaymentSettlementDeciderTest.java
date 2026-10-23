@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Settlement rule (R7): the abono total against the discounted amount due maps
- * to QUOTED / PARTIAL / PAID. EXEMPT is never an output — it is decided at
+ * to PENDING / PARTIAL / PAID. EXEMPT is never an output — it is decided at
  * creation, not by an abono.
  */
 class PaymentSettlementDeciderTest {
@@ -19,7 +19,7 @@ class PaymentSettlementDeciderTest {
 	@Test
 	void nothingPaid_isQuoted() {
 		assertThat(decider.decide(new BigDecimal("1000.00"), new BigDecimal("0.00")))
-				.isEqualTo(PaymentStatus.QUOTED);
+				.isEqualTo(PaymentStatus.PENDING);
 	}
 
 	@Test

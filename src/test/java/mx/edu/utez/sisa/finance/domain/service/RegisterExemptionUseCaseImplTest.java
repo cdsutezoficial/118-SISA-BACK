@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentOrigin;
 import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
@@ -72,7 +71,7 @@ class RegisterExemptionUseCaseImplTest {
 
 	@Test
 	void rejectsNonExemptPayment() {
-		Payment payment = payment(PaymentStatus.QUOTED, new BigDecimal("1000.00"), null);
+		Payment payment = payment(PaymentStatus.PENDING, new BigDecimal("1000.00"), null);
 		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
 
 		assertThatThrownBy(() -> useCase.registerExemption(new RegisterExemptionCommand(payment.getId(), null, null,
@@ -81,9 +80,8 @@ class RegisterExemptionUseCaseImplTest {
 	}
 
 	private Payment payment(PaymentStatus status, BigDecimal amountDue, UUID benefitId) {
-		Payment payment = new Payment(personId, null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null,
-				UUID.randomUUID(), null, amountDue, amountDue, benefitId, status, PaymentOrigin.CASHIER, null,
-				Instant.parse("2026-10-19T00:00:00Z"), UUID.randomUUID());
+		Payment payment = new Payment(personId, null, "TUITION", null, null, UUID.randomUUID(), amountDue, amountDue,
+				benefitId, status, PaymentOrigin.CASHIER, null, Instant.parse("2026-10-19T00:00:00Z"));
 		ReflectionTestUtils.setField(payment, "id", UUID.randomUUID());
 		return payment;
 	}

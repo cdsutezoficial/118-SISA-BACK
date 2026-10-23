@@ -61,7 +61,7 @@ class CancelBenefitUseCaseImplTest {
 	void cancelsActiveUnusedBenefit() {
 		PaymentBenefit benefit = benefit();
 		when(paymentBenefitRepository.findById(benefit.getId())).thenReturn(Optional.of(benefit));
-		when(paymentRepository.existsByBenefitId(benefit.getId())).thenReturn(false);
+		when(paymentRepository.isBenefitSettled(benefit.getId())).thenReturn(false);
 		when(paymentBenefitRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		BenefitView view = useCase.cancelBenefit(benefit.getId());
@@ -73,7 +73,7 @@ class CancelBenefitUseCaseImplTest {
 	void refusesToCancelAppliedBenefit() {
 		PaymentBenefit benefit = benefit();
 		when(paymentBenefitRepository.findById(benefit.getId())).thenReturn(Optional.of(benefit));
-		when(paymentRepository.existsByBenefitId(benefit.getId())).thenReturn(true);
+		when(paymentRepository.isBenefitSettled(benefit.getId())).thenReturn(true);
 
 		assertThatThrownBy(() -> useCase.cancelBenefit(benefit.getId()))
 				.isInstanceOf(BenefitNotEditableException.class);

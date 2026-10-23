@@ -33,6 +33,7 @@ public interface CreateBenefitUseCase {
 	 */
 	record CreateBenefitCommand(UUID candidateId, UUID studentId, String conceptCode, UUID periodId, UUID generationId,
 			BenefitMode mode, BigDecimal percent, BigDecimal amount, LocalDate validFrom, LocalDate validTo, String reason,
-			UUID grantedById, String grantedByName) {
+			UUID grantedById, String grantedByName, UUID paymentId) {
+
 	}
 }

@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
+import mx.edu.utez.sisa.finance.domain.model.BenefitStatus;
 import mx.edu.utez.sisa.finance.domain.model.PaymentBenefit;
 import mx.edu.utez.sisa.finance.domain.port.in.BenefitView;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelBenefitUseCase;
@@ -39,11 +40,21 @@ public class CancelBenefitUseCaseImpl implements CancelBenefitUseCase {
 		PaymentBenefit benefit = paymentBenefitRepository.findById(id)
 				.orElseThrow(() -> new BenefitNotFoundException("Benefit not found: " + id));
 		if (!benefit.isActive()) {
-			throw new BenefitNotEditableException(
-					"Only ACTIVE benefits can be cancelled, current status: " + benefit.getStatus());
+			throw new BenefitNotEditableException(benefit.getStatus() == BenefitStatus.USED
+					? "El descuento ya se aplicó a un pago; no se puede cancelar."
+					: "Solo un descuento vigente se puede cancelar.");
 		}
-		if (paymentRepository.existsByBenefitId(benefit.getId())) {
-			throw new BenefitNotEditableException("A benefit already applied to a payment cannot be cancelled");
+		// A discount that settled a charge is USED (and therefore not ACTIVE,
+		// refused above). One that only priced an open checkout can still be
+		// corrected: the attempt keeps its own snapshot of what it charged.
+		if (paymentRepository.isBenefitSettled(benefit.getId())) {
+			throw new BenefitNotEditableException("El descuento ya se aplicó a un pago; no se puede cancelar.");
+		}
+		// A discount granted on a charge follows that charge: once it is paid (or
+		// has abonos) the price is history and the discount with it.
+		if (benefit.getPaymentId() != null && paymentRepository.findById(benefit.getPaymentId())
+				.map(charge -> !charge.isRepriceable()).orElse(false)) {
+			throw new BenefitNotEditableException("El cargo ya está pagado; el descuento no se puede cancelar.");
 		}
 		benefit.cancel();
 		return BenefitViews.toView(paymentBenefitRepository.save(benefit), LocalDate.now(clock));

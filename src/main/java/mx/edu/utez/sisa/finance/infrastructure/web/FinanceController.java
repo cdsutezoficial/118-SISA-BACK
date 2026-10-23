@@ -27,6 +27,8 @@ import mx.edu.utez.sisa.finance.infrastructure.web.dto.PaymentListResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.PaymentResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.RegisterEntryRequest;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.RegisterExemptionRequest;
+import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
+import mx.edu.utez.sisa.finance.infrastructure.web.dto.DebtQuoteResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -71,10 +73,14 @@ public class FinanceController {
 
 	private final PaymentRepository paymentRepository;
 
+	private final QuoteDebtUseCase quoteDebtUseCase;
+
 	public FinanceController(CreatePaymentUseCase createPaymentUseCase,
 			RegisterPaymentEntryUseCase registerPaymentEntryUseCase, GetPaymentUseCase getPaymentUseCase,
 			GetAccountStatementUseCase getAccountStatementUseCase, RegisterExemptionUseCase registerExemptionUseCase,
-			ApplyCreditToPaymentUseCase applyCreditToPaymentUseCase, PaymentRepository paymentRepository) {
+			ApplyCreditToPaymentUseCase applyCreditToPaymentUseCase, PaymentRepository paymentRepository,
+			QuoteDebtUseCase quoteDebtUseCase) {
+		this.quoteDebtUseCase = quoteDebtUseCase;
 		this.createPaymentUseCase = createPaymentUseCase;
 		this.registerPaymentEntryUseCase = registerPaymentEntryUseCase;
 		this.getPaymentUseCase = getPaymentUseCase;
@@ -126,6 +132,24 @@ public class FinanceController {
 		CreditApplicationResult result = applyCreditToPaymentUseCase
 				.applyCredit(new ApplyCreditCommand(id, request.channel(), currentUserId()));
 		return ResponseEntity.ok(FinanceResponseMapper.toCreditApplication(result));
+	}
+
+	/**
+	 * The charges of one person, each priced live (tarifa vigente del concepto
+	 * − descuento vigente). This is what staff look at to pick the charge a
+	 * discount is granted on.
+	 */
+	@GetMapping("/payments/quotes")
+	public ResponseEntity<List<DebtQuoteResponse>> quoteAll(@RequestParam(required = false) UUID candidateId,
+			@RequestParam(required = false) UUID studentId) {
+		return ResponseEntity.ok(quoteDebtUseCase.quoteAll(candidateId, studentId).stream()
+				.map(DebtQuoteResponse::from).toList());
+	}
+
+	/** One charge priced live, without writing anything. */
+	@GetMapping("/payments/{id}/quote")
+	public ResponseEntity<DebtQuoteResponse> quote(@PathVariable UUID id) {
+		return ResponseEntity.ok(DebtQuoteResponse.from(quoteDebtUseCase.quote(id, null)));
 	}
 
 	@GetMapping("/payments/{id}")

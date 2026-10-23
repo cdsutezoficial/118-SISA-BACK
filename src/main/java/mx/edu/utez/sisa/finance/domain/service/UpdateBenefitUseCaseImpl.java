@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
+import mx.edu.utez.sisa.finance.domain.model.BenefitStatus;
 import mx.edu.utez.sisa.finance.domain.model.PaymentBenefit;
 import mx.edu.utez.sisa.finance.domain.port.in.BenefitView;
 import mx.edu.utez.sisa.finance.domain.port.in.UpdateBenefitUseCase;
@@ -40,11 +41,21 @@ public class UpdateBenefitUseCaseImpl implements UpdateBenefitUseCase {
 		PaymentBenefit benefit = paymentBenefitRepository.findById(command.id())
 				.orElseThrow(() -> new BenefitNotFoundException("Benefit not found: " + command.id()));
 		if (!benefit.isActive()) {
-			throw new BenefitNotEditableException(
-					"Only ACTIVE benefits can be edited, current status: " + benefit.getStatus());
+			throw new BenefitNotEditableException(benefit.getStatus() == BenefitStatus.USED
+					? "El descuento ya se aplicó a un pago; no se puede editar."
+					: "Solo un descuento vigente se puede editar.");
 		}
-		if (paymentRepository.existsByBenefitId(benefit.getId())) {
-			throw new BenefitNotEditableException("A benefit already applied to a payment cannot be edited");
+		// A discount that settled a charge is USED (and therefore not ACTIVE,
+		// refused above). One that only priced an open checkout can still be
+		// corrected: the attempt keeps its own snapshot of what it charged.
+		if (paymentRepository.isBenefitSettled(benefit.getId())) {
+			throw new BenefitNotEditableException("El descuento ya se aplicó a un pago; no se puede editar.");
+		}
+		// A discount granted on a charge follows that charge: once it is paid (or
+		// has abonos) the price is history and the discount with it.
+		if (benefit.getPaymentId() != null && paymentRepository.findById(benefit.getPaymentId())
+				.map(charge -> !charge.isRepriceable()).orElse(false)) {
+			throw new BenefitNotEditableException("El cargo ya está pagado; el descuento no se puede editar.");
 		}
 		CreateBenefitUseCaseImpl.validateGrant(command.mode(), command.percent(), command.amount());
 		BenefitValidation.validateWindow(command.validFrom(), command.validTo());

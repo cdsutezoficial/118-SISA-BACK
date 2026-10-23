@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.finance.domain.model;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -17,15 +16,15 @@ class PaymentTest {
 
 	@Test
 	void newPayment_startsWithZeroPaid() {
-		Payment payment = payment(PaymentStatus.QUOTED);
+		Payment payment = payment(PaymentStatus.PENDING);
 
 		assertThat(payment.getAmountPaid()).isEqualByComparingTo("0.00");
-		assertThat(payment.getStatus()).isEqualTo(PaymentStatus.QUOTED);
+		assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
 	}
 
 	@Test
 	void settle_adoptsTotalAndStatus() {
-		Payment payment = payment(PaymentStatus.QUOTED);
+		Payment payment = payment(PaymentStatus.PENDING);
 
 		payment.settle(new BigDecimal("500.00"), PaymentStatus.PARTIAL);
 
@@ -35,7 +34,7 @@ class PaymentTest {
 
 	@Test
 	void cancel_transitionsToCancelled() {
-		Payment payment = payment(PaymentStatus.QUOTED);
+		Payment payment = payment(PaymentStatus.PENDING);
 
 		payment.cancel();
 
@@ -45,12 +44,12 @@ class PaymentTest {
 	@Test
 	void exemptDoesNotAcceptEntries_quotedDoes() {
 		assertThat(payment(PaymentStatus.EXEMPT).getStatus().acceptsEntries()).isFalse();
-		assertThat(payment(PaymentStatus.QUOTED).getStatus().acceptsEntries()).isTrue();
+		assertThat(payment(PaymentStatus.PENDING).getStatus().acceptsEntries()).isTrue();
 	}
 
 	private static Payment payment(PaymentStatus status) {
-		return new Payment(UUID.randomUUID(), null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null,
-				UUID.randomUUID(), null, new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, status,
-				PaymentOrigin.CASHIER, null, Instant.parse("2026-10-01T00:00:00Z"), UUID.randomUUID());
+		return new Payment(UUID.randomUUID(), null, "TUITION", null, null, UUID.randomUUID(),
+				new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, status, PaymentOrigin.CASHIER, null,
+				Instant.parse("2026-10-01T00:00:00Z"));
 	}
 }

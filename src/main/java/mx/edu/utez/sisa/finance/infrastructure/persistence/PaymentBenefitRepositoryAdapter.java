@@ -46,6 +46,16 @@ public class PaymentBenefitRepositoryAdapter implements PaymentBenefitRepository
 	}
 
 	@Override
+	public List<PaymentBenefit> findActiveByPaymentId(UUID paymentId) {
+		return jpaRepository.findByPaymentIdAndStatus(paymentId, BenefitStatus.ACTIVE);
+	}
+
+	@Override
+	public List<PaymentBenefit> findByPaymentId(UUID paymentId) {
+		return jpaRepository.findByPaymentIdOrderByCreatedAtDesc(paymentId);
+	}
+
+	@Override
 	public List<PaymentBenefit> search(BenefitSearchCriteria criteria) {
 		return jpaRepository.search(criteria.candidateId(), criteria.studentId(), criteria.conceptCode(),
 				criteria.status(), criteria.createdFrom(), criteria.createdTo());

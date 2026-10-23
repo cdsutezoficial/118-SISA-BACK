@@ -9,7 +9,7 @@ import java.util.UUID;
 
 /**
  * Registers an abono against a {@code Payment} and runs the settlement
- * decider (R7): {@code QUOTED → PARTIAL → PAID}. The abono never touches a
+ * decider (R7): {@code PENDING → PARTIAL → PAID}. The abono never touches a
  * {@code PaymentBenefit} (R8).
  */
 public interface RegisterPaymentEntryUseCase {

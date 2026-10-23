@@ -70,7 +70,7 @@ class CreatePaymentUseCaseImplTest {
 
 		PaymentResult result = useCase.createPayment(command(PaymentOrigin.CASHIER));
 
-		assertThat(result.status()).isEqualTo(PaymentSnapshotStatus.QUOTED);
+		assertThat(result.status()).isEqualTo(PaymentSnapshotStatus.PENDING);
 		assertThat(result.originalAmount()).isEqualByComparingTo("1000.00");
 		assertThat(result.amountDue()).isEqualByComparingTo("750.00");
 		assertThat(result.amountPaid()).isEqualByComparingTo("0.00");

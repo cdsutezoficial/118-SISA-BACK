@@ -27,6 +27,6 @@ public final class BenefitViews {
 				benefit.getConceptCode(), benefit.getPeriodId(), benefit.getGenerationId(), benefit.getMode(),
 				benefit.getPercent(), benefit.getAmount(), benefit.getValidFrom(), benefit.getValidTo(),
 				benefit.getStatus(), benefit.getReason(), benefit.getGrantedById(), benefit.getGrantedByName(),
-				benefit.getCreatedAt(), inForce);
+				benefit.getCreatedAt(), inForce, benefit.getPaymentId());
 	}
 }

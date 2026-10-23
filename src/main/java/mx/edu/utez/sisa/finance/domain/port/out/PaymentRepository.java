@@ -58,11 +58,10 @@ public interface PaymentRepository {
 	List<Payment> findByCandidateIdAndConceptCode(UUID candidateId, String conceptCode);
 
 	/**
-	 * Whether any adeudo already froze this discount. A discount referenced by
-	 * a payment is immutable (Fase 2, pregunta 6): the cancel/edit flow refuses
-	 * to touch it so a settled amount is never silently rewritten.
+	 * Whether a charge that already received money (or was exempted) was
+	 * priced with this benefit — the point after which the benefit is history.
 	 */
-	boolean existsByBenefitId(UUID benefitId);
+	boolean isBenefitSettled(UUID benefitId);
 
 	record PaymentSearchCriteria(UUID candidateId, UUID studentId, PaymentStatus status, String conceptCode, int page,
 			int size) {

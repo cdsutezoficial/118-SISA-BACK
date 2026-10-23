@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntry;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntryMethod;
@@ -111,9 +110,9 @@ class GetAccountStatementUseCaseImplTest {
 	}
 
 	private Payment payment(String amountDue, String amountPaid, PaymentStatus status) {
-		Payment payment = new Payment(candidateId, null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null,
-				UUID.randomUUID(), null, new BigDecimal(amountDue), new BigDecimal(amountDue), null, status,
-				PaymentOrigin.CASHIER, null, Instant.parse("2026-10-01T00:00:00Z"), UUID.randomUUID());
+		Payment payment = new Payment(candidateId, null, "TUITION", null, null, UUID.randomUUID(),
+				new BigDecimal(amountDue), new BigDecimal(amountDue), null, status, PaymentOrigin.CASHIER, null,
+				Instant.parse("2026-10-01T00:00:00Z"));
 		payment.settle(new BigDecimal(amountPaid), status);
 		return payment;
 	}

@@ -9,7 +9,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * Creates the {@code Payment} adeudo in {@code QUOTED} (or {@code EXEMPT} for
+ * Creates the {@code Payment} adeudo in {@code PENDING} (or {@code EXEMPT} for
  * a FULL benefit) by running the quotation at that moment and freezing it
  * (R1/R3).
  */
@@ -41,6 +41,6 @@ public interface CreatePaymentUseCase {
 	 * domain enum and its responses.
 	 */
 	enum PaymentSnapshotStatus {
-		QUOTED, PARTIAL, PAID, EXEMPT, OVERDUE, CANCELLED
+		PENDING, PARTIAL, PAID, EXEMPT, OVERDUE, CANCELLED
 	}
 }

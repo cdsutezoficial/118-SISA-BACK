@@ -79,7 +79,7 @@ final class FinanceResponseMapper {
 		return new BenefitDetailResponse(view.id(), view.candidateId(), view.studentId(), view.conceptCode(),
 				view.periodId(), view.generationId(), view.mode(), view.percent(), view.amount(), view.validFrom(),
 				view.validTo(), view.status(), view.reason(), view.grantedById(), view.grantedByName(), view.createdAt(),
-				view.inForce());
+				view.inForce(), view.paymentId());
 	}
 
 	static CreditResponse toCredit(PaymentCredit credit) {

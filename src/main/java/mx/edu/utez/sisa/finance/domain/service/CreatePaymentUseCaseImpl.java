@@ -47,12 +47,11 @@ public class CreatePaymentUseCaseImpl implements CreatePaymentUseCase {
 				command.studentId(), command.conceptCode(), command.periodId(), command.generationId(),
 				command.programId(), command.level(), command.onDate()));
 		UUID benefitId = quote.benefit() == null ? null : quote.benefit().id();
-		PaymentStatus status = quote.exempt() ? PaymentStatus.EXEMPT : PaymentStatus.QUOTED;
+		PaymentStatus status = quote.exempt() ? PaymentStatus.EXEMPT : PaymentStatus.PENDING;
 
 		Payment payment = new Payment(command.candidateId(), command.studentId(), command.conceptCode(),
-				quote.conceptType(), command.periodId(), command.generationId(), command.programId(),
-				command.level(), quote.originalAmount(), quote.amountDue(), benefitId, status, command.origin(),
-				command.dueAt(), Instant.now(clock), command.createdBy());
+				command.periodId(), command.generationId(), command.programId(), quote.originalAmount(),
+				quote.amountDue(), benefitId, status, command.origin(), command.dueAt(), Instant.now(clock));
 		return toResult(paymentRepository.save(payment), quote.benefit());
 	}
 

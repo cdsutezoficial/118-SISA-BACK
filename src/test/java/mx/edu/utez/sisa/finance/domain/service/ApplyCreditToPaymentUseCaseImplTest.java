@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentChannel;
 import mx.edu.utez.sisa.finance.domain.model.PaymentCredit;
@@ -71,7 +70,7 @@ class ApplyCreditToPaymentUseCaseImplTest {
 
 	@Test
 	void appliesAvailableCreditPartially() {
-		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.QUOTED);
+		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.PENDING);
 		PaymentCredit credit = credit(new BigDecimal("150.00"));
 		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
 		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO)
@@ -91,7 +90,7 @@ class ApplyCreditToPaymentUseCaseImplTest {
 
 	@Test
 	void rejectsWhenNoCreditAvailable() {
-		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.QUOTED);
+		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.PENDING);
 		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
 		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO);
 		when(paymentCreditRepository.findAvailableByCandidateId(candidateId)).thenReturn(List.of());
@@ -113,9 +112,8 @@ class ApplyCreditToPaymentUseCaseImplTest {
 	}
 
 	private Payment payment(BigDecimal amountDue, PaymentStatus status) {
-		Payment payment = new Payment(candidateId, null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null,
-				UUID.randomUUID(), null, amountDue, amountDue, null, status, PaymentOrigin.CASHIER, null,
-				Instant.parse("2026-10-19T00:00:00Z"), UUID.randomUUID());
+		Payment payment = new Payment(candidateId, null, "TUITION", null, null, UUID.randomUUID(), amountDue,
+				amountDue, null, status, PaymentOrigin.CASHIER, null, Instant.parse("2026-10-19T00:00:00Z"));
 		ReflectionTestUtils.setField(payment, "id", UUID.randomUUID());
 		return payment;
 	}

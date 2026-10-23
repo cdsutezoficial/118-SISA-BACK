@@ -15,7 +15,9 @@ import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.BenefitDetailResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.BenefitListResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.CreateBenefitRequest;
+import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.CreditListResponse;
+import mx.edu.utez.sisa.finance.infrastructure.web.dto.ChargeResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.CreditResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.DiscountReportResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.UpdateBenefitRequest;
@@ -60,9 +62,13 @@ public class BenefitController {
 
 	private final PaymentCreditRepository paymentCreditRepository;
 
+	private final QuoteDebtUseCase quoteDebtUseCase;
+
 	public BenefitController(CreateBenefitUseCase createBenefitUseCase, UpdateBenefitUseCase updateBenefitUseCase,
 			CancelBenefitUseCase cancelBenefitUseCase, ListBenefitsUseCase listBenefitsUseCase,
-			GetDiscountReportUseCase getDiscountReportUseCase, PaymentCreditRepository paymentCreditRepository) {
+			GetDiscountReportUseCase getDiscountReportUseCase, PaymentCreditRepository paymentCreditRepository,
+			QuoteDebtUseCase quoteDebtUseCase) {
+		this.quoteDebtUseCase = quoteDebtUseCase;
 		this.createBenefitUseCase = createBenefitUseCase;
 		this.updateBenefitUseCase = updateBenefitUseCase;
 		this.cancelBenefitUseCase = cancelBenefitUseCase;
@@ -81,12 +87,28 @@ public class BenefitController {
 		return ResponseEntity.ok(new BenefitListResponse(items, items.size()));
 	}
 
+	/**
+	 * The "Aplicar descuento" screen's list: the person's charges, each priced
+	 * live (tarifa vigente del concepto − descuento vigente), so staff pick the
+	 * charge the discount is granted on and see what it does. Lives under
+	 * {@code /finance/benefits} so the same roles that grant discounts (SE and
+	 * Finanzas) can read it, with {@code BENEFITS_READ}.
+	 */
+	@GetMapping("/benefits/charges")
+	public ResponseEntity<List<ChargeResponse>> charges(@RequestParam(required = false) UUID candidateId,
+			@RequestParam(required = false) UUID studentId) {
+		return ResponseEntity.ok(quoteDebtUseCase.listCharges(candidateId, studentId).stream()
+				.map(view -> ChargeResponse.from(view,
+						view.discount() == null ? null : FinanceResponseMapper.toBenefitDetail(view.discount())))
+				.toList());
+	}
+
 	@PostMapping("/benefits")
 	public ResponseEntity<BenefitDetailResponse> create(@Valid @RequestBody CreateBenefitRequest request) {
 		BenefitView view = createBenefitUseCase.createBenefit(new CreateBenefitCommand(request.candidateId(),
 				request.studentId(), request.conceptCode(), request.periodId(), request.generationId(), request.mode(),
 				request.percent(), request.amount(), request.validFrom(), request.validTo(), request.reason(),
-				currentUserId(), request.grantedByName()));
+				currentUserId(), request.grantedByName(), request.paymentId()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(FinanceResponseMapper.toBenefitDetail(view));
 	}
 

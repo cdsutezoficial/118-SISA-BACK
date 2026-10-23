@@ -39,6 +39,12 @@ public interface PaymentBenefitRepository {
 	 * by {@code createdAt} descending. {@code createdFrom}/{@code createdTo}
 	 * bound the grant date for the report.
 	 */
+	/** ACTIVE discounts granted on this specific charge. */
+	List<PaymentBenefit> findActiveByPaymentId(UUID paymentId);
+
+	/** Every discount granted on this charge, newest first, any status. */
+	List<PaymentBenefit> findByPaymentId(UUID paymentId);
+
 	List<PaymentBenefit> search(BenefitSearchCriteria criteria);
 
 	record BenefitSearchCriteria(UUID candidateId, UUID studentId, String conceptCode, BenefitStatus status,

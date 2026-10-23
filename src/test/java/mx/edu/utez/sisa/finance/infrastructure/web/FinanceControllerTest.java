@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.finance.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentOrigin;
 import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
@@ -13,6 +12,7 @@ import mx.edu.utez.sisa.finance.domain.port.in.GetAccountStatementUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.GetAccountStatementUseCase.AccountStatement;
 import mx.edu.utez.sisa.finance.domain.port.in.GetAccountStatementUseCase.StatementPayment;
 import mx.edu.utez.sisa.finance.domain.port.in.GetPaymentUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RegisterExemptionUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RegisterPaymentEntryUseCase;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentRepository;
@@ -80,6 +80,9 @@ class FinanceControllerTest {
 	private PaymentRepository paymentRepository;
 
 	@MockitoBean
+	private QuoteDebtUseCase quoteDebtUseCase;
+
+	@MockitoBean
 	private JwtService jwtService;
 
 	@MockitoBean
@@ -105,13 +108,13 @@ class FinanceControllerTest {
 		UUID candidateId = UUID.randomUUID();
 		when(createPaymentUseCase.createPayment(any()))
 				.thenReturn(new PaymentResult(paymentId, candidateId, null, "TUITION", new BigDecimal("1000.00"),
-						new BigDecimal("750.00"), new BigDecimal("0.00"), PaymentSnapshotStatus.QUOTED,
+						new BigDecimal("750.00"), new BigDecimal("0.00"), PaymentSnapshotStatus.PENDING,
 						PaymentOrigin.CASHIER, null, Instant.parse("2026-10-19T00:00:00Z"), null));
 
 		mockMvc.perform(post("/finance/payments").contentType("application/json")
 				.content(objectMapper.writeValueAsString(createBody(candidateId))))
 				.andExpect(status().isCreated()).andExpect(jsonPath("$.id").value(paymentId.toString()))
-				.andExpect(jsonPath("$.status").value("QUOTED"))
+				.andExpect(jsonPath("$.status").value("PENDING"))
 				.andExpect(jsonPath("$.amountDue").value(750.00));
 	}
 
@@ -140,7 +143,7 @@ class FinanceControllerTest {
 
 	@Test
 	void listPaymentsReturns200WithPaginationMetadata() throws Exception {
-		Payment payment = payment(UUID.randomUUID(), PaymentStatus.QUOTED);
+		Payment payment = payment(UUID.randomUUID(), PaymentStatus.PENDING);
 		when(paymentRepository.search(any())).thenReturn(new PaymentSearchPage(List.of(payment), 1L, 1));
 
 		mockMvc.perform(get("/finance/payments")).andExpect(status().isOk())
@@ -184,9 +187,9 @@ class FinanceControllerTest {
 	}
 
 	private static Payment payment(UUID candidateId, PaymentStatus status) {
-		return new Payment(candidateId, null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null,
-				UUID.randomUUID(), null, new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, status,
-				PaymentOrigin.CASHIER, null, Instant.parse("2026-10-19T00:00:00Z"), UUID.randomUUID());
+		return new Payment(candidateId, null, "TUITION", null, null, UUID.randomUUID(), new BigDecimal("1000.00"),
+				new BigDecimal("1000.00"), null, status, PaymentOrigin.CASHIER, null,
+				Instant.parse("2026-10-19T00:00:00Z"));
 	}
 
 	private static StatementPayment statementPayment(UUID paymentId, PaymentStatus status) {

@@ -13,6 +13,11 @@ import mx.edu.utez.sisa.finance.domain.port.in.QuotePaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RegisterExemptionUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RegisterPaymentEntryUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.UpdateBenefitUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.CancelDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.GetChargeStatusUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.RaiseDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.SettleDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.out.AnchorQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.ConceptQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.ConceptRateQueryPort;
@@ -36,6 +41,13 @@ import mx.edu.utez.sisa.finance.domain.service.RegisterExemptionUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.RegisterPaymentEntryUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.RetroactiveDiscountGranter;
 import mx.edu.utez.sisa.finance.domain.service.UpdateBenefitUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.CancelDebtUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.GetChargeStatusUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.DebtQuoter;
+import mx.edu.utez.sisa.finance.domain.service.FreezeDebtQuoteUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.QuoteDebtUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.RaiseDebtUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.SettleDebtUseCaseImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -93,6 +105,60 @@ public class UseCaseConfig {
 		return new QuoteBenefitUseCaseImpl(paymentBenefitRepository, benefitResolver, paymentQuoter, clock);
 	}
 
+	/**
+	 * The single pricing rule for an existing charge: the concept's rate in
+	 * force for its program, minus the discount in force for that charge.
+	 */
+	@Bean
+	public DebtQuoter debtQuoter(ConceptQueryPort conceptQueryPort, ConceptRateQueryPort conceptRateQueryPort,
+			PaymentBenefitRepository paymentBenefitRepository, BenefitResolver benefitResolver,
+			PaymentQuoter paymentQuoter) {
+		return new DebtQuoter(conceptQueryPort, conceptRateQueryPort, paymentBenefitRepository, benefitResolver,
+				paymentQuoter);
+	}
+
+	/** Header-only charge: who owes which catalog concept. Priced live, later. */
+	@Bean
+	public RaiseDebtUseCase raiseDebtUseCase(PaymentRepository paymentRepository, AnchorQueryPort anchorQueryPort,
+			ConceptQueryPort conceptQueryPort, Clock clock) {
+		return new RaiseDebtUseCaseImpl(paymentRepository, anchorQueryPort, conceptQueryPort, clock);
+	}
+
+	/** Live price of a charge, never written. */
+	@Bean
+	public QuoteDebtUseCase quoteDebtUseCase(PaymentRepository paymentRepository, DebtQuoter debtQuoter,
+			Clock clock, PaymentBenefitRepository paymentBenefitRepository,
+			PaymentCreditRepository paymentCreditRepository) {
+		return new QuoteDebtUseCaseImpl(paymentRepository, debtQuoter, clock, paymentBenefitRepository,
+				paymentCreditRepository);
+	}
+
+	/** The "photo" of the live price, taken when the payer acts. */
+	@Bean
+	public FreezeDebtQuoteUseCaseImpl freezeDebtQuoteUseCase(PaymentRepository paymentRepository,
+			DebtQuoter debtQuoter, Clock clock) {
+		return new FreezeDebtQuoteUseCaseImpl(paymentRepository, debtQuoter, clock);
+	}
+
+	@Bean
+	public SettleDebtUseCase settleDebtUseCase(PaymentRepository paymentRepository,
+			FreezeDebtQuoteUseCaseImpl freezeDebtQuoteUseCase, RegisterPaymentEntryUseCase registerPaymentEntryUseCase,
+			RegisterExemptionUseCase registerExemptionUseCase, Clock clock) {
+		return new SettleDebtUseCaseImpl(paymentRepository, freezeDebtQuoteUseCase, registerPaymentEntryUseCase,
+				registerExemptionUseCase, clock);
+	}
+
+	@Bean
+	public CancelDebtUseCase cancelDebtUseCase(PaymentRepository paymentRepository) {
+		return new CancelDebtUseCaseImpl(paymentRepository);
+	}
+
+	@Bean
+	public GetChargeStatusUseCase getChargeStatusUseCase(PaymentRepository paymentRepository,
+			PaymentEntryRepository paymentEntryRepository) {
+		return new GetChargeStatusUseCaseImpl(paymentRepository, paymentEntryRepository);
+	}
+
 	@Bean
 	public RegisterPaymentEntryUseCase registerPaymentEntryUseCase(PaymentRepository paymentRepository,
 			PaymentEntryRepository paymentEntryRepository, PaymentBenefitRepository paymentBenefitRepository,
@@ -124,10 +190,10 @@ public class UseCaseConfig {
 
 	@Bean
 	public CreateBenefitUseCase createBenefitUseCase(AnchorQueryPort anchorQueryPort,
-			PaymentBenefitRepository paymentBenefitRepository, RetroactiveDiscountGranter retroactiveDiscountGranter,
-			Clock clock) {
-		return new CreateBenefitUseCaseImpl(anchorQueryPort, paymentBenefitRepository, retroactiveDiscountGranter,
-				clock);
+			PaymentBenefitRepository paymentBenefitRepository, PaymentRepository paymentRepository,
+			RetroactiveDiscountGranter retroactiveDiscountGranter, Clock clock) {
+		return new CreateBenefitUseCaseImpl(anchorQueryPort, paymentBenefitRepository, paymentRepository,
+				retroactiveDiscountGranter, clock);
 	}
 
 	@Bean

@@ -54,6 +54,18 @@ public class PaymentBenefit {
 	@Column(name = "student_id")
 	private UUID studentId;
 
+	/**
+	 * The charge (adeudo) the staff selected when granting this discount.
+	 *
+	 * <p>Staff grant a discount on a specific debt of the person — they look the
+	 * person up, list their charges and pick one — so the discount is tied to
+	 * that {@code payment} row. The anchor and {@link #conceptCode} are copied
+	 * from it. {@code null} only for discounts granted before this link
+	 * existed, which still resolve by {@code (anchor, conceptCode)}.
+	 */
+	@Column(name = "payment_id")
+	private UUID paymentId;
+
 	@Column(name = "scope_concept_code", nullable = false, length = 50)
 	private String conceptCode;
 
@@ -109,7 +121,19 @@ public class PaymentBenefit {
 	public PaymentBenefit(UUID candidateId, UUID studentId, String conceptCode, UUID periodId, UUID generationId,
 			BenefitMode mode, BigDecimal percent, BigDecimal amount, LocalDate validFrom, LocalDate validTo, String reason,
 			UUID grantedById, String grantedByName, Instant createdAt) {
+		this(null, candidateId, studentId, conceptCode, periodId, generationId, mode, percent, amount, validFrom,
+				validTo, reason, grantedById, grantedByName, createdAt);
+	}
+
+	/**
+	 * A discount granted on a specific charge ({@code paymentId}); anchor and
+	 * concept are the charge's.
+	 */
+	public PaymentBenefit(UUID paymentId, UUID candidateId, UUID studentId, String conceptCode, UUID periodId,
+			UUID generationId, BenefitMode mode, BigDecimal percent, BigDecimal amount, LocalDate validFrom,
+			LocalDate validTo, String reason, UUID grantedById, String grantedByName, Instant createdAt) {
 		validateMode(mode, percent, amount);
+		this.paymentId = paymentId;
 		Payment.requireSingleAnchor(candidateId, studentId);
 		this.candidateId = candidateId;
 		this.studentId = studentId;
@@ -226,6 +250,10 @@ public class PaymentBenefit {
 
 	public UUID getStudentId() {
 		return studentId;
+	}
+
+	public UUID getPaymentId() {
+		return paymentId;
 	}
 
 	public String getConceptCode() {

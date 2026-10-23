@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
 import mx.edu.utez.sisa.finance.domain.model.Payment;
+import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -65,7 +66,10 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 	}
 
 	@Override
-	public boolean existsByBenefitId(UUID benefitId) {
-		return jpaRepository.existsByBenefitId(benefitId);
+	public boolean isBenefitSettled(UUID benefitId) {
+		return jpaRepository.existsByBenefitIdAndStatusIn(benefitId, List.of(
+				PaymentStatus.PAID,
+				PaymentStatus.PARTIAL,
+				PaymentStatus.EXEMPT));
 	}
 }

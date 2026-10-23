@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
-import mx.edu.utez.sisa.academic_config.domain.model.PaymentConceptType;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentChannel;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntryMethod;
@@ -100,7 +99,7 @@ class RegisterPaymentEntryUseCaseImplTest {
 	void abonoAboveBalance_fails() {
 		UUID paymentId = UUID.randomUUID();
 		when(paymentRepository.findByIdForUpdate(paymentId))
-				.thenReturn(Optional.of(payment(paymentId, "1000.00", PaymentStatus.QUOTED)));
+				.thenReturn(Optional.of(payment(paymentId, "1000.00", PaymentStatus.PENDING)));
 		when(paymentEntryRepository.sumAmountByPaymentId(any())).thenReturn(new BigDecimal("800.00"));
 
 		assertThatThrownBy(() -> useCase.registerEntry(command(paymentId, "300.00")))
@@ -113,7 +112,7 @@ class RegisterPaymentEntryUseCaseImplTest {
 	void partialAbono_setsPartialStatus() {
 		UUID paymentId = UUID.randomUUID();
 		when(paymentRepository.findByIdForUpdate(paymentId))
-				.thenReturn(Optional.of(payment(paymentId, "1000.00", PaymentStatus.QUOTED)));
+				.thenReturn(Optional.of(payment(paymentId, "1000.00", PaymentStatus.PENDING)));
 		when(paymentEntryRepository.sumAmountByPaymentId(any())).thenReturn(BigDecimal.ZERO);
 		when(paymentEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -145,8 +144,8 @@ class RegisterPaymentEntryUseCaseImplTest {
 	}
 
 	private Payment payment(UUID paymentId, String amountDue, PaymentStatus status) {
-		return new Payment(personId, null, "TUITION", PaymentConceptType.PERIODIC_QUOTA, null, null, programId, null,
-				new BigDecimal(amountDue), new BigDecimal(amountDue), null, status, PaymentOrigin.CASHIER, null,
-				Instant.parse("2026-10-01T00:00:00Z"), collectorId);
+		return new Payment(personId, null, "TUITION", null, null, programId, new BigDecimal(amountDue),
+				new BigDecimal(amountDue), null, status, PaymentOrigin.CASHIER, null,
+				Instant.parse("2026-10-01T00:00:00Z"));
 	}
 }

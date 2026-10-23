@@ -32,4 +32,18 @@ public interface ConceptRateQueryPort {
 	 *                  program itself
 	 */
 	Optional<BigDecimal> findActiveAmount(UUID conceptId, UUID programId, AcademicLevel level);
+
+	/**
+	 * The same winning rate as {@link #findActiveAmount}, carrying the
+	 * {@code payment_rate} row id so a frozen quote can point at the exact
+	 * catalog row that priced it.
+	 */
+	Optional<ActiveRate> findActiveRate(UUID conceptId, UUID programId);
+
+	/**
+	 * @param id     the {@code payment_rate} row id
+	 * @param amount the amount that row prices the concept with
+	 */
+	record ActiveRate(UUID id, BigDecimal amount) {
+	}
 }

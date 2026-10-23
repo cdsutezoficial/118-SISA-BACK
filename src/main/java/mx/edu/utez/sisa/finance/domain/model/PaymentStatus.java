@@ -3,7 +3,7 @@ package mx.edu.utez.sisa.finance.domain.model;
 /**
  * Lifecycle of a {@link Payment} (adeudo / cuenta por cobrar).
  *
- * <p>{@code QUOTED} is a freshly created debt with no abonos; {@code PARTIAL}
+ * <p>{@code PENDING} is a freshly created debt with no abonos; {@code PARTIAL}
  * has abonos that do not yet cover {@code amountDue}; {@code PAID} is settled.
  * {@code EXEMPT} is the deliberate $0 case: a {@code FULL} benefit covers the
  * whole amount, so the payment exists with rastro (a receipt can be tied to the
@@ -13,7 +13,7 @@ package mx.edu.utez.sisa.finance.domain.model;
  * deleting it.
  */
 public enum PaymentStatus {
-	QUOTED,
+	PENDING,
 	PARTIAL,
 	PAID,
 	EXEMPT,
@@ -26,6 +26,6 @@ public enum PaymentStatus {
 	 * letting an abono land on it would invent money the person never owed.
 	 */
 	public boolean acceptsEntries() {
-		return this == QUOTED || this == PARTIAL || this == OVERDUE;
+		return this == PENDING || this == PARTIAL || this == OVERDUE;
 	}
 }

@@ -120,8 +120,12 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(BenefitNotEditableException.class)
 	public ResponseEntity<ErrorResponse> handleBenefitNotEditable(BenefitNotEditableException ex,
 			HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, CODE_BENEFIT_NOT_EDITABLE,
-				"El descuento no se puede editar ni cancelar en su estado actual.", request);
+		// The use cases phrase the reason for the person at the screen ("ya está
+		// pagado", "ya tiene un descuento: edítalo"); a generic line would hide
+		// which of the rules was hit.
+		String message = ex.getMessage() == null || ex.getMessage().isBlank()
+				? "El descuento no se puede editar ni cancelar en su estado actual." : ex.getMessage();
+		return build(HttpStatus.CONFLICT, CODE_BENEFIT_NOT_EDITABLE, message, request);
 	}
 
 	@ExceptionHandler(CreditNotApplicableException.class)

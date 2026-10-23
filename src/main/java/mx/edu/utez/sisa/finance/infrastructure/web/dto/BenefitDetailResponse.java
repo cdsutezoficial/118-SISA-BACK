@@ -15,5 +15,5 @@ import java.util.UUID;
 public record BenefitDetailResponse(UUID id, UUID candidateId, UUID studentId, String conceptCode, UUID periodId,
 		UUID generationId, BenefitMode mode, BigDecimal percent, BigDecimal amount, LocalDate validFrom,
 		LocalDate validTo, BenefitStatus status, String reason, UUID grantedById, String grantedByName,
-		Instant createdAt, boolean inForce) {
+		Instant createdAt, boolean inForce, UUID paymentId) {
 }

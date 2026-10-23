@@ -64,9 +64,14 @@ public class RegisterPaymentEntryUseCaseImpl implements RegisterPaymentEntryUseC
 			throw new PaymentNotPayableException(
 					"Payment does not accept abonos in status " + payment.getStatus() + ": " + payment.getId());
 		}
+		BigDecimal amountDue = payment.getAmountDue();
+		if (amountDue == null) {
+			throw new PaymentNotPayableException(
+					"Payment has no quoted amount yet, start checkout before registering abonos: " + payment.getId());
+		}
 		BigDecimal paidBefore = paymentEntryRepository.sumAmountByPaymentId(payment.getId());
 		BigDecimal paidAfter = paidBefore.add(command.amount());
-		if (paidAfter.compareTo(payment.getAmountDue()) > 0) {
+		if (paidAfter.compareTo(amountDue) > 0) {
 			throw new PaymentNotPayableException("Abono exceeds the remaining balance of payment: " + payment.getId());
 		}
 
@@ -76,12 +81,16 @@ public class RegisterPaymentEntryUseCaseImpl implements RegisterPaymentEntryUseC
 				Instant.now(clock), command.gatewayStatus());
 		paymentEntryRepository.save(entry);
 
-		PaymentStatus newStatus = settlementDecider.decide(payment.getAmountDue(), paidAfter);
+		PaymentStatus newStatus = settlementDecider.decide(amountDue, paidAfter);
 		payment.settle(paidAfter, newStatus);
 		Payment saved = paymentRepository.save(payment);
 
+		// A discount that priced a charge now fully paid has been consumed: it
+		// becomes USED and, with it, immutable (no edit, no cancel).
 		BenefitSummary benefit = payment.getBenefitId() == null ? null
-				: BenefitSummaries.from(paymentBenefitRepository.findById(payment.getBenefitId()).orElse(null));
+				: BenefitSummaries.from(newStatus == PaymentStatus.PAID
+						? BenefitUsage.markUsed(paymentBenefitRepository, payment.getBenefitId())
+						: paymentBenefitRepository.findById(payment.getBenefitId()).orElse(null));
 		return CreatePaymentUseCaseImpl.toResult(saved, benefit);
 	}
 

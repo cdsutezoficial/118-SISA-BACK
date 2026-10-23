@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 
 /**
  * Decisor de saldo (R7): given the effective {@code amountDue} and the abono
- * total, decides the adeudo's next status — {@code QUOTED} (nothing paid),
+ * total, decides the adeudo's next status — {@code PENDING} (nothing paid),
  * {@code PARTIAL}, or {@code PAID}.
  *
  * <p>The doc states R7 as "amountPaid + descuento vs amountDue". That is the
@@ -34,6 +34,6 @@ public class PaymentSettlementDecider {
 		if (amountPaid.signum() > 0) {
 			return PaymentStatus.PARTIAL;
 		}
-		return PaymentStatus.QUOTED;
+		return PaymentStatus.PENDING;
 	}
 }

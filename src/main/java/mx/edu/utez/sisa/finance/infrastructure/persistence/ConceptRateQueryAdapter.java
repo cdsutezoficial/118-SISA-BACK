@@ -43,6 +43,13 @@ public class ConceptRateQueryAdapter implements ConceptRateQueryPort {
 				PaymentRateStatus.ACTIVE));
 	}
 
+	@Override
+	public Optional<ActiveRate> findActiveRate(UUID conceptId, UUID programId) {
+		return rateLookupJpaRepository
+				.findRatesPricableForProgram(conceptId, programId, PaymentRateStatus.ACTIVE).stream()
+				.min(PRECEDENCE).map(rate -> new ActiveRate(rate.getId(), rate.getAmount()));
+	}
+
 	static Optional<BigDecimal> pickAmount(List<PaymentRate> candidates) {
 		return candidates.stream().min(PRECEDENCE).map(PaymentRate::getAmount);
 	}

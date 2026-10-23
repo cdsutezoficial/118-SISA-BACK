@@ -28,6 +28,10 @@ public interface PaymentBenefitJpaRepository extends JpaRepository<PaymentBenefi
 	List<PaymentBenefit> findByStudentIdAndConceptCodeIgnoreCaseAndStatus(UUID studentId, String conceptCode,
 			BenefitStatus status);
 
+	List<PaymentBenefit> findByPaymentIdAndStatus(UUID paymentId, BenefitStatus status);
+
+	List<PaymentBenefit> findByPaymentIdOrderByCreatedAtDesc(UUID paymentId);
+
 	/**
 	 * Filterable query backing the manager list and the discount report. Every
 	 * criterion is optional ({@code null} = "any"); the concept-code match is

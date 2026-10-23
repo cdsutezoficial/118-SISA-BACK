@@ -57,9 +57,24 @@ public class RegisterExemptionUseCaseImpl implements RegisterExemptionUseCase {
 		}
 		Payment payment = paymentRepository.findByIdForUpdate(command.paymentId())
 				.orElseThrow(() -> new PaymentNotFoundException("Payment not found: " + command.paymentId()));
-		if (payment.getStatus() != PaymentStatus.EXEMPT) {
+		boolean frozenAtZero = payment.getStatus() == PaymentStatus.PENDING && payment.getAmountDue() != null
+				&& payment.getAmountDue().signum() == 0 && payment.getAmountPaid().signum() == 0;
+		if (payment.getStatus() != PaymentStatus.EXEMPT && !frozenAtZero) {
 			throw new PaymentNotPayableException(
 					"Only EXEMPT payments take an exemption entry, current status: " + payment.getStatus());
+		}
+		boolean alreadyBooked = paymentEntryRepository.findByPaymentIdOrderByPaidAtAsc(payment.getId()).stream()
+				.anyMatch(existing -> existing.getMethod() == PaymentEntryMethod.EXEMPTION);
+		if (alreadyBooked) {
+			// Idempotent: a retried confirmation must not book a second $0 entry.
+			return CreatePaymentUseCaseImpl.toResult(payment, BenefitSummaries.from(payment.getBenefitId() == null
+					? null : paymentBenefitRepository.findById(payment.getBenefitId()).orElse(null)));
+		}
+		if (frozenAtZero) {
+			// A FULL discount frozen at checkout: the charge closes as EXEMPT now,
+			// together with the $0 entry that is its receipt.
+			payment.markExempt();
+			paymentRepository.save(payment);
 		}
 
 		PaymentEntry entry = new PaymentEntry(payment.getId(), ZERO, PaymentEntryMethod.EXEMPTION,
@@ -68,7 +83,7 @@ public class RegisterExemptionUseCaseImpl implements RegisterExemptionUseCase {
 		paymentEntryRepository.save(entry);
 
 		BenefitSummary benefit = payment.getBenefitId() == null ? null
-				: BenefitSummaries.from(paymentBenefitRepository.findById(payment.getBenefitId()).orElse(null));
+				: BenefitSummaries.from(BenefitUsage.markUsed(paymentBenefitRepository, payment.getBenefitId()));
 		return CreatePaymentUseCaseImpl.toResult(payment, benefit);
 	}
 }
