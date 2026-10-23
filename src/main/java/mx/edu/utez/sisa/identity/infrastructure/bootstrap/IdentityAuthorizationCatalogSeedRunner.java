@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.identity.infrastructure.bootstrap;
 
+import java.util.stream.Collectors;
 import mx.edu.utez.sisa.identity.domain.model.Permission;
 import mx.edu.utez.sisa.identity.domain.model.Role;
 import mx.edu.utez.sisa.identity.domain.model.RolePermission;
@@ -189,7 +190,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 
 			Set<UUID> existingPermissionIds = rolePermissionRepository.findByRoleId(role.getId()).stream()
 					.map(RolePermission::getPermissionId)
-					.collect(java.util.stream.Collectors.toSet());
+					.collect(Collectors.toSet());
 			List<RolePermission> missingAssignments = entry.getValue().stream().map(permissionsByKey::get)
 					.filter(permission -> permission != null && !existingPermissionIds.contains(permission.getId()))
 					.map(permission -> new RolePermission(role.getId(), permission.getId())).toList();
@@ -206,7 +207,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 	private static Map<RoleType, Set<String>> defaultPermissionsByRole() {
 		Map<RoleType, Set<String>> permissionsByRole = new EnumMap<>(RoleType.class);
 		Set<String> allPermissions = DEFAULT_PERMISSIONS.stream().map(PermissionSeed::key)
-				.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+				.collect(Collectors.toCollection(LinkedHashSet::new));
 		permissionsByRole.put(RoleType.ADMIN, allPermissions);
 
 		permissionsByRole.put(RoleType.SERVICIOS_ESCOLARES, orderedSet(
@@ -232,7 +233,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 				"PAYMENT_RATES_CREATE", "PAYMENT_AREAS_READ", "PAYMENT_AREAS_CREATE", "PAYMENT_AREAS_UPDATE",
 				"PAYMENT_AREAS_CHANGE_STATUS", "PAYMENTS_READ", "PAYMENTS_QUOTE", "PAYMENTS_CREATE",
 				"PAYMENTS_SETTLE", "BENEFITS_READ", "BENEFITS_CREATE", "BENEFITS_UPDATE", "BENEFITS_CANCEL",
-				"BENEFITS_REPORT", "STATES_READ", "MUNICIPALITIES_READ"));
+				"BENEFITS_REPORT", "STATES_READ", "MUNICIPALITIES_READ", "CANDIDATES_READ"));
 
 		permissionsByRole.put(RoleType.GESTOR_ACADEMICO, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.DIRECTOR_DIVISION, orderedSet("STATES_READ", "MUNICIPALITIES_READ",

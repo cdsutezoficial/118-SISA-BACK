@@ -239,8 +239,11 @@ public class SecurityFilterConfig {
 						// public "/candidates/*" matcher above (a trailing "/{segment}" is
 						// required), so it must be declared explicitly. ADMIN bypasses the
 						// fine-grained layer; SE/Director go through CANDIDATES_READ.
+						// Finanzas too (2026-10-22): it grants discounts on a
+						// candidate's charges, and finds the candidate by folio/CURP
+						// here. List only — the detail below stays SE/Director.
 						.requestMatchers(HttpMethod.GET, "/candidates")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
 						// Staff candidate detail. Two segments deep, so the public
 						// "/candidates/*" matcher above does not reach it either.
 						.requestMatchers(HttpMethod.GET, "/candidates/*/detail")
