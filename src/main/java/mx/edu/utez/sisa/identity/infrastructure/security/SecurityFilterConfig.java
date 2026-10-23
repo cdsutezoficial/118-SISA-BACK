@@ -234,7 +234,8 @@ public class SecurityFilterConfig {
 							"/candidates/*/payments/confirm", "/candidates/*/payments/checkout",
 							"/candidates/*/payments/release")
 					.permitAll()
-						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
+						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf",
+								"/candidates/*/payment-access").permitAll()
 						// Staff candidate list. Exact "/candidates" — NOT covered by the
 						// public "/candidates/*" matcher above (a trailing "/{segment}" is
 						// required), so it must be declared explicitly. ADMIN bypasses the

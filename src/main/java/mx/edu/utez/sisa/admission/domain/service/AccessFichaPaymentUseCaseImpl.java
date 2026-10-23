@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.util.UUID;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
@@ -75,6 +76,16 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 		public PaymentAccess access(String folio, String curpSuffix) {
 		Candidate candidate = resolveCandidate(folio);
 		verifyCurpSuffix(candidate, curpSuffix);
+		return paymentAccessOf(candidate);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public PaymentAccess accessById(UUID candidateId) {
+		Candidate candidate = candidateId == null ? null : candidateRepository.findById(candidateId).orElse(null);
+		if (candidate == null) {
+			throw notFound();
+		}
 		return paymentAccessOf(candidate);
 	}
 

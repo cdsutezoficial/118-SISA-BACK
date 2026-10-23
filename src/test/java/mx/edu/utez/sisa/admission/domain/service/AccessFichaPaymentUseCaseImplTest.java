@@ -377,6 +377,33 @@ class AccessFichaPaymentUseCaseImplTest {
 		assertThat(access.paidAt()).isNotNull();
 	}
 
+	/**
+	 * The portal re-reads the ficha by id on every load, and each read prices it
+	 * again: a tariff changed between two reads is what the second one shows.
+	 */
+	@Test
+	void accessById_pricesTheFichaLiveOnEveryRead() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.of(configInfo()));
+
+		assertThat(useCase.accessById(CANDIDATE_ID).amount()).isEqualByComparingTo("500.00");
+
+		when(fichaPaymentPort.quote(CHARGE_ID)).thenReturn(new FichaPaymentPort.FichaQuote(CHARGE_ID, "FICHA",
+				"Ficha", null, new BigDecimal("650.00"), BigDecimal.ZERO.setScale(2), new BigDecimal("650.00"), null,
+				false, true, null));
+
+		assertThat(useCase.accessById(CANDIDATE_ID).amount()).isEqualByComparingTo("650.00");
+	}
+
+	@Test
+	void accessById_rejectsAnUnknownCandidate() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> useCase.accessById(CANDIDATE_ID)).isInstanceOf(CandidateNotFoundException.class);
+	}
+
 	@Test
 	void access_rejectsUnknownFolio() {
 		when(candidateRepository.findByFolio(FOLIO)).thenReturn(Optional.empty());

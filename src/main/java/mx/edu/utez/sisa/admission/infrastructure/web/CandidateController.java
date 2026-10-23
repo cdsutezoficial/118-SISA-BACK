@@ -293,6 +293,16 @@ public class CandidateController {
 	}
 
 	/**
+	 * The payment-only view by candidate id, priced live: the portal re-reads
+	 * it on every load of {@code /portal/ficha/pago}, so a tariff or discount
+	 * changed after the applicant looked her ficha up shows on reload.
+	 */
+	@GetMapping("/{id}/payment-access")
+	public ResponseEntity<FichaPaymentAccessResponse> refreshPaymentAccess(@PathVariable UUID id) {
+		return ResponseEntity.ok(FichaPaymentAccessResponse.from(accessFichaPaymentUseCase.accessById(id)));
+	}
+
+	/**
 	 * Confirms the ticket payment ({@code PENDING → PAID}) and transitions the
 	 * candidate to {@code PAID}, then sends the confirmation email (best-effort,
 	 * never blocks the response). The body carries the EVO {@code order.id} and
