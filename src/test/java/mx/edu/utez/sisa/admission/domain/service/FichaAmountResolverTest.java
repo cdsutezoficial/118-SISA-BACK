@@ -57,7 +57,7 @@ class FichaAmountResolverTest {
 	}
 
 	private static PaymentConceptQueryPort.FichaConcept concept(LocalDate from, LocalDate until) {
-		return new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, "Inscripción", from, until);
+		return new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, null, "Inscripción", from, until);
 	}
 
 	/** A concept that exists, is sellable, and has a rate that prices it. */
@@ -144,8 +144,8 @@ class FichaAmountResolverTest {
 	@Test
 	void moreThanOneActiveConceptIs409() {
 		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of(
-				new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, "Inscripción", null, null),
-				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), "Reinscripción", null, null)));
+				new PaymentConceptQueryPort.FichaConcept(CONCEPT_ID, null, "Inscripción", null, null),
+				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), null, "Reinscripción", null, null)));
 
 		assertThatThrownBy(() -> resolver.resolve(PROGRAM_ID, ON_DATE))
 				.isInstanceOf(AmbiguousFichaPaymentConceptException.class)

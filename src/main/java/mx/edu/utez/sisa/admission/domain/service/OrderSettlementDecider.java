@@ -72,7 +72,7 @@ public final class OrderSettlementDecider {
 	 * What one <em>ficha's</em> attempts mean for the quota, folded.
 	 *
 	 * <p>The per-order table above is not a quota decision on its own, and this is why.
-	 * {@code AdmissionPayment#orderId} is overwritten on every retry, so one ficha can
+	  * Every retry opens a new attempt, so one ficha can
 	 * own several attempts at once — the applicant opened a checkout, went back, opened
 	 * another — and the money belongs to the <em>ficha</em>, not to any single attempt.
 	 * Deciding attempt by attempt let an older {@code FAILURE} hand the place back while a

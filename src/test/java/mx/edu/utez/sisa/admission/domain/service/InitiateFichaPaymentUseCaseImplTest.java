@@ -1,17 +1,15 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase.InitiateCheckoutResult;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -21,7 +19,6 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +41,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -86,6 +82,11 @@ class InitiateFichaPaymentUseCaseImplTest {
 	 */
 	private static final BigDecimal LIVE_AMOUNT = new BigDecimal("550.00");
 
+	/** The charge's live quote at the click: tariff in force, no discount. */
+	private static final FichaPaymentPort.FichaQuote LIVE_QUOTE = new FichaPaymentPort.FichaQuote(
+			UUID.fromString("00000000-0000-0000-0000-0000000000c1"), "FICHA-ING", "Inscripción", null, LIVE_AMOUNT,
+			new BigDecimal("0.00"), LIVE_AMOUNT, null, false, false, null);
+
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
 	private static final UUID ADMISSION_CONFIG_ID = UUID.randomUUID();
@@ -105,6 +106,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private static final int DEADLINE_DAYS = 10;
 
+	private static final UUID CHARGE_ID = UUID.randomUUID();
+
 	/**
 	 * A registration date that puts {@link #TODAY} squarely inside the 10-day
 	 * window: day 0 is 2026-09-20, the deadline is 2026-09-30, and the 25th is
@@ -115,9 +118,6 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	@Mock
 	private CandidateRepository candidateRepository;
-
-	@Mock
-	private AdmissionPaymentRepository admissionPaymentRepository;
 
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
@@ -151,25 +151,29 @@ class InitiateFichaPaymentUseCaseImplTest {
 	@Mock
 	private CheckoutSlotClaimer checkoutSlotClaimer;
 
+	/** The ficha's finance charge: frozen at the click, settled at confirmation. */
+	@Mock
+	private FichaPaymentPort fichaPaymentPort;
+
 	private InitiateFichaPaymentUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		// lenient: the 404/409 guard cases throw before the builder is ever consulted
 		lenient().when(orderIdBuilder.build(any())).thenReturn(ORDER_ID);
-		// lenient: only the paths that clear all gates price the checkout
-		lenient().when(fichaAmountResolver.resolve(any(), any()))
-				.thenReturn(new FichaAmountResolver.FichaAmount(LIVE_AMOUNT, "Inscripción"));
+		// lenient: only the paths that clear all gates link and freeze the charge
+				lenient().when(fichaPaymentPort.findCharge(CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)));
+		lenient().when(fichaPaymentPort.freeze(CHARGE_ID)).thenReturn(LIVE_QUOTE);
 		// lenient: only the paths that get past the PAID check resolve the config
 		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
 						ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null, null,
 						LocalDate.of(2026, 9, 1).atStartOfDay(ZONE).toInstant(),
 						LocalDate.of(2026, 9, 30).atStartOfDay(ZONE).toInstant(), 40)));
-		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
-				evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
-				programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
+		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
+				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE),
+				DEADLINE_DAYS, checkoutSlotClaimer);
 	}
 
 	private static Candidate candidate() {
@@ -179,6 +183,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 	private static Candidate candidateRegisteredAt(Instant registeredAt) {
 		Candidate candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
+		candidate.linkFichaPayment(CHARGE_ID);
 		return candidate;
 	}
 
@@ -186,15 +191,13 @@ class InitiateFichaPaymentUseCaseImplTest {
 		return candidateRegisteredAt(day.atTime(18, 0).atZone(ZONE).toInstant());
 	}
 
-	private static AdmissionPayment payment() {
-		return new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA,
-				new BigDecimal("500.00"), "REF-2026-000001", LocalDate.now().plusDays(10));
+	private static FichaPaymentPort.FichaCharge payment() {
+		return FichaTestData.pendingCharge(CHARGE_ID);
 	}
 
 	@Test
 	void successfulCheckoutPersistsSessionAndReturnsCheckoutUrl() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
 						"df66ca1b01"));
@@ -212,7 +215,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 		String expectedReturn = RETURN + "?id=" + CANDIDATE_ID + "&orderId=" + ORDER_ID;
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> ORDER_ID.equals(order.id())
-				&& "REF-2026-000001".equals(order.reference())
+				&& FichaTestData.REFERENCE.equals(order.reference())
 				&& LIVE_AMOUNT.compareTo(order.amount()) == 0 && "MXN".equals(order.currency())
 				&& "Ficha de Admision ADM-2026-000001".equals(order.description())
 				&& expectedReturn.equals(order.returnUrl()) && expectedReturn.equals(order.cancelUrl())));
@@ -220,13 +223,13 @@ class InitiateFichaPaymentUseCaseImplTest {
 		// What this class pins is that the use case hands it exactly the ids Evo
 		// returned — a mismatch here would leave the confirmation flow unable to
 		// find the order it has to verify.
-verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESSION0001BR");
+		verify(checkoutSlotClaimer).persistCheckoutSession(ORDER_ID, "SESSION0001BR");
 	}
 
 	/**
 	 * The description is the text the cardholder reads on their bank statement, and
 	 * a real 3DS capture in the sandbox came back from the gateway as
-	 * {@code "Ficha de AdmisiÃ³n ADM-2026-000003"} — the accented "ó" encoded as
+	 * {@code "Ficha de Admisión ADM-2026-000003"} — the accented "ó" encoded as
 	 * UTF-8 and decoded as Latin-1 somewhere along the way.
 	 *
 	 * <p>This does not pin the exact wording, which is free to change; it pins that
@@ -239,7 +242,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void orderDescriptionIsAsciiSoTheBankStatementCannotShowMojibake() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any()))
 				.thenReturn(new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
@@ -265,12 +267,11 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void twoCheckoutsOfTheSameFichaAreTwoDifferentOrders() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
-				admissionPaymentRepository, evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
-				CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver,
+				evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
+				CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
 				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 
 		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
@@ -285,7 +286,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		// verify an order the applicant already abandoned.
 		ArgumentCaptor<String> orderIds = ArgumentCaptor.forClass(String.class);
 		verify(checkoutSlotClaimer, times(2))
-				.persistCheckoutSession(eq(CANDIDATE_ID), orderIds.capture(), any());
+				.persistCheckoutSession(orderIds.capture(), any());
 		assertThat(orderIds.getAllValues().get(1)).isEqualTo(second);
 	}
 
@@ -293,11 +294,10 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	void appendsCandidateAndOrderToExistingReturnUrlQuery() {
 		String returnWithQuery = RETURN + "?origen=checkout";
 		InitiateFichaPaymentUseCaseImpl customUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
-				admissionPaymentRepository, evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
-				SDK_URL, Set.of(), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
+				evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
+				SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
+				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
@@ -319,7 +319,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void missingPaymentIs404() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateNotFoundException.class)
@@ -328,10 +328,9 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 
 	@Test
 	void alreadyPaidIs409() {
-		AdmissionPayment paid = payment();
-		paid.markPaid("REC-20260924-000001");
+		FichaPaymentPort.FichaCharge paid = FichaTestData.paidCharge(CHARGE_ID);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(paid));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateAlreadyPaidException.class)
@@ -341,7 +340,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void gatewayFailurePropagates() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any()))
 				.thenThrow(new EvoPaymentGatewayException("El proveedor de pagos (EVO) no pudo iniciar el pago en línea: SERVER_BUSY"));
 
@@ -365,10 +363,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		useCase.initiateCheckout(CANDIDATE_ID, null);
 
 		InOrder inOrder = inOrder(checkoutSlotClaimer, evoPaymentsGateway);
-		inOrder.verify(checkoutSlotClaimer).openAttempt(ORDER_ID, CANDIDATE_ID, LIVE_AMOUNT);
-		// The slot is taken after the attempt is on record and before the gateway,
-		// so no failure can leave a claim without an order to reconcile.
-		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE);
 		inOrder.verify(evoPaymentsGateway).initiateCheckoutSession(any());
 	}
 
@@ -380,16 +375,13 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void definitiveGatewayRefusalReleasesTheSlotAndClosesTheAttempt() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenThrow(new EvoPaymentGatewayException(
 				"El proveedor de pagos (EVO) no pudo iniciar el pago en línea: INVALID_REQUEST"));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		// The null claim is what a mocked claimer leaves behind: nothing stamped the row.
-		// What this case pins is the pairing of the release with the close.
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID, null);
+				// Closing the attempt is the release: only an open attempt holds a place.
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 	}
 
@@ -402,14 +394,13 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void ambiguousGatewayFailureKeepsTheClaimAndLeavesTheAttemptOpen() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenThrow(EvoPaymentGatewayException
 				.possiblyCreated("No se pudo contactar al proveedor de pagos (EVO)", null));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer, never()).release(any(), any());
+		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 	}
 
@@ -425,15 +416,15 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	 * window tests below can rely on "today" meaning {@link #TODAY}.
 	 */
 	private InitiateFichaPaymentUseCaseImpl useCaseWithAllowlistAndCancel(String cancelBase) {
-		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
+				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS,
+				checkoutSlotClaimer);
 	}
 
 	private void givenPayableCandidate() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 	}
@@ -525,10 +516,10 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	void withoutAConfiguredCancelUrlItFallsBackToTheResolvedReturnUrl() {
 		givenPayableCandidate();
 
-		new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+		new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, "", SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer).initiateCheckout(CANDIDATE_ID,
+				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer).initiateCheckout(CANDIDATE_ID,
 						"/portal/ficha/pago");
 
 		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
@@ -553,7 +544,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		// session, and leaving the stub unused is itself the assertion — Mockito's
 		// strict mode fails the test if the use case ever reaches Evo.
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		doThrow(new PaymentConceptExpiredException("El pago de la ficha de esta carrera cerró el 20/09/2026."))
 				.when(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
 
@@ -563,7 +553,7 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 				.hasMessageNotContaining("20/09/2026");
 
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
-		verify(admissionPaymentRepository, never()).save(any());
+		verify(fichaPaymentPort, never()).freeze(any());
 	}
 
 	/**
@@ -576,7 +566,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void aMissingConceptIsReportedAsAnAdmissionsConfigurationProblem() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		doThrow(new FichaPaymentConceptNotFoundException("No hay concepto de ficha para el programa."))
 				.when(fichaAmountResolver).requirePayableOn(PROGRAM_ID, TODAY);
 
@@ -599,7 +588,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	void aFichaPastItsPrivateDeadlineIsRefused() {
 		Candidate stale = candidateRegisteredOn(LocalDate.of(2026, 9, 10));
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(stale));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(FichaPaymentExpiredException.class)
@@ -615,7 +603,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	void theFichaIsStillPayableOnItsDeadlineDay() {
 		Candidate onLastDay = candidateRegisteredOn(LocalDate.of(2026, 9, 15));
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(onLastDay));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
@@ -638,7 +625,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void aPaymentAfterTheAdmissionProcessClosedIsRefusedAsExpired() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(admissionConfigClosingOn(LocalDate.of(2026, 9, 20))));
 
@@ -660,7 +646,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void theClosingDayStaysPayableRegardlessOfTimeOfDay() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(admissionConfigClosingOn(TODAY)));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
@@ -695,12 +680,12 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 
 		useCase.initiateCheckout(CANDIDATE_ID, null);
 
-		// The live tariff governs, not the quote deposited at registration (§1.3):
-		// resolve() is consulted for the candidate's program today, the claim is
-		// told the same number (so it is committed before Evo), and that number is
-		// what Evo is asked to charge — not the 500.00 the ficha was issued with.
-		verify(fichaAmountResolver).resolve(PROGRAM_ID, TODAY);
-		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+		// The live price governs (§1.3): the ficha's charge is frozen at the click,
+		// the attempt records that same snapshot (committed before Evo), and that
+		// number is what Evo is asked to charge — not the 500.00 the ficha was
+		// issued with.
+		verify(fichaPaymentPort).freeze(CHARGE_ID);
+		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE);
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
 				LIVE_AMOUNT.compareTo(order.amount()) == 0));
 	}
@@ -711,78 +696,46 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	 * A real claimer, on purpose, because the reprice lives in
 	 * {@code CheckoutSlotClaimer#claim} and not in this use case.
 	 *
-	 * <p>That split is the reason this test exists and why it could not be written
-	 * against the mock the rest of the class uses. {@link #theAmountIsTheOneTheCatalogQuotesAtCheckout()}
-	 * proves the live number reaches the claimer, and
-	 * {@code CheckoutSlotClaimerTest#aFreeSlotIsClaimedAndStamped} proves the claimer
-	 * writes the live number. Both halves pass if the seam between them is broken —
-	 * if the claimer stopped repricing, nothing here would notice, because the mock
-	 * never reprices. What is actually being pinned is the thread: the ficha issued
-	 * at 500.00 is saved at 550.00 by the same checkout, and the order sent to the
-	 * bank is that same 550.00.
-	 *
-	 * <p>The confirmation later compares the bank's capture against
-	 * {@code admission_payment.amount}, so a stale 500.00 there would fail every
-	 * legitimate payment of a re-priced career.
+	 	 * <p>{@link #theAmountIsTheOneTheCatalogQuotesAtCheckout()} proves the live
+	 * number reaches the claimer, and {@code CheckoutSlotClaimerTest} proves the
+	 * claimer writes what it is given. What is pinned here is the thread between
+	 * them: the frozen quote is the attempt's snapshot, and the order sent to the
+	 * bank carries that same amount — the confirmation books the capture with it.
 	 */
 	@Test
-	void theFichaItselfIsRepricedToTheLiveTariffBeforeEvoIsAsked() {
-		AdmissionPayment registeredAtFiveHundred = payment();
+	void theLiveQuoteIsSnapshottedOnTheAttemptBeforeEvoIsAsked() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
-				.thenReturn(Optional.of(registeredAtFiveHundred));
 		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
 				.thenReturn(new AdmissionQuotaPort.QuotaState(40));
-		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(any(), any(), any(), anyInt()))
-				.thenReturn(0L);
+		when(admissionQuotaPort.countOccupiedExcluding(any(), any(), any())).thenReturn(0L);
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
 		useCaseWithRealClaimer().initiateCheckout(CANDIDATE_ID, null);
 
-		// The row that leaves the backend is the registration row, repriced — not a
-		// second row and not the untouched quote.
-		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
-		verify(admissionPaymentRepository, times(2)).save(saved.capture());
-		AdmissionPayment stored = saved.getAllValues().get(0);
-		assertThat(saved.getAllValues()).allSatisfy(same ->
-				assertThat(same).isSameAs(registeredAtFiveHundred));
-		assertThat(stored.getAmount()).isEqualByComparingTo(LIVE_AMOUNT);
-		assertThat(stored.getCheckoutClaimedAt()).isNotNull();
+		// The attempt — the row that holds the place — carries the frozen live quote,
+		// and that same number is what the bank is asked for.
+		ArgumentCaptor<CheckoutAttempt> attempt = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(attempt.capture());
+		assertThat(attempt.getValue().getAmount()).isEqualByComparingTo(LIVE_AMOUNT);
+		assertThat(attempt.getValue().getPaymentId()).isEqualTo(LIVE_QUOTE.financePaymentId());
+		assertThat(attempt.getValue().getCandidateId()).isEqualTo(CANDIDATE_ID);
 		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
 				LIVE_AMOUNT.compareTo(order.amount()) == 0));
 	}
 
 	/**
-	 * The retry case, with the claimer real and the payment row shared.
-	 *
-	 * <p>Two properties are being pinned, and they are separate:
-	 * <ul>
-	 * <li><b>One payment row.</b> Every {@code save} carries the <em>same</em>
-	 * instance the repository handed out, so a second row was never built. The
-	 * registration row is where the receipt, the amount and the estado live; a retry
-	 * that inserted a fresh one would leave the confirmation reading an empty
-	 * payment while the applicant had in fact already paid.</li>
-	 * <li><b>Two attempts, append-only.</b> Each checkout opens its own
-	 * {@code CheckoutAttempt} under its own {@code orderId}, both still open. The
-	 * payment keeps only the latest order, but the history keeps both — that is what
-	 * lets reconciliation ask the bank about the order the applicant actually
-	 * abandoned.</li>
-	 * </ul>
-	 *
-	 * <p>The uniqueness of {@code order_id} itself is a database constraint and is
-	 * not provable here; what a unit test can prove is the behaviour that keeps it
-	 * satisfiable, which is the point of the test.
+	 * The retry case, with the claimer real: one charge, two attempts, append-only.
+	 * Each checkout opens its own attempt under its own {@code orderId}, both open
+	 * and both hanging from the same finance charge — that is what lets
+	 * reconciliation ask the bank about the order the applicant abandoned.
 	 */
 	@Test
-	void aRetryReusesThePaymentRowAndAppendsASecondAttempt() {
-		AdmissionPayment theRow = payment();
+	void aRetryReusesTheChargeAndAppendsASecondAttempt() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(theRow));
 		when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))
 				.thenReturn(new AdmissionQuotaPort.QuotaState(40));
-		when(admissionPaymentRepository.countOccupiedByConfigIdExcludingCandidate(any(), any(), any(), anyInt()))
-				.thenReturn(0L);
+		when(admissionQuotaPort.countOccupiedExcluding(any(), any(), any())).thenReturn(0L);
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
 
@@ -793,20 +746,14 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
 
 		assertThat(first).isNotEqualTo(second);
-
-		// Same instance every time: two claims and two session writes, one row.
-		ArgumentCaptor<AdmissionPayment> saved = ArgumentCaptor.forClass(AdmissionPayment.class);
-		verify(admissionPaymentRepository, times(4)).save(saved.capture());
-		assertThat(saved.getAllValues()).allSatisfy(same -> assertThat(same).isSameAs(theRow));
-		// The payment keeps the newest order so the confirmation verifies the order
-		// the applicant is actually returning from.
-		assertThat(theRow.getOrderId()).isEqualTo(second);
+		verify(fichaPaymentPort, never()).raiseFichaDebt(any());
 
 		ArgumentCaptor<CheckoutAttempt> attempts = ArgumentCaptor.forClass(CheckoutAttempt.class);
 		verify(checkoutAttemptRepository, times(2)).save(attempts.capture());
 		List<CheckoutAttempt> history = attempts.getAllValues();
 		assertThat(history).extracting(CheckoutAttempt::getOrderId).containsExactly(first, second);
 		assertThat(history).allSatisfy(attempt -> {
+			assertThat(attempt.getPaymentId()).isEqualTo(LIVE_QUOTE.financePaymentId());
 			assertThat(attempt.isOpen()).isTrue();
 			assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.STARTED);
 			assertThat(attempt.getClosedAt()).isNull();
@@ -814,26 +761,24 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	}
 
 	/**
-	 * The real claimer, wired to the same repositories this class mocks for the
-	 * orchestration tests. Kept separate from {@link #useCase} so the majority of
-	 * the file keeps asserting the use case's own sequence of calls.
+	 * The real claimer, wired to the same mocks this class uses for the
+	 * orchestration tests.
 	 */
 	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer() {
 		return useCaseWithRealClaimer(orderIdBuilder);
 	}
 
 	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer(OrderIdBuilder orderIdBuilder) {
-		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, admissionPaymentRepository,
-				candidateRepository, checkoutAttemptRepository, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS);
-		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository, evoPaymentsGateway,
+		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository,
+				checkoutAttemptRepository, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), 15);
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort,
-				fichaAmountResolver, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer);
+				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer);
 	}
 
 	@Test
 	void aFichaWhoseAdmissionConfigVanishedIsRejectedRatherThanPaid() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
@@ -844,10 +789,9 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 
 	@Test
 	void anAlreadyPaidFichaIsRejectedBeforeTheWindowIsEvenConsulted() {
-		AdmissionPayment paid = payment();
-		paid.markPaid("REC-1");
+		FichaPaymentPort.FichaCharge paid = FichaTestData.paidCharge(CHARGE_ID);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(paid));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(paid));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(CandidateAlreadyPaidException.class);
@@ -874,9 +818,9 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		useCase.initiateCheckout(CANDIDATE_ID, null);
 
 		InOrder inOrder = inOrder(checkoutSlotClaimer, evoPaymentsGateway);
-		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+		inOrder.verify(checkoutSlotClaimer).claim(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE);
 		inOrder.verify(evoPaymentsGateway).initiateCheckoutSession(any());
-		inOrder.verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESSION0001BR");
+		inOrder.verify(checkoutSlotClaimer).persistCheckoutSession(ORDER_ID, "SESSION0001BR");
 	}
 
 	/**
@@ -886,16 +830,15 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void aFullQuotaIsRefusedBeforeEvoIsCalled() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		doThrow(new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó."))
-				.when(checkoutSlotClaimer).claim(CANDIDATE_ID, LIVE_AMOUNT);
+				.when(checkoutSlotClaimer).claim(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE);
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class)
 				.hasMessage("El cupo de esta carrera se agotó.");
 
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
-		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any(), any());
+		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any());
 	}
 
 	/**
@@ -905,25 +848,15 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	 */
 	@Test
 	void aDefinitiveGatewayRefusalHandsTheSlotBack() {
-		AdmissionPayment claimed = payment();
-		claimed.claimCheckoutSlot();
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		// Read once to open the checkout and again on the refusal path: the second read is
-		// where the claim stamped by `claim` shows up, and it is the value the release is
-		// allowed to compare against. Handing over the first read's value — a ficha with no
-		// claim at all — is what a compare-and-set refuses, so the two reads have to differ
-		// here or the test would pass without proving the re-read happens.
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID))
-				.thenReturn(Optional.of(payment()), Optional.of(claimed));
 		when(evoPaymentsGateway.initiateCheckoutSession(any()))
 				.thenThrow(new EvoPaymentGatewayException("EVO rechazó la operación: ORDER_ALREADY_EXISTS"));
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer).release(CANDIDATE_ID, claimed.getCheckoutClaimedAt());
 		verify(checkoutSlotClaimer).closeAttempt(any(), eq(CheckoutAttemptCloseReason.ORDER_NOT_CREATED));
-		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any(), any());
+		verify(checkoutSlotClaimer, never()).persistCheckoutSession(any(), any());
 	}
 
 	/**
@@ -937,7 +870,6 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 	@Test
 	void anAmbiguousGatewayFailureKeepsTheClaim() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenThrow(
 				EvoPaymentGatewayException.possiblyCreated("No se pudo contactar al proveedor de pagos (EVO): timeout",
 						null));
@@ -945,6 +877,44 @@ verify(checkoutSlotClaimer).persistCheckoutSession(CANDIDATE_ID, ORDER_ID, "SESS
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(EvoPaymentGatewayException.class);
 
-		verify(checkoutSlotClaimer, never()).release(any(), any());
+		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
+	}
+
+	// ── discounts: priced at the click, 100 % closes without EVO ──
+
+	/**
+	 * A discount granted after registration reaches the applicant: the checkout
+	 * freezes the charge's live quote (tariff − discount) and that is the amount
+	 * EVO is asked for.
+	 */
+	@Test
+	void aDiscountInForceAtTheClickIsWhatEvoCharges() {
+		givenPayableCandidate();
+		FichaPaymentPort.FichaQuote discounted = new FichaPaymentPort.FichaQuote(CHARGE_ID, "FICHA-ING",
+				"Inscripción", UUID.randomUUID(), LIVE_AMOUNT, new BigDecimal("137.50"), new BigDecimal("412.50"),
+				UUID.randomUUID(), false, false, null);
+		when(fichaPaymentPort.freeze(CHARGE_ID)).thenReturn(discounted);
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		verify(checkoutSlotClaimer).claim(CANDIDATE_ID, ORDER_ID, discounted);
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				new BigDecimal("412.50").compareTo(order.amount()) == 0));
+	}
+
+	/** A 100 % discount settles the ficha as exempt and never opens an EVO session. */
+	@Test
+	void aFullDiscountSettlesTheFichaWithoutTheGateway() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		FichaPaymentPort.FichaQuote exempt = new FichaPaymentPort.FichaQuote(CHARGE_ID, "FICHA-ING", "Inscripción",
+				null, LIVE_AMOUNT, LIVE_AMOUNT, new BigDecimal("0.00"), UUID.randomUUID(), true, false, null);
+		when(fichaPaymentPort.freeze(CHARGE_ID)).thenReturn(exempt);
+
+		var result = useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		assertThat(result.exempt()).isTrue();
+		verify(checkoutSlotClaimer).settleExempt(CANDIDATE_ID, exempt);
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
 	}
 }

@@ -1,14 +1,16 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
@@ -42,37 +44,70 @@ import java.util.UUID;
  */
 public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPaymentUseCase {
 
+	/** Who collected the money, as the receipt shows it: the online checkout or the system itself. */
+	private static final String ONLINE_COLLECTOR = "Pago en línea";
+
+	private static final String SYSTEM_COLLECTOR = "Sistema";
+
 	private final CandidateRepository candidateRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+
+	private final FichaPaymentPort fichaPaymentPort;
+
+	private final CheckoutAttemptRepository checkoutAttemptRepository;
+
 
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository) {
+			FichaPaymentPort fichaPaymentPort,
+			CheckoutAttemptRepository checkoutAttemptRepository) {
 		this.candidateRepository = candidateRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
+		this.checkoutAttemptRepository = checkoutAttemptRepository;
 	}
 
 	@Override
 	@Transactional
-	public ConfirmPaymentResult confirm(UUID candidateId) {
+	public ConfirmPaymentResult confirm(UUID candidateId, String capturedOrderId) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId)
+		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
-
-		if (!payment.markPaid(generateReceipt(candidate.getFolio()))) {
+		if (charge.isPaid()) {
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
 
+		// Same transaction: the finance charge and the candidate are settled
+		// together, or neither is. The numbers booked are the captured
+		// attempt's, when there is one; the receipt goes on the abono.
+		String receipt = generateReceipt(candidate.getFolio());
+		CheckoutAttempt attempt = capturedOrderId == null ? null
+				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
+		FichaPaymentPort.SettledFicha settled = fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(
+				charge.financePaymentId(), chargedBy(attempt), attempt != null, capturedOrderId, receipt,
+				charge.referenceNumber(), null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR));
+
 		candidate.markPaid();
-		admissionPaymentRepository.save(payment);
 		candidateRepository.save(candidate);
 
+		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
 		return new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				payment.getReferenceNumber(), payment.getAmount(), payment.getPaidAt(), payment.getReceiptNumber());
+				charge.referenceNumber(), settled.amountPaid(), paid.paidAt() != null ? paid.paidAt() : Instant.now(),
+				paid.receiptNumber() != null ? paid.receiptNumber() : receipt);
+	}
+
+	/**
+	 * The attempt's snapshot, or {@code null} when it has none (no attempt, or
+	 * one opened before snapshots existed) — finance then prices live.
+	 */
+	private static FichaPaymentPort.ChargedAmounts chargedBy(CheckoutAttempt attempt) {
+		if (attempt == null || !attempt.hasSnapshot()) {
+			return null;
+		}
+		return new FichaPaymentPort.ChargedAmounts(attempt.getRateId(), attempt.getOriginalAmount(),
+				attempt.getDiscountAmount(), attempt.getAmount(), attempt.getBenefitId());
 	}
 
 	/** {@code REC-{yyyyMMdd}-{folioSeq}} — minted at payment time; see the class javadoc. */

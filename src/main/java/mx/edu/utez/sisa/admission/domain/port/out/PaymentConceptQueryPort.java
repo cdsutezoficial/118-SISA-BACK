@@ -74,6 +74,7 @@ public interface PaymentConceptQueryPort {
 	 * missed; a message that only said "not available" would leave the applicant
 	 * with nothing to act on.
 	 */
-	record FichaConcept(UUID id, String name, LocalDate availableFrom, LocalDate availableUntil) {
+	record FichaConcept(UUID id, String code, String name, LocalDate availableFrom, LocalDate availableUntil) {
+
 	}
 }

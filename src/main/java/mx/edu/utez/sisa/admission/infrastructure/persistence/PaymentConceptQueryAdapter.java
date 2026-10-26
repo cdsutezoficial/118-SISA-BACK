@@ -109,6 +109,6 @@ public class PaymentConceptQueryAdapter implements PaymentConceptQueryPort {
 	 * different shapes for the same record.
 	 */
 	private static FichaConcept toFichaConcept(PaymentConcept c) {
-		return new FichaConcept(c.getId(), c.getName(), c.getAvailableFrom(), c.getAvailableUntil());
+		return new FichaConcept(c.getId(), c.getCode(), c.getName(), c.getAvailableFrom(), c.getAvailableUntil());
 	}
 }

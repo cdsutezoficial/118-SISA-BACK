@@ -23,10 +23,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
@@ -40,6 +40,7 @@ import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseI
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ReconcileFichaPaymentsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ExpireStaleFichaPaymentsUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.FichaDisplayPrice;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
@@ -60,7 +61,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -184,23 +184,30 @@ public class UseCaseConfig {
 	@Bean
 	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
+			FichaPaymentPort fichaPaymentPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
 			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
 				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), clock, fichaDeadlineDays);
 	}
 
 	/**
-	 * One resolver shared by the registration command (which persists the ficha
-	 * amount) and the public quote endpoint (which previews it), so the previewed
-	 * price and the charged price can never diverge.
+	 	 * One resolver for the program's ADMISSION concept: registration raises the
+	 * ficha's charge for its code, the checkout re-checks its window, and the
+	 * public quote endpoint previews its list price.
 	 */
 	@Bean
-	public FichaAmountResolver fichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort) {
+		public FichaAmountResolver fichaAmountResolver(PaymentConceptQueryPort paymentConceptQueryPort) {
 		return new FichaAmountResolver(paymentConceptQueryPort);
+	}
+
+	/** The ficha's price as every screen shows it: its finance charge, priced live. */
+	@Bean
+	public FichaDisplayPrice fichaDisplayPrice(FichaPaymentPort fichaPaymentPort,
+			FichaAmountResolver fichaAmountResolver, Clock clock) {
+		return new FichaDisplayPrice(fichaPaymentPort, fichaAmountResolver, clock);
 	}
 
 	@Bean
@@ -212,16 +219,19 @@ public class UseCaseConfig {
 
 	@Bean
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository) {
-		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository);
+			FichaPaymentPort fichaPaymentPort,
+			CheckoutAttemptRepository checkoutAttemptRepository) {
+		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
+				checkoutAttemptRepository);
 	}
 
 	@Bean
 	public ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			FichaPaymentPort fichaPaymentPort,
+			EvoPaymentsGatewayPort evoPaymentsGateway,
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
 			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
-		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, admissionPaymentRepository,
+		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
 				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
 	}
 
@@ -239,9 +249,10 @@ public class UseCaseConfig {
 	@Bean
 	public ExpireStaleFichaPaymentsUseCase expireStaleFichaPaymentsUseCase(CandidateRepository candidateRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
-			@Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays) {
+			@Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays,
+			FichaPaymentPort fichaPaymentPort) {
 		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, clock,
-				deadlineDays);
+				deadlineDays, fichaPaymentPort);
 	}
 
 	@Bean
@@ -270,9 +281,10 @@ public class UseCaseConfig {
 	 */
 	@Bean
 	public ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase(
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			FichaPaymentPort fichaPaymentPort,
+			EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer, CheckoutAttemptRepository checkoutAttemptRepository) {
-		return new ReleaseFichaPaymentSlotUseCaseImpl(admissionPaymentRepository, evoPaymentsGateway,
+		return new ReleaseFichaPaymentSlotUseCaseImpl(fichaPaymentPort, evoPaymentsGateway,
 				checkoutSlotClaimer, checkoutAttemptRepository);
 	}
 
@@ -287,19 +299,21 @@ public class UseCaseConfig {
 	@Bean
 	public ReconcileFichaPaymentsUseCase reconcileFichaPaymentsUseCase(
 			CheckoutAttemptRepository checkoutAttemptRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			FichaPaymentPort fichaPaymentPort,
+			EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
-		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, admissionPaymentRepository,
+		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
 				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
 	}
 
 	@Bean
 	public InitiateFichaPaymentUseCase initiateFichaPaymentUseCase(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, EvoConfig evoConfig,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
-			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
+			FichaPaymentPort fichaPaymentPort, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths,
 			@Value("${sisa.security.password-reset.frontend-base-url:}") String frontendBaseUrl) {
@@ -307,10 +321,10 @@ public class UseCaseConfig {
 		Set<String> allowlist = Arrays.stream(allowedReturnPaths.split(",")).map(String::trim)
 				.filter(path -> !path.isEmpty()).map(path -> frontendBasePath + path)
 				.collect(Collectors.toUnmodifiableSet());
-		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, admissionPaymentRepository,
+		return new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
-				fichaAmountResolver, clock, fichaDeadlineDays, checkoutSlotClaimer);
+				fichaAmountResolver, fichaPaymentPort, clock, fichaDeadlineDays, checkoutSlotClaimer);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */
@@ -329,14 +343,16 @@ public class UseCaseConfig {
 	@Bean
 	public GetCandidateFichaUseCase getCandidateFichaUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
+			FichaPaymentPort fichaPaymentPort,
+			CheckoutAttemptRepository checkoutAttemptRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			FichaAmountResolver fichaAmountResolver, Clock clock,
+			FichaAmountResolver fichaAmountResolver, FichaDisplayPrice fichaDisplayPrice, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
-				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, clock, fichaDeadlineDays);
+				fichaPaymentPort, checkoutAttemptRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
+				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, fichaDisplayPrice, clock,
+				fichaDeadlineDays);
 	}
 
 	/**
@@ -349,12 +365,12 @@ public class UseCaseConfig {
 	@Bean
 	public AccessFichaPaymentUseCase accessFichaPaymentUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
+			FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, Clock clock,
+			FichaAmountResolver fichaAmountResolver, FichaDisplayPrice fichaDisplayPrice, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
 		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver, clock,
-				fichaDeadlineDays);
+				fichaPaymentPort, programAdmissionConfigQueryPort, fichaAmountResolver, fichaDisplayPrice,
+				clock, fichaDeadlineDays);
 	}
 }

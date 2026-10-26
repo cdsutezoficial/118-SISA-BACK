@@ -30,13 +30,15 @@ public record CandidateFichaResponse(UUID candidateId, String folio, CandidateSt
 		Instant registeredAt, UUID admissionConfigId, String programName, String curp, String firstName,
 		String lastName1, String lastName2, String email, String referenceNumber, BigDecimal amount,
 		LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
-		AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {
+		AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId,
+		BigDecimal originalAmount, BigDecimal discountAmount, String discountReason) {
 
 	public static CandidateFichaResponse from(FichaData ficha) {
 		return new CandidateFichaResponse(ficha.candidateId(), ficha.folio(), ficha.candidateStatus(),
 				ficha.registeredAt(), ficha.admissionConfigId(), ficha.programName(), ficha.curp(),
 				ficha.firstName(), ficha.lastName1(), ficha.lastName2(), ficha.email(), ficha.referenceNumber(),
 				ficha.amount(), ficha.registrationDeadline(), ficha.paymentClosesOn(), ficha.paymentDeadline(),
-				ficha.paymentStatus(), ficha.receiptNumber(), ficha.paidAt(), ficha.orderId());
+				ficha.paymentStatus(), ficha.receiptNumber(), ficha.paidAt(), ficha.orderId(), ficha.originalAmount(),
+				ficha.discountAmount(), ficha.discountReason());
 	}
 }

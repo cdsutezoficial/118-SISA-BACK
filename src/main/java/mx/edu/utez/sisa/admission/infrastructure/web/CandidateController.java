@@ -74,9 +74,9 @@ import java.util.UUID;
  * {@code identity.SecurityFilterConfig} grants {@code POST /candidates},
  * the ficha read/PDF and the payment endpoints {@code permitAll} (the
  * applicant has no session); every admin-facing endpoint stays on the
-* {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
-  *
-  * <p>This controller is the WEB layer's translation boundary: it maps the
+ * {@code ADMIN}/{@code SERVICIOS_ESCOLARES} matchers.
+ *
+ * <p>This controller is the WEB layer's translation boundary: it maps the
  * frontend ficha payload ({@code RegisterCandidateRequest}, string-typed:
  * {@code fechaNacimiento} {@code dd/MM/yyyy}, {@code sexo}
  * {"Femenino"/"Masculino"/"Hombre"/"Mujer"}, {@code estadoCivil}
@@ -255,7 +255,7 @@ public class CandidateController {
 	 * interior characters removed was mistyped, not reformatted.
 	 */
 	private static String normalizeCurp(String curp) {
-		return curp == null ? "" : curp.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+		return curp == null ? "" : curp.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
 	}
 
 	private static String readVerificationTicket(HttpServletRequest request) {
@@ -290,6 +290,16 @@ public class CandidateController {
 		return ResponseEntity
 				.ok(FichaPaymentAccessResponse.from(accessFichaPaymentUseCase.access(request.folio(),
 						request.curpSuffix())));
+	}
+
+	/**
+	 * The payment-only view by candidate id, priced live: the portal re-reads
+	 * it on every load of {@code /portal/ficha/pago}, so a tariff or discount
+	 * changed after the applicant looked her ficha up shows on reload.
+	 */
+	@GetMapping("/{id}/payment-access")
+	public ResponseEntity<FichaPaymentAccessResponse> refreshPaymentAccess(@PathVariable UUID id) {
+		return ResponseEntity.ok(FichaPaymentAccessResponse.from(accessFichaPaymentUseCase.accessById(id)));
 	}
 
 	/**
@@ -539,8 +549,8 @@ public class CandidateController {
 	}
 
 	private static CandidateListItemResponse toItem(CandidateListItem item) {
-		return new CandidateListItemResponse(item.id(), item.folio(), item.fullName(), item.curp(), item.programId(),
-				item.programName(), item.status(), item.registeredAt());
+		return new CandidateListItemResponse(item.id(), item.personId(), item.folio(), item.fullName(), item.curp(),
+				item.programId(), item.programName(), item.status(), item.registeredAt());
 	}
 
 	private static String fullName(FichaData ficha) {

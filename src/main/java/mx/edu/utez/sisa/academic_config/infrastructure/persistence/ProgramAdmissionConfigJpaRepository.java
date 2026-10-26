@@ -69,38 +69,20 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 	 * picker starts lying the moment the clock passes a boundary.
 	 *
 	 * <p><b>The occupancy subquery below is a second copy of the rule in
-	 * {@code AdmissionPaymentOccupancyQueries}, and it has to stay identical to
-	 * it.</b> JPQL cannot call into a Spring Data fragment from inside another
-	 * {@code @Query}, so the duplication is forced by the tool. It is not an
-	 * oversight: if this subquery counted only PAID fichas while the claim counted
-	 * claims as well, the picker would keep offering a career whose last slot was
-	 * already being paid for, and the applicant would be refused at the checkout —
-	 * the user-visible form of the overshoot this whole block exists to remove.
+	 * {@code FichaOccupancyJpaRepository} (admission), and it has to stay
+	 * identical to it.</b> JPQL cannot call into another repository from inside a
+	 * {@code @Query}, so the duplication is forced by the tool. If this one counted
+	 * only paid fichas while the checkout counted open attempts as well, the picker
+	 * would keep offering a career whose last place is being paid right now, and
+	 * the applicant would be refused at the checkout.
 	 *
-	 * <p>Both copies key the quota by {@code cand.admissionConfigId = c.id}. They
-	 * disagreed once by a wider margin: this one counted per config while
-	 * {@code AdmissionPaymentOccupancyQueries} counted per program, so a program
-	 * whose old cycle was full had its new cycle offered here and refused at
-	 * checkout. {@code ProgramAdmissionConfigOptionsQueryIT} holds the two
-	 * definitions against the same data, on data that actually separates "per
-	 * config" from "per program" — one cycle per program would pass either way.
-	 *
-	 * <p>Both copies also used to expire a claim by asking the payment catalog
-	 * whether an admission concept was still payable, walking the program/level/
-	 * general rate ladder on every read. That made the catalog's {@code
-	 * availableUntil} the thing that decided when a checkout claim died, which is
-	 * not what the applicant was promised and not what the checkout enforces. What
-	 * releases a claim is now the ficha's own dates: still inside its
-	 * {@code registeredAt} plazo ({@code :registeredNoLaterThan}) and inside this
-	 * config's window ({@code :midnightToday}). Both cutoffs come from
-	 * {@code FichaPaymentWindow}, so the copy here and the one in the admission
-	 * module cannot drift apart on the arithmetic either.
-	 *
-	 * <p>{@code c.closesAt} is compared against {@code :midnightToday} even though
-	 * {@code :now BETWEEN c.opensAt AND c.closesAt} above has already excluded
-	 * anything past its window. It is kept to make the occupancy clause byte for
-	 * byte the same rule the claim applies, which is the only thing that makes the
-	 * duplication above maintainable.
+	 * <p>The rule (2026-10-23, no {@code admission_payment} table any more): a
+	 * place is taken by a candidate of the config whose ficha charge
+	 * ({@code finance.payment}, linked by {@code Candidate.fichaPaymentId}) is
+	 * {@code PAID}/{@code EXEMPT}, or who has a {@code STARTED} checkout attempt
+	 * opened at or after {@code :attemptsOpenedSince} (now − 15 min, see
+ * {@code sisa.admission.payment.checkout-hold-minutes}). Keyed by config, not by program,
+	 * so a full old cycle never blocks the same program's new one.
 	 */
 	@Query(value = """
 			SELECT c.id AS id, p.name AS programName, p.modality AS modality
@@ -109,21 +91,23 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 			WHERE c.status = mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus.OPEN
 			  AND c.isOffered = true
 			  AND :now BETWEEN c.opensAt AND c.closesAt
-			  AND (SELECT COUNT(pay)
+			  AND (SELECT COUNT(cand)
 			         FROM Candidate cand
-			         JOIN AdmissionPayment pay ON pay.candidateId = cand.id
 			         WHERE cand.admissionConfigId = c.id
-			           AND (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PAID
-			                OR (pay.paymentStatus = mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING
-			                    AND pay.checkoutClaimedAt IS NOT NULL
-			                    AND cand.registeredAt >= :registeredNoLaterThan
-			                    AND c.closesAt >= :midnightToday))
+			           AND cand.fichaPaymentId IS NOT NULL
+			           AND (EXISTS (SELECT pay.id FROM Payment pay
+			                        WHERE pay.id = cand.fichaPaymentId
+			                          AND pay.status IN (mx.edu.utez.sisa.finance.domain.model.PaymentStatus.PAID,
+			                                             mx.edu.utez.sisa.finance.domain.model.PaymentStatus.EXEMPT))
+			                OR EXISTS (SELECT att.id FROM CheckoutAttempt att
+			                           WHERE att.paymentId = cand.fichaPaymentId
+			                             AND att.closeReason = mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason.STARTED
+			                             AND att.createdAt >= :attemptsOpenedSince))
 			      ) < c.maxCandidates
 			ORDER BY p.name
 			""")
 	List<ProgramAdmissionConfigOptionProjection> findOpenOfferedOptions(@Param("now") Instant now,
-			@Param("registeredNoLaterThan") Instant registeredNoLaterThan,
-			@Param("midnightToday") Instant midnightToday);
+			@Param("attemptsOpenedSince") Instant attemptsOpenedSince);
 
 	/** Minimal projection for the public picker — {@code id}, program name (label) and modality. */
 	interface ProgramAdmissionConfigOptionProjection {

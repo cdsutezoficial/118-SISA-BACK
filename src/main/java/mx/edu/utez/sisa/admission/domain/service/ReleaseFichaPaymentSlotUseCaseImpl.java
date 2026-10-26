@@ -5,13 +5,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -43,9 +41,9 @@ import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationExc
  *
  * <p><b>The whole ficha, not the one order.</b> The applicant's own attempt is checked
  * first and the request only carries that order id, which used to be enough to decide:
- * one bank answer about one order. It is not. {@code AdmissionPayment#orderId} is
- * overwritten on every retry, so a ficha that started a checkout, went back and started
- * another has an older attempt still open — and it may be the one holding her money.
+ * one bank answer about one order. It is not. Every retry opens a new attempt, so a
+ * ficha that started a checkout, went back and started another has an older attempt
+ * still open — and it may be the one holding her money.
  * Releasing because the newest order was refused would hand away a place a captured
  * sibling had paid for, which is the oversell this endpoint exists to prevent, reached
  * through the retry path instead of the timeout path. So every open attempt of the ficha
@@ -60,7 +58,7 @@ import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationExc
  */
 public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSlotUseCase {
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+	private final FichaPaymentPort fichaPaymentPort;
 
 	private final EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -72,10 +70,10 @@ public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSl
 	 */
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
-	public ReleaseFichaPaymentSlotUseCaseImpl(AdmissionPaymentRepository admissionPaymentRepository,
+	public ReleaseFichaPaymentSlotUseCaseImpl(FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway, CheckoutSlotClaimer checkoutSlotClaimer,
 			CheckoutAttemptRepository checkoutAttemptRepository) {
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -83,30 +81,29 @@ public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSl
 
 	@Override
 	public ReleaseResult release(UUID candidateId, String orderId) {
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId)
-				.orElseThrow(() -> new CandidateNotFoundException(
-						"El candidato no tiene ficha de pago: " + candidateId));
-
-		// A paid ficha holds its place permanently, so there is nothing to give back.
-		// Reported rather than silently ignored: the browser can legitimately report a
-		// timeout for a payment that was in fact confirmed moments earlier, and a
-		// quiet 200 there would hide a duplicate-payment path.
-		if (payment.getPaymentStatus() == AdmissionPaymentStatus.PAID) {
-			throw new CandidateAlreadyPaidException(
-					"La ficha del candidato " + candidateId + " ya estaba pagada.");
-		}
-
 		if (orderId == null || orderId.isBlank()) {
 			throw new InvalidPaymentVerificationException(
 					"El identificador del pedido es obligatorio para liberar el lugar.");
 		}
 
 		// The applicant's own attempt, and only her own. Without this check the
-		// endpoint would accept any order id and settle somebody else's claim, which
-		// is the one abuse this publicly reachable endpoint could suffer.
-		if (!orderId.equals(payment.getOrderId())) {
-			throw new InvalidPaymentVerificationException(
-					"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo.");
+		// endpoint would accept any order id and give back somebody else's place,
+		// which is the one abuse this publicly reachable endpoint could suffer.
+		CheckoutAttempt named = checkoutAttemptRepository.findByOrderId(orderId)
+				.filter(attempt -> candidateId.equals(attempt.getCandidateId()))
+				.orElseThrow(() -> new InvalidPaymentVerificationException(
+						"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
+
+		// A paid ficha holds its place permanently, so there is nothing to give back.
+		// Reported rather than silently ignored: the browser can legitimately report a
+		// timeout for a payment that was in fact confirmed moments earlier, and a
+		// quiet 200 there would hide a duplicate-payment path.
+		FichaPaymentPort.FichaCharge charge = fichaPaymentPort.findCharge(named.getPaymentId())
+				.orElseThrow(() -> new CandidateNotFoundException(
+						"El candidato no tiene ficha de pago: " + candidateId));
+		if (charge.isPaid()) {
+			throw new CandidateAlreadyPaidException(
+					"La ficha del candidato " + candidateId + " ya estaba pagada.");
 		}
 
 		// Every open attempt, not just the one the browser named, and all of them asked
@@ -124,20 +121,14 @@ public class ReleaseFichaPaymentSlotUseCaseImpl implements ReleaseFichaPaymentSl
 			return new ReleaseResult(candidateId, orderId, outcomeWhenPlaceIsKept(fichaVerdict, status), false);
 		}
 
-		// The claim travels with the decision. Between reading it above and writing it
-		// here the applicant may have started another checkout, which stamps a newer
-		// claim; releasing then would hand away the place that live order is holding.
-		// The answer is not an error — her attempt is genuinely refused — but the place
-		// stays, so the sweep settles it once the newer attempt reaches a verdict.
-		if (!checkoutSlotClaimer.release(candidateId, payment.getCheckoutClaimedAt())) {
-			return new ReleaseResult(candidateId, orderId, ReleaseOutcome.PAYMENT_IN_PROGRESS, false);
+		// The place is held by the open attempts themselves, so closing them is the
+		// release. Only the attempts the bank was asked about are closed: one the
+		// applicant opened after this call started is not in the fold and keeps its
+		// place. REJECTED, not SESSION_TIMEOUT/ERROR: the rows are closed on what the
+		// bank said, and an order that existed and was refused is the fact worth keeping.
+		for (String asked : statuses.keySet()) {
+			checkoutSlotClaimer.closeAttempt(asked, CheckoutAttemptCloseReason.REJECTED);
 		}
-
-		// REJECTED, not SESSION_TIMEOUT/ERROR: those record what the browser saw, and
-		// this row is being closed on what the bank said. An order did exist and was
-		// refused — that is the fact worth keeping in the history. Siblings stay for the
-		// sweep, which is where every row of a ficha is settled together.
-		checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.REJECTED);
 		return new ReleaseResult(candidateId, orderId, ReleaseOutcome.SLOT_RELEASED, true);
 	}
 

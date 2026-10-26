@@ -1,10 +1,10 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales;
@@ -14,17 +14,16 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingres
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.CandidateRegistrationResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
-import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
@@ -34,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -41,7 +41,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -52,7 +51,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -116,9 +114,6 @@ class RegisterCandidateUseCaseImplTest {
 	private CandidatePersonRepository candidatePersonRepository;
 
 	@Mock
-	private AdmissionPaymentRepository admissionPaymentRepository;
-
-	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	@Mock
@@ -126,6 +121,11 @@ class RegisterCandidateUseCaseImplTest {
 
 	@Mock
 	private OutreachChannelRepository outreachChannelRepository;
+
+	@Mock
+	private FichaPaymentPort fichaPaymentPort;
+
+	private static final UUID CHARGE_ID = UUID.randomUUID();
 
 	@Mock
 	private HighSchoolTypeRepository highSchoolTypeRepository;
@@ -148,7 +148,7 @@ class RegisterCandidateUseCaseImplTest {
 
 	private RegisterCandidateUseCaseImpl useCaseAt(Instant now, ZoneId zone) {
 		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				admissionPaymentRepository, programAdmissionConfigQueryPort, fichaAmountResolver,
+				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
 				outreachChannelRepository, highSchoolTypeRepository, REGISTRATION_DATE, Clock.fixed(now, zone),
 				FICHA_DEADLINE_DAYS);
 	}
@@ -217,12 +217,18 @@ class RegisterCandidateUseCaseImplTest {
 		when(outreachChannelRepository.findById(CHANNEL_ID))
 				.thenReturn(Optional.of(new OutreachChannel("Portal de admisión")));
 		when(highSchoolTypeRepository.findById(SCHOOL_TYPE_ID))
-				.thenReturn(Optional.of(new mx.edu.utez.sisa.admission.domain.model.HighSchoolType("Bachillerato")));
+				.thenReturn(Optional.of(new HighSchoolType("Bachillerato")));
 		when(candidatePersonRepository.save(any())).thenReturn(person);
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		stubConfigLookup(config);
-		when(fichaAmountResolver.resolve(PROGRAM_ID, REGISTRATION_DATE))
-				.thenReturn(new FichaAmountResolver.FichaAmount(CONCEPT_COST, "Inscripción"));
+		// The ficha is raised as a header for the program's real catalog concept,
+		// and the amount the response shows is the charge's live quote.
+		when(fichaAmountResolver.resolveConcept(any(), any())).thenReturn(new PaymentConceptQueryPort.FichaConcept(
+				UUID.randomUUID(), "FICHA-ING", "Inscripción", null, null));
+		when(fichaPaymentPort.raiseFichaDebt(any())).thenReturn(CHARGE_ID);
+		when(fichaPaymentPort.quote(CHARGE_ID)).thenReturn(new FichaPaymentPort.FichaQuote(CHARGE_ID, "FICHA-ING",
+				"Inscripción", UUID.randomUUID(), CONCEPT_COST, new BigDecimal("0.00"), CONCEPT_COST, null, false,
+				true, null));
 		when(fichaAmountResolver.paymentClosesOn(PROGRAM_ID)).thenReturn(PAYMENT_CLOSES_ON);
 	}
 
@@ -247,13 +253,20 @@ class RegisterCandidateUseCaseImplTest {
 		assertThat(result.payment().registrationDeadline()).isEqualTo(LocalDate.of(2026, 9, 30));
 		assertThat(result.payment().paymentClosesOn()).isEqualTo(PAYMENT_CLOSES_ON);
 
-		ArgumentCaptor<AdmissionPayment> paymentCaptor = ArgumentCaptor.forClass(AdmissionPayment.class);
-		verify(admissionPaymentRepository).save(paymentCaptor.capture());
-		AdmissionPayment saved = paymentCaptor.getValue();
-		assertThat(saved.getConcept()).isEqualTo(AdmissionPaymentConcept.ADMISSION_FICHA);
-		assertThat(saved.getReferenceNumber()).isEqualTo(result.payment().referenceNumber());
-		assertThat(saved.getPaymentStatus()).isEqualTo(AdmissionPaymentStatus.PENDING);
-		assertThat(saved.getRegistrationDeadline()).isEqualTo(result.payment().registrationDeadline());
+				// The ficha has no table of its own: it IS the finance charge, raised for
+		// the concept's real code (never a hard-coded label) with the reference
+		// and deadline, no money frozen, and linked from the candidate.
+		ArgumentCaptor<FichaPaymentPort.RaiseFichaDebtCommand> raised = ArgumentCaptor
+				.forClass(FichaPaymentPort.RaiseFichaDebtCommand.class);
+		verify(fichaPaymentPort).raiseFichaDebt(raised.capture());
+		assertThat(raised.getValue().conceptCode()).isEqualTo("FICHA-ING");
+		assertThat(raised.getValue().programId()).isEqualTo(PROGRAM_ID);
+		assertThat(raised.getValue().referenceNumber()).isEqualTo(result.payment().referenceNumber());
+		assertThat(raised.getValue().dueAt().atZone(ZONE).toLocalDate())
+				.isEqualTo(result.payment().registrationDeadline());
+		ArgumentCaptor<Candidate> savedCandidates = ArgumentCaptor.forClass(Candidate.class);
+		verify(candidateRepository, Mockito.atLeastOnce()).save(savedCandidates.capture());
+		assertThat(savedCandidates.getValue().getFichaPaymentId()).isEqualTo(CHARGE_ID);
 	}
 
 	/**
@@ -363,10 +376,9 @@ class RegisterCandidateUseCaseImplTest {
 
 		useCase.register(command());
 
-		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
-		verify(admissionPaymentRepository, never()).countOccupiedByConfigId(any(), any(), anyInt());
-		verify(admissionPaymentRepository, never()).countOccupiedByConfigIdExcludingCandidate(any(), any(), any(),
-				anyInt());
+				// Registration has no quota collaborator at all, and never opens a checkout:
+		// nothing is frozen, no place is held.
+		verify(fichaPaymentPort, never()).freeze(any());
 	}
 
 	/**
@@ -400,7 +412,7 @@ class RegisterCandidateUseCaseImplTest {
 		assertThatThrownBy(() -> afterClosing.register(command()))
 				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class);
 
-		verify(admissionPaymentRepository, never()).countPaidByAdmissionConfigId(any());
+				verify(fichaPaymentPort, never()).raiseFichaDebt(any());
 	}
 
 	@Test

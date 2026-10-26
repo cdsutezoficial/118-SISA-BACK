@@ -14,7 +14,7 @@ import java.util.UUID;
  * Reuses the assembled ficha query but narrows it to the fields the office's
  * detail screen actually shows on its first two tabs.
  */
-public record CandidateStaffDetailResponse(UUID candidateId, String folio, String fullName,
+public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, String folio, String fullName,
 		CandidateStatus candidateStatus, Instant registeredAt, String programName, String divisionName, String curp,
 		String email, String homePhone, String mobilePhone, String outreachChannelName,
 		PaymentResponse admissionPayment, PaymentResponse inductionPayment) {
@@ -30,7 +30,7 @@ public record CandidateStaffDetailResponse(UUID candidateId, String folio, Strin
 	}
 
 	public static CandidateStaffDetailResponse from(FichaData ficha) {
-		return new CandidateStaffDetailResponse(ficha.candidateId(), ficha.folio(), fullName(ficha),
+		return new CandidateStaffDetailResponse(ficha.candidateId(), ficha.personId(), ficha.folio(), fullName(ficha),
 				ficha.candidateStatus(), ficha.registeredAt(), ficha.programName(), ficha.divisionName(), ficha.curp(),
 				ficha.email(), ficha.homePhone(), ficha.mobilePhone(),
 				ficha.seleccionCarrera() == null ? null : ficha.seleccionCarrera().outreachChannelName(),

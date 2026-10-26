@@ -1,13 +1,12 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
+
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -16,14 +15,14 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.Instant;
+
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Set;
 import java.util.UUID;
 
@@ -63,7 +62,7 @@ import java.util.UUID;
  *
  * <p>The description is deliberately unaccented. It is the text the cardholder
  * reads on their bank statement, and a real capture came back as
- * {@code "Ficha de AdmisiÃ³n ADM-2026-000003"} — the accented "ó" encoded as
+ * {@code "Ficha de Admisión ADM-2026-000003"} — the accented "ó" encoded as
  * UTF-8 and decoded as Latin-1 somewhere between here and the gateway. We send
  * {@code APPLICATION_JSON} without a charset, so we are not the side declaring
  * an encoding, and this is not worth fighting the processor over: the folio
@@ -83,8 +82,6 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			"No se encontró pago vigente configurado para este proceso. Comunícate con Servicios escolares.";
 
 	private final CandidateRepository candidateRepository;
-
-	private final AdmissionPaymentRepository admissionPaymentRepository;
 
 	private final EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -112,6 +109,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final FichaAmountResolver fichaAmountResolver;
+
+	private final FichaPaymentPort fichaPaymentPort;
 
 	/**
 	 * Supplies "today" for that window check. Injected, and zone-pinned by
@@ -148,13 +147,14 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * build this is to decide what "today" means and where the concept lives.
 	 */
 	public InitiateFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			EvoPaymentsGatewayPort evoPaymentsGateway,
 			OrderIdBuilder orderIdBuilder, String currency, String returnUrl, String cancelUrl, String checkoutJsUrl,
 			Set<String> allowedReturnPaths, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
-			FichaAmountResolver fichaAmountResolver, Clock clock, int fichaDeadlineDays,
+			FichaAmountResolver fichaAmountResolver, FichaPaymentPort fichaPaymentPort,
+			Clock clock, int fichaDeadlineDays,
 			CheckoutSlotClaimer checkoutSlotClaimer) {
 		this.candidateRepository = candidateRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.orderIdBuilder = orderIdBuilder;
 		this.currency = currency;
@@ -164,6 +164,8 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.allowedReturnPaths = allowedReturnPaths == null ? Set.of() : Set.copyOf(allowedReturnPaths);
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
+		this.fichaPaymentPort = fichaPaymentPort;
+
 		this.clock = clock;
 		this.fichaDeadlineDays = fichaDeadlineDays;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
@@ -187,18 +189,17 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * a closed period would need a refund to undo;</li>
 	 * <li><b>generate the {@code orderId}</b> — before any write, because it is
 	 * what makes the attempt recordable;</li>
-	 * <li>{@link CheckoutSlotClaimer#openAttempt} — records that order with its
-	 * amount and <em>commits</em>, so from here on there is never a held slot
-	 * without an order id the bank can be asked about (§3.6);</li>
-	 * <li>{@link CheckoutSlotClaimer#claim} — takes the quota slot under a row
-	 * lock, stamps the live tariff the checkout will charge and commits, so the
-	 * slot is held while Evo is called but the lock is not;</li>
+	 * <li>{@link CheckoutSlotClaimer#claim} — under a row lock, checks the quota
+	 * and opens the checkout attempt with the frozen price, and
+	 * <em>commits</em>: the open attempt is what holds the place (15 min), so
+	 * there is never a held place without an order id the bank can be asked
+	 * about (§3.6), and the lock is not held while Evo is called;</li>
 	 * <li>the gateway call;</li>
 	 * <li>{@link CheckoutSlotClaimer#persistCheckoutSession} — the order ids the
 	 * confirmation will look up.</li>
 	 * </ol>
 	 *
-	 * <p>On a gateway refusal the claim is handed back and the attempt closed as
+	 * <p>On a gateway refusal the attempt is closed (which hands the place back) as
 	 * {@code ORDER_NOT_CREATED}, but only when the failure proves no order was
 	 * created. An ambiguous failure keeps both: Evo may hold an order that is
 	 * captured later, and that ficha's payment is real money whether or not we got
@@ -210,35 +211,45 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId)
+		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
 
-		if (payment.getPaymentStatus() == AdmissionPaymentStatus.PAID) {
+		if (charge.isPaid()) {
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
 
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = requirePaymentWindowOpen(candidate);
 
-		// The price that governs is the one the applicant sees when they click to
-		// pay, not the quote deposited at registration, so a tariff edited in
-		// between must reach them (§1.3). The claim persists it in the same
-		// transaction that takes the slot, before Evo is asked for the money.
-		BigDecimal amount = fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+		// The price is computed again right here, at the click — never taken from
+		// what a screen showed: the concept's tariff in force now minus the
+		// discount in force now. finance photographs it on the ficha's charge
+		// (and commits) before anything else happens, and that exact amount is
+		// what EVO is asked for.
+		FichaPaymentPort.FichaQuote price = fichaPaymentPort.freeze(charge.financePaymentId());
+
+		// A discount that covers the whole tariff (100 %) settles the ficha with
+		// no gateway: nothing is owed, so opening an EVO session would only ask
+		// for $0. The ficha is closed as exempt, with its $0 receipt linked to
+		// the discount.
+		if (price.exempt()) {
+			checkoutSlotClaimer.settleExempt(candidateId, price);
+			return new InitiateCheckoutResult(candidateId, null, null, null, null, checkoutJsUrl, true);
+		}
+
+		BigDecimal amount = price.amountDue();
 
 		// The orderId is generated before anything is written, and the attempt that
 		// carries it is committed before the gateway is called (§3.6). Generating it
 		// after the claim is what used to leave the "slot held with no order number"
 		// hole: Evo could hold a capturable order while we had nothing to ask about.
 		String orderId = orderIdBuilder.build(candidate.getFolio());
-		checkoutSlotClaimer.openAttempt(orderId, candidateId, amount);
-
-		checkoutSlotClaimer.claim(candidateId, amount);
+		checkoutSlotClaimer.claim(candidateId, orderId, price);
 
 		String returnUrl = resolveReturnUrl(returnPath);
 		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				payment.getReferenceNumber(), orderDescription(candidate.getFolio()), amount,
+				charge.referenceNumber(), orderDescription(candidate.getFolio()), amount,
 				currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
 
@@ -247,16 +258,15 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			session = evoPaymentsGateway.initiateCheckoutSession(order);
 		} catch (EvoPaymentGatewayException ex) {
 			if (!ex.orderMayHaveBeenCreated()) {
-				checkoutSlotClaimer.release(candidateId, currentClaimedAt(candidateId));
 				checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.ORDER_NOT_CREATED);
 			}
 			throw ex;
 		}
 
-		checkoutSlotClaimer.persistCheckoutSession(candidateId, orderId, session.id());
+		checkoutSlotClaimer.persistCheckoutSession(orderId, session.id());
 
 		return new InitiateCheckoutResult(candidateId, orderId, session.id(), session.merchant(),
-				session.successIndicator(), checkoutJsUrl);
+				session.successIndicator(), checkoutJsUrl, false);
 	}
 
 	/**
@@ -348,22 +358,6 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	}
 
 	/**
-	 * The claim as it stands <em>now</em>, read again on the refusal path only.
-	 *
-	 * <p>The {@code payment} this method read at the top was loaded before
-	 * {@link CheckoutSlotClaimer#claim} ran, so it cannot know what that stamped — it
-	 * would carry a stale or absent {@code checkoutClaimedAt}, and releasing against a
-	 * stale claim is exactly what the compare-and-set refuses to do. One extra read on a
-	 * path that only runs when Evo turned the whole operation down is a fair price for a
-	 * release that cannot take the claim of somebody else's checkout.
-	 */
-	private Instant currentClaimedAt(UUID candidateId) {
-		return admissionPaymentRepository.findByCandidateId(candidateId)
-				.map(AdmissionPayment::getCheckoutClaimedAt)
-				.orElse(null);
-	}
-
-/**
 	 * Applies an allowlisted {@code returnPath} by swapping only the PATH of the
 	 * configured return URL. The scheme and host always come from configuration,
 	 * never from the request, so even a leaked or mis-configured allowlist entry
@@ -399,7 +393,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * The order description the bank shows on the cardholder's statement.
 	 *
 	 * <p>ASCII on purpose. A real 3DS capture in the sandbox came back from the
-	 * gateway as {@code "Ficha de AdmisiÃ³n ADM-2026-000003"}: the accented "ó"
+	 * gateway as {@code "Ficha de Admisión ADM-2026-000003"}: the accented "ó"
 	 * went out as UTF-8 and came back decoded as Latin-1, so the applicant would
 	 * have seen mojibake on their bank statement. The request goes out as
 	 * {@code APPLICATION_JSON} with no charset declared, so this side is not the

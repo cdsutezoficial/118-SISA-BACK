@@ -1,16 +1,14 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -19,11 +17,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,11 +42,10 @@ import static org.mockito.Mockito.when;
  * rather than proof that money moved; {@code aSuccessWithNothingCapturedIsNotAPayment}
  * pins the difference and is the regression this interactor existed to prevent.
  *
- * <p>The {@code orderId} is checked against {@link CheckoutAttempt} rather than against
- * {@code payment.orderId}. That column is overwritten on every retry, so the real-world
- * case {@code anAttemptThatIsNoLongerTheLiveOrderStillConfirms} — the applicant paid,
- * the browser re-entered checkout before the confirmation landed, and the column now
- * holds the second order — was unanswerable before.
+ * <p>The {@code orderId} is checked against the {@link CheckoutAttempt} rows of the
+ * candidate, so the real-world case {@code anAttemptThatIsNoLongerTheLiveOrderStillConfirms}
+ * — the applicant paid, the browser re-entered checkout before the confirmation landed,
+ * and a second attempt is now open — still confirms the attempt that captured.
  */
 @ExtendWith(MockitoExtension.class)
 class ConfirmFichaPaymentVerifiedUseCaseImplTest {
@@ -67,7 +64,9 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	private CandidateRepository candidateRepository;
 
 	@Mock
-	private AdmissionPaymentRepository admissionPaymentRepository;
+	private FichaPaymentPort fichaPaymentPort;
+
+	private static final UUID CHARGE_ID = UUID.randomUUID();
 
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
@@ -85,30 +84,30 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, admissionPaymentRepository,
+		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
 				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
 	}
 
 	private static Candidate candidate() {
-		return new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		candidate.linkFichaPayment(CHARGE_ID);
+		return candidate;
 	}
 
-	private static AdmissionPayment payment() {
-		return new AdmissionPayment(CANDIDATE_ID, AdmissionPaymentConcept.ADMISSION_FICHA, QUOTED, "REF-2026-000001",
-				LocalDate.now().plusDays(10));
+	private static FichaPaymentPort.FichaCharge payment() {
+		return FichaTestData.pendingCharge(CHARGE_ID);
 	}
 
 	/** The ficha whose live order is {@code ORDER_ID}, with that attempt open. */
-	private AdmissionPayment pendingFichaWithThisAttempt() {
-		AdmissionPayment payment = payment();
-		payment.registerCheckout(ORDER_ID, "SESSION0001BR");
+	private FichaPaymentPort.FichaCharge pendingFichaWithThisAttempt() {
+		FichaPaymentPort.FichaCharge payment = payment();
 		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
 		return payment;
 	}
 
 	private void givenOpenAttempt(String orderId, UUID candidateId, BigDecimal amount) {
-		org.mockito.Mockito.lenient().when(checkoutAttemptRepository.findByOrderId(orderId)).thenReturn(Optional
-				.of(new CheckoutAttempt(orderId, candidateId, amount, Instant.parse("2026-09-30T12:00:00Z"))));
+		Mockito.lenient().when(checkoutAttemptRepository.findByOrderId(orderId)).thenReturn(Optional
+				.of(FichaTestData.attempt(orderId, CHARGE_ID, candidateId, amount, Instant.parse("2026-09-30T12:00:00Z"))));
 	}
 
 	/** The 3-arg shape marks the money as captured whenever the verdict is SUCCESS. */
@@ -116,22 +115,22 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		return new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "SUCCESS", QUOTED);
 	}
 
-	private void givenCandidateAndPayment(AdmissionPayment payment) {
+	private void givenCandidateAndPayment(FichaPaymentPort.FichaCharge payment) {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.of(payment));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment));
 	}
 
 	@Test
 	void onlineConfirmDelegatesLocalConfirmOnSuccess() {
 		givenCandidateAndPayment(pendingFichaWithThisAttempt());
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
+		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID, ORDER_ID)).thenReturn(paid);
 
 		ConfirmPaymentResult result = useCase.confirm(CANDIDATE_ID, ORDER_ID);
 
 		assertThat(result.receiptNumber()).isEqualTo("REC-20260924-000001");
 		verify(evoPaymentsGateway).retrieveOrder(ORDER_ID);
-		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID);
+		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID, ORDER_ID);
 	}
 
 	/**
@@ -147,7 +146,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	void aConfirmedPaymentClosesItsAttemptAsCaptured() {
 		givenCandidateAndPayment(pendingFichaWithThisAttempt());
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
+		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID, ORDER_ID)).thenReturn(paid);
 
 		useCase.confirm(CANDIDATE_ID, ORDER_ID);
 
@@ -170,7 +169,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(InvalidPaymentVerificationException.class)
 				.hasMessageContaining("no fue confirmado por el procesador");
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 	}
 
@@ -183,7 +182,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(InvalidPaymentVerificationException.class)
 				.hasMessageContaining("no fue confirmado por el procesador");
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 
 	/**
@@ -196,29 +195,26 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		givenCandidateAndPayment(pendingFichaWithThisAttempt());
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(
 				ORDER_ID, "FAILURE", QUOTED, null, QUOTED, null, null, null, null, null));
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
+		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID, ORDER_ID)).thenReturn(paid);
 
 		useCase.confirm(CANDIDATE_ID, ORDER_ID);
 
-		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID);
+		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID, ORDER_ID);
 	}
 
 	/**
-	 * The retry case that forced the orderId check to move off {@code payment.orderId}.
-	 *
-	 * <p>The applicant paid attempt 1, re-entered checkout before the confirmation landed,
-	 * and the ficha's column now holds attempt 2. Settling attempt 1 is exactly what the
+	 	 * The retry case: the applicant paid attempt 1 and re-entered checkout before the
+	 * confirmation landed, so attempt 2 is open too. Settling attempt 1 is exactly what the
 	 * sweep and the returning browser both need to do, and under the old equality check
 	 * both were answered with "no corresponde a esta ficha".
 	 */
 	@Test
 	void anAttemptThatIsNoLongerTheLiveOrderStillConfirms() {
-		AdmissionPayment payment = payment();
-		payment.registerCheckout("TESTUTEZ-ADM-2026-000001-SEGUNDO", "SESSION0002BR");
+		FichaPaymentPort.FichaCharge payment = payment();
 		givenCandidateAndPayment(payment);
 		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
+		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID, ORDER_ID)).thenReturn(paid);
 
 		ConfirmPaymentResult result = useCase.confirm(CANDIDATE_ID, ORDER_ID);
 
@@ -237,14 +233,13 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
 		String someoneElsesOrder = "TESTUTEZ-ADM-2026-000099";
 		when(checkoutAttemptRepository.findByOrderId(someoneElsesOrder)).thenReturn(Optional
-				.of(new CheckoutAttempt(someoneElsesOrder, UUID.randomUUID(), QUOTED,
-						Instant.parse("2026-09-30T12:00:00Z"))));
+				.of(FichaTestData.attempt(someoneElsesOrder, CHARGE_ID, UUID.randomUUID(), QUOTED, Instant.parse("2026-09-30T12:00:00Z"))));
 
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, someoneElsesOrder))
 				.isInstanceOf(InvalidPaymentVerificationException.class)
 				.hasMessageContaining("no corresponde a esta ficha");
 		verify(evoPaymentsGateway, never()).retrieveOrder(any());
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 
 	@Test
@@ -267,8 +262,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	@Test
 	void anAlreadyClosedAttemptIsRejected() {
 		givenCandidateAndPayment(pendingFichaWithThisAttempt());
-		CheckoutAttempt settled = new CheckoutAttempt(ORDER_ID, CANDIDATE_ID, QUOTED,
-				Instant.parse("2026-09-30T12:00:00Z"));
+		CheckoutAttempt settled = FichaTestData.attempt(ORDER_ID, CHARGE_ID, CANDIDATE_ID, QUOTED, Instant.parse("2026-09-30T12:00:00Z"));
 		settled.close(CheckoutAttemptCloseReason.REJECTED, Instant.parse("2026-09-30T12:05:00Z"));
 		when(checkoutAttemptRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(settled));
 
@@ -290,7 +284,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 				.isInstanceOf(InvalidPaymentVerificationException.class)
 				.hasMessageContaining("identificador del pedido es obligatorio");
 		verify(evoPaymentsGateway, never()).retrieveOrder(any());
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 
 	/**
@@ -306,18 +300,17 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	@Test
 	void aCaptureBelowTheQuotedTariffStillPaysTheFicha() {
 		BigDecimal oldTariff = new BigDecimal("450.00");
-		AdmissionPayment payment = payment();
-		payment.registerCheckout(ORDER_ID, "SESSION0001BR");
+		FichaPaymentPort.FichaCharge payment = payment();
 		givenCandidateAndPayment(payment);
 		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, oldTariff);
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(
 				ORDER_ID, "SUCCESS", oldTariff, null, oldTariff, null, null, null, null, null));
-		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID)).thenReturn(paid);
+		when(confirmAdmissionPaymentUseCase.confirm(CANDIDATE_ID, ORDER_ID)).thenReturn(paid);
 
 		ConfirmPaymentResult result = useCase.confirm(CANDIDATE_ID, ORDER_ID);
 
 		assertThat(result.candidateStatus()).isEqualTo(CandidateStatus.PAID);
-		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID);
+		verify(confirmAdmissionPaymentUseCase).confirm(CANDIDATE_ID, ORDER_ID);
 	}
 
 	@Test
@@ -331,20 +324,19 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 				.isInstanceOf(InvalidPaymentVerificationException.class)
 				.hasMessageContaining("identificador del pedido es obligatorio");
 		verify(evoPaymentsGateway, never()).retrieveOrder(any());
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 
 	@Test
 	void alreadyPaidIs409WithoutHittingTheGateway() {
-		AdmissionPayment paidPayment = payment();
-		paidPayment.markPaid("REC-20260924-000001");
+		FichaPaymentPort.FichaCharge paidPayment = FichaTestData.paidCharge(CHARGE_ID);
 		givenCandidateAndPayment(paidPayment);
 
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(CandidateAlreadyPaidException.class)
 				.hasMessageContaining("ya estaba pagada");
 		verify(evoPaymentsGateway, never()).retrieveOrder(any());
-		verify(confirmAdmissionPaymentUseCase, never()).confirm(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 
 	@Test
@@ -358,7 +350,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	@Test
 	void missingPaymentIs404() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
-		when(admissionPaymentRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(Optional.empty());
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(CandidateNotFoundException.class);
