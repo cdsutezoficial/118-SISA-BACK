@@ -4,6 +4,51 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-10-25] La ficha es un cargo de finanzas: precio en vivo y descuento por cargo
+
+Commits: `25c1667`, `9f13ba9`, `2aa2ca9`, `797e950`.
+
+### Qué cambió
+
+- **Finanzas lleva todos los cobros.** Nace el módulo `finance` con `payment` (el cargo),
+  `payment_entry` (cada abono), `payment_benefit` (el descuento) y `payment_credit`
+  (saldo a favor).
+- **La ficha ya no guarda dinero.** Al registrarse, el aspirante recibe un cargo `PENDING`
+  sin monto, con el código real del concepto `ADMISSION` de su carrera (del catálogo, no
+  fijo en el código). `candidate.ficha_payment_id` apunta a ese cargo.
+- **El precio se calcula al momento:** tarifa vigente del concepto menos el descuento
+  vigente. `DebtQuoter` es la única regla de precio; al dar "Pagar" el precio se
+  recalcula y se abre EVO con ese total.
+- **Descuento por cargo.** Finanzas busca al aspirante por folio o CURP, elige el cargo y
+  registra el descuento (uno por cargo). Un descuento sobre un cargo ya pagado genera
+  saldo a favor.
+- **`checkout_attempt` pasa a finanzas** y cuelga del cargo (`payment_id`), con la foto
+  del precio que se cobró (`original_amount`, `discount_amount`, `rate_id`, `benefit_id`).
+- **El cupo** cuenta fichas `PAID`/`EXEMPT` más intentos abiertos dentro de
+  `SISA_CHECKOUT_HOLD_MINUTES` (15 por defecto).
+- `GET /candidates/{id}/payment-access`: el portal recarga el precio vigente de la ficha.
+- Finanzas (`PERSONAL_FINANZAS`) puede consultar el listado de aspirantes (`CANDIDATES_READ`).
+
+### Qué se quitó
+
+- `admission_payment` y todo lo que lo leía.
+- `sisa.admission.payment.ficha-amount` / `SISA_FICHA_AMOUNT`: el monto viene de la tarifa.
+
+### Base de datos
+
+Cambia el esquema: tablas nuevas `payment`, `payment_entry`, `payment_benefit` y
+`payment_credit`; columna nueva `candidate.ficha_payment_id`; `checkout_attempt` agrega
+`payment_id` (`NOT NULL`) y la foto del precio, y `candidate_id` pasa a aceptar `NULL`; se
+elimina `admission_payment`. `ddl-auto=update` no borra tablas ni relaja `NOT NULL`, así
+que una base existente necesita su migración.
+
+### Pruebas
+
+`mvn test`: 2024 pruebas, 0 fallas. Los 32 errores que aparecen ya fallan igual en
+`develop`.
+
+---
+
 ## [2026-10-01] Una ficha puede tener varios intentos: el cupo se decide por ficha
 
 Commits: `91be4a0`, `8db4122`.
