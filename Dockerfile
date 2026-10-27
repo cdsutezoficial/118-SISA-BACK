@@ -1,10 +1,10 @@
-# syntax=docker/dockerfile:1
-
 # ──────────────────────────────────────────────
 # Stage 1: build
 # Java 21 (pom.xml java.version) sobre Maven 3.9.
 # El wrapper del repo apunta a Maven 3.9.16; se usa el mvn de la imagen
 # para no descargar la distribucion en cada build.
+# Sin "# syntax=": ese frontend externo se baja de Docker Hub en cada build
+# y este Dockerfile no usa nada que lo requiera.
 # ──────────────────────────────────────────────
 FROM maven:3.9-eclipse-temurin-21 AS build
 
