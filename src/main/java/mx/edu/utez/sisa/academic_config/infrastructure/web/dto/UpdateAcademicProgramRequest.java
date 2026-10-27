@@ -24,8 +24,8 @@ import java.util.UUID;
  * con el schema de {@code CarrerasForm}:
  *
  * <ul>
- * <li>{@code name} — letras y acentos separados por espacios o por guiones.
- * Sin dígitos, paréntesis ni comas. El separador de palabras es un espacio
+ * <li>{@code name} — letras y acentos separados por espacios, guiones o comas.
+ * Sin dígitos ni paréntesis. El separador de palabras es un espacio
  * simple o guiones con espacios opcionales alrededor, y se aceptan las cinco
  * variantes Unicode U+2010–U+2015 además del guion ASCII. Admite espacios en
  * los extremos y espacios duros porque
@@ -51,7 +51,7 @@ import java.util.UUID;
  *
  * <p>La expresión de {@code name} y la de {@code offerName} están duplicadas
  * literalmente en {@link UpdateAcademicProgramRequest} y en la regla
- * {@code lettersSpacesAndHyphens} del frontend. Deben coincidir carácter a
+ * {@code lettersSpacesHyphensAndCommas} del frontend. Deben coincidir carácter a
  * carácter: si divergieran, el navegador dejaría pasar lo que el servidor
  * rechaza con 400.
  *
@@ -78,8 +78,8 @@ import java.util.UUID;
  * lanza {@code AnnotationFormatError} (500 en lugar de 400).
  */
 public record UpdateAcademicProgramRequest(@NotNull UUID divisionId,
-		@NotBlank @Size(max = 150) @Pattern(regexp = "^[ \\uFEFF\\u00A0\\u2000-\\u200A]*\\p{L}+(?:(?:[ \\uFEFF\\u00A0\\u2000-\\u200A]+|[ \\uFEFF\\u00A0\\u2000-\\u200A]*[\\u2010-\\u2015-][ \\uFEFF\\u00A0\\u2000-\\u200A]*)\\p{L}+)*[ \\uFEFF\\u00A0\\u2000-\\u200A]*$", message = "El nombre solo puede contener letras, espacios y guiones.") String name,
-		@NotBlank @Size(max = 200) @Pattern(regexp = "^[ \\uFEFF\\u00A0\\u2000-\\u200A]*\\p{L}+(?:(?:[ \\uFEFF\\u00A0\\u2000-\\u200A]+|[ \\uFEFF\\u00A0\\u2000-\\u200A]*[\\u2010-\\u2015-][ \\uFEFF\\u00A0\\u2000-\\u200A]*)\\p{L}+)*[ \\uFEFF\\u00A0\\u2000-\\u200A]*$", message = "El nombre de oferta solo puede contener letras, espacios y guiones.") String offerName,
+		@NotBlank @Size(max = 150) @Pattern(regexp = "^[ \\uFEFF\\u00A0\\u2000-\\u200A]*\\p{L}+(?:(?:[ \\uFEFF\\u00A0\\u2000-\\u200A]+|[ \\uFEFF\\u00A0\\u2000-\\u200A]*[\\u2010-\\u2015-,][ \\uFEFF\\u00A0\\u2000-\\u200A]*)\\p{L}+)*[ \\uFEFF\\u00A0\\u2000-\\u200A]*$", message = "El nombre solo puede contener letras, espacios, guiones y comas.") String name,
+		@NotBlank @Size(max = 200) @Pattern(regexp = "^[ \\uFEFF\\u00A0\\u2000-\\u200A]*\\p{L}+(?:(?:[ \\uFEFF\\u00A0\\u2000-\\u200A]+|[ \\uFEFF\\u00A0\\u2000-\\u200A]*[\\u2010-\\u2015-,][ \\uFEFF\\u00A0\\u2000-\\u200A]*)\\p{L}+)*[ \\uFEFF\\u00A0\\u2000-\\u200A]*$", message = "El nombre de oferta solo puede contener letras, espacios, guiones y comas.") String offerName,
 		@NotBlank @Size(min = 2, max = 41) @Pattern(regexp = "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$", message = "La clave solo puede contener letras, números y guiones.") String code,
 		@NotNull AcademicLevel level, @NotNull ProgramModality modality, UUID continuityProgramId,
 		@Size(max = 500) @Pattern(regexp = "^[^\\p{Cc}]*$", message = "La descripción contiene caracteres no válidos.") String description,

@@ -7,6 +7,8 @@ import mx.edu.utez.sisa.shared.persistence.StateJpaRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,13 +20,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * startup sequence, same as {@code TestAccountsSeedRunner}'s own coverage style) and asserts the
  * real regression guard from
  * {@code docs/plans/2026-07-28-inegi-catalogs-and-highschooltype.md}: exactly
- * 32 states, exactly 2,469 municipalities, and Morelos (INEGI {@code 17})
+ * 32 states, exactly 2,478 municipalities, and Morelos (INEGI {@code 17})
  * has a municipality named "Emiliano Zapata" with INEGI code {@code 008} —
  * manually verified against the source dump before this task, not an
  * arbitrary assertion.
  */
 @SpringBootTest
 class StateAndMunicipalitySeedRunnerIT {
+
+	@MockitoBean
+	private JavaMailSender mailSender;
 
 	@Autowired
 	private StateJpaRepository stateRepository;
@@ -38,8 +43,8 @@ class StateAndMunicipalitySeedRunnerIT {
 	}
 
 	@Test
-	void seedsExactlyTwoThousandFourHundredSixtyNineMunicipalities() {
-		assertThat(municipalityRepository.count()).isEqualTo(2469L);
+	void seedsExactlyTwoThousandFourHundredSeventyEightMunicipalities() {
+		assertThat(municipalityRepository.count()).isEqualTo(2478L);
 	}
 
 	@Test

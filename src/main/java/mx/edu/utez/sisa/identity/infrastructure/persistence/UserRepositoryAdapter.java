@@ -35,9 +35,12 @@ public class UserRepositoryAdapter implements UserRepository {
 	 * Delegates the roleType/status/search filtering and pagination to
 	 * {@link UserJpaRepository#search} (the query itself carries the
 	 * EXISTS-not-JOIN duplication-avoidance reasoning). This adapter's own
-	 * job is pairing each returned {@code User} with its {@code Person} via a
-	 * single batch {@code findAllById} — deliberately not N+1 per-row lookups
-	 * — and translating Spring Data's {@code Page} into the plain
+	 * job is pairing each returned {@code User} with its {@code Person} —
+	 * when it has one; {@code personId} is optional, so users without
+	 * personal data are returned with a {@code null} person — via a
+	 * single batch {@code findAllById} on the non-null ids — deliberately
+	 * not N+1 per-row lookups — and translating Spring Data's
+	 * {@code Page} into the plain
 	 * {@code UserSearchPage} the domain out-port returns. Results are sorted
 	 * by {@code username} ascending: no ordering is specified in the domain
 	 * doc, and a stable alphabetical order keeps pagination deterministic
@@ -50,7 +53,8 @@ public class UserRepositoryAdapter implements UserRepository {
 				criteria.divisionId(), pageRequest);
 
 		List<User> users = page.getContent();
-		List<UUID> personIds = users.stream().map(User::getPersonId).distinct().toList();
+		List<UUID> personIds = users.stream().map(User::getPersonId).filter(java.util.Objects::nonNull).distinct()
+				.toList();
 		Map<UUID, Person> personsById = personJpaRepository.findAllById(personIds).stream()
 				.collect(Collectors.toMap(Person::getId, Function.identity()));
 
@@ -78,5 +82,10 @@ public class UserRepositoryAdapter implements UserRepository {
 	@Override
 	public Optional<User> findByPersonId(UUID personId) {
 		return jpaRepository.findByPersonId(personId);
+	}
+
+	@Override
+	public Optional<User> findByLlaveMxSubject(String llaveMxSubject) {
+		return jpaRepository.findByLlaveMxSubject(llaveMxSubject);
 	}
 }

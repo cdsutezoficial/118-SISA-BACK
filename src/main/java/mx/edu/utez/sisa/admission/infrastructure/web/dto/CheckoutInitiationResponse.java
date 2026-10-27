@@ -10,12 +10,16 @@ import java.util.UUID;
  * merchant-side {@code order.id}, the hosted {@code session.id}, the
  * {@code successIndicator} returned to the configured return URL, and the
  * official Checkout SDK URL loaded by the browser.
+ *
+ * <p>{@code exempt} is {@code true} when a {@code FULL} discount settled the
+ * ficha at {@code $0} with no gateway session — the front must read it as "ya
+ * pagada" and NOT open the checkout; every session field is {@code null}.
  */
 public record CheckoutInitiationResponse(UUID candidateId, String orderId, String sessionId, String merchant,
-		String successIndicator, String checkoutJsUrl) {
+		String successIndicator, String checkoutJsUrl, boolean exempt) {
 
 	public static CheckoutInitiationResponse from(InitiateCheckoutResult result) {
 		return new CheckoutInitiationResponse(result.candidateId(), result.orderId(), result.sessionId(),
-				result.merchant(), result.successIndicator(), result.checkoutJsUrl());
+				result.merchant(), result.successIndicator(), result.checkoutJsUrl(), result.exempt());
 	}
 }

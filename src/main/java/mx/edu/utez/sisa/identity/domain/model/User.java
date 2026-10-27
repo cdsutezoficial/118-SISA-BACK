@@ -33,7 +33,13 @@ public class User {
 	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
 
-	@Column(nullable = false)
+	/**
+	 * Logical link to {@code Person} — optional by design: an account may
+	 * exist without personal data (dev/test seeds) just as a person may
+	 * exist without an account. When {@code null} the account has no
+	 * linked profile and readers must fall back to the username.
+	 */
+	@Column(name = "person_id")
 	private UUID personId;
 
 	@Column(nullable = false, unique = true)

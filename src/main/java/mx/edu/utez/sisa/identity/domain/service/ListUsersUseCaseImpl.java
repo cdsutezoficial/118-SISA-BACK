@@ -83,9 +83,9 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 	/**
 	 * Joins {@code firstName lastName1 [lastName2]}, omitting the second last
 	 * name when absent (spec: person full name display). Falls back to an
-	 * empty string if {@code person} is {@code null} — defensive only; the
-	 * {@code personId} FK invariant means this should never happen in
-	 * practice.
+	 * empty string when there is no linked person — accounts without
+	 * personal data (e.g. seeded test accounts) legitimately carry
+	 * {@code personId = null}.
 	 */
 	private static String fullName(Person person) {
 		if (person == null) {

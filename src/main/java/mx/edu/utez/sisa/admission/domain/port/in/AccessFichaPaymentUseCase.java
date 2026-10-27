@@ -44,6 +44,18 @@ public interface AccessFichaPaymentUseCase {
 	PaymentAccess access(String folio, String curpSuffix);
 
 	/**
+	 * The same payment-only view, re-read by the candidate's id. Used by the
+	 * portal to refresh the screen (a reload must show the tariff and discount
+	 * in force <em>now</em>, not the copy taken when the applicant looked the
+	 * ficha up). The id is the same UUID {@code GET /candidates/{id}} already
+	 * takes, so this exposes nothing that endpoint does not.
+	 *
+	 * @throws mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException
+	 *         if no such candidate or ficha
+	 */
+	PaymentAccess accessById(UUID candidateId);
+
+	/**
 	 * The minimum the payment screen renders and the checkout needs. Note
 	 * {@code candidateId}: the existing EVO endpoints
 	 * ({@code POST /candidates/{id}/payments/checkout|confirm}) are keyed by it,
@@ -80,6 +92,8 @@ public interface AccessFichaPaymentUseCase {
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
-			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired) {
+			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
+			BigDecimal originalAmount, BigDecimal discountAmount, String discountReason) {
+
 	}
 }

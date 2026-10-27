@@ -24,6 +24,7 @@ import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.admission.shared.exception.TooManyPaymentAccessAttemptsException;
 import mx.edu.utez.sisa.identity.infrastructure.security.JwtService;
+import mx.edu.utez.sisa.identity.infrastructure.security.LlaveMxVerificationTicketService;
 import mx.edu.utez.sisa.identity.infrastructure.security.PermissionCache;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -108,6 +109,15 @@ class CandidateControllerTest {
 	@MockitoBean
 	private PaymentAccessRateLimiter paymentAccessRateLimiter;
 
+	/**
+	 * Also a plain {@code @Component}, mocked for the same reason. Its own
+	 * signing/verification behaviour is covered by
+	 * {@code LlaveMxVerificationTicketServiceTest}; what matters here is the
+	 * controller's reaction to a valid or an expired ticket.
+	 */
+	@MockitoBean
+	private LlaveMxVerificationTicketService verificationTicketService;
+
 	@MockitoBean
 	private JwtService jwtService;
 
@@ -124,7 +134,7 @@ class CandidateControllerTest {
 	void checkoutReturnsSessionAndSdkUrl() throws Exception {
 		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null)).thenReturn(new InitiateCheckoutResult(ID, ORDER_ID,
 				"SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
-				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js"));
+				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js", false));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.orderId").value(ORDER_ID))
@@ -140,7 +150,8 @@ class CandidateControllerTest {
 	@Test
 	void checkoutPassesTheReturnPathThroughToTheUseCase() throws Exception {
 		when(initiateFichaPaymentUseCase.initiateCheckout(ID, "/portal/ficha/pago"))
-				.thenReturn(new InitiateCheckoutResult(ID, ORDER_ID, "SESSION0001BR", "TESTUTEZ", "OK", "https://x/y.js"));
+				.thenReturn(new InitiateCheckoutResult(ID, ORDER_ID, "SESSION0001BR", "TESTUTEZ", "OK", "https://x/y.js",
+						false));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"returnPath\":\"/portal/ficha/pago\"}"))
@@ -344,7 +355,7 @@ class CandidateControllerTest {
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
 				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED,
-				false);
+				false, null, null, null);
 	}
 
 	@Test
@@ -389,7 +400,7 @@ class CandidateControllerTest {
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
-				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false));
+				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
@@ -410,7 +421,7 @@ class CandidateControllerTest {
 						"REF-20260924-000101", REGISTRATION_DEADLINE,
 						mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false,
 						PAYMENT_CLOSES_ON, PAYMENT_DEADLINE,
-						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true));
+						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
@@ -480,9 +491,9 @@ class CandidateControllerTest {
 	void listCandidatesUsesThePrincipalAsCallerId() throws Exception {
 		UUID callerId = UUID.randomUUID();
 		when(listCandidatesUseCase.listCandidates(any())).thenReturn(
-				new ListCandidatesResult(List.of(new CandidateListItem(ID, "ADM-2026-000001", "Ana Torres Ramos",
-						"GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI", CandidateStatus.REGISTERED,
-						Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
+				new ListCandidatesResult(List.of(new CandidateListItem(ID, UUID.randomUUID(), "ADM-2026-000001",
+						"Ana Torres Ramos", "GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI",
+						CandidateStatus.REGISTERED, Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
 
 		mockMvc.perform(get("/candidates").principal(authentication(callerId))).andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[0].folio").value("ADM-2026-000001"))

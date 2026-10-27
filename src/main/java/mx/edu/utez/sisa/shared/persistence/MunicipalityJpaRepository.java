@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.shared.model.Municipality;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -20,4 +21,6 @@ public interface MunicipalityJpaRepository extends JpaRepository<Municipality, U
 	 * no pagination is needed.
 	 */
 	List<Municipality> findByStateIdOrderByNameAsc(UUID stateId);
+
+	Optional<Municipality> findByStateIdAndInegiCode(UUID stateId, String inegiCode);
 }

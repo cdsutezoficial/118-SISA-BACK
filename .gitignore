@@ -39,3 +39,8 @@ build/
 .env
 .env.*
 !.env.example
+
+### Banco de pruebas manual de LlaveMX ###
+# Guarda el code_verifier y los tokens de una ronda PKCE a medias:
+# material sensible, igual que el .env.
+.llave-probe.json

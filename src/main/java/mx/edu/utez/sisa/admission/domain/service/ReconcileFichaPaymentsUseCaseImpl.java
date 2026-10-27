@@ -1,6 +1,5 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,14 +9,12 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
@@ -57,8 +54,8 @@ import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
  * bank said about <em>each</em> of them. This is the branch that earns the whole
  * mechanism its keep: it is how a payment that landed after the applicant stopped looking
  * still becomes {@code PAID}.</li>
- * <li><b>every attempt refused</b> — nothing is in flight, so the place goes back, once,
- * and only if the claim is still the one this run decided about.</li>
+ * <li><b>every attempt refused</b> — nothing is in flight, so the attempts are closed,
+ * which is what gives the place back (an open attempt is what holds it).</li>
  * <li><b>anything unanswered</b> — nothing is written and every row stays open, to be
  * asked again tomorrow. That includes a group where one order could not even be asked
  * about: an unread attempt makes the picture incomplete, and an unreadable one is not a
@@ -78,7 +75,7 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+	private final FichaPaymentPort fichaPaymentPort;
 
 	private final EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -87,11 +84,11 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	private final ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
 	public ReconcileFichaPaymentsUseCaseImpl(CheckoutAttemptRepository checkoutAttemptRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
@@ -144,6 +141,9 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	private Map<UUID, List<CheckoutAttempt>> openAttemptsByFicha() {
 		Map<UUID, List<CheckoutAttempt>> byFicha = new LinkedHashMap<>();
 		for (CheckoutAttempt attempt : checkoutAttemptRepository.findOpenAttempts()) {
+			if (attempt.getCandidateId() == null) {
+				continue; // not a ficha: student charges are not reconciled here
+			}
 			byFicha.computeIfAbsent(attempt.getCandidateId(), key -> new ArrayList<>()).add(attempt);
 		}
 		return byFicha;
@@ -180,12 +180,12 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	private void settleFicha(UUID candidateId, List<CheckoutAttempt> attempts, Counters counters) {
 		Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts = askBankAboutEveryAttempt(attempts);
 
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId).orElse(null);
-		boolean alreadyPaid = payment != null && payment.getPaymentStatus() == AdmissionPaymentStatus.PAID;
+		boolean alreadyPaid = fichaPaymentPort.findCharge(attempts.get(0).getPaymentId())
+				.map(FichaPaymentPort.FichaCharge::isPaid).orElse(false);
 
 		switch (OrderSettlementDecider.decideFicha(new ArrayList<>(verdicts.values()))) {
 			case CAPTURED -> captureWon(candidateId, attempts, verdicts, counters, alreadyPaid);
-			case RELEASEABLE -> releaseIsSafe(payment, alreadyPaid, attempts, counters);
+			case RELEASEABLE -> releaseIsSafe(alreadyPaid, attempts, counters);
 			case HELD_UNKNOWN -> counters.held(attempts.size());
 		}
 	}
@@ -251,45 +251,22 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	}
 
 	/**
-	 * Every attempt of this ficha is refused, so nothing is in flight and the place goes
-	 * back — once, and only if the claim is still the one this run read.
+	 	 * Every attempt of this ficha is refused, so nothing is in flight and the place goes
+	 * back by closing those attempts.
 	 *
-	 * <p>The compare-and-set matters because the writes are not in the same transaction
-	 * as the reads: between asking the bank and writing, the applicant may have started
-	 * another checkout, stamped a fresh claim and put a live order on it. A release that
-	 * ignored the claim would give that one away.
-	 *
-	 * <p>A missing ficha row goes to the claimer, which reports it rather than skipping —
-	 * that is its documented contract. The rows stay open so the next run can settle
-	 * them once the ficha is readable again.
+	 * <p>Only the rows read by this run are closed. Between asking the bank and writing,
+	 * the applicant may have started another checkout; that new attempt is not in this
+	 * group, so it keeps holding its place — the same guarantee the old compare-and-set
+	 * on the claim gave.
 	 */
-	private void releaseIsSafe(AdmissionPayment payment, boolean alreadyPaid, List<CheckoutAttempt> attempts,
-			Counters counters) {
-		if (alreadyPaid) {
-			closeAll(attempts, CheckoutAttemptCloseReason.REJECTED, counters);
-			return;
-		}
-		UUID candidateId = attempts.get(0).getCandidateId();
-
-		if (payment == null) {
-			// Handing it to the claimer rather than skipping: a ficha with no readable
-			// payment row is that component's documented error, and a quiet skip here
-			// would leave the claim held with nothing left to ask about it.
-			checkoutSlotClaimer.release(candidateId, null);
-			return;
-		}
-
-		if (checkoutSlotClaimer.release(candidateId, payment.getCheckoutClaimedAt())) {
+	private void releaseIsSafe(boolean alreadyPaid, List<CheckoutAttempt> attempts, Counters counters) {
+		// The open attempts are what hold the place, so closing them is the release.
+		// Only the rows this run asked about are closed: an attempt opened after the
+		// query is not in this group and keeps holding its place.
+				closeAll(attempts, CheckoutAttemptCloseReason.REJECTED, counters);
+		if (!alreadyPaid) {
 			counters.released();
-		} else {
-			// The claim moved while the bank was being asked: somebody is mid-checkout on
-			// this very ficha, so the place stays held — by them, this time.
-			log.info("El cupo de la ficha {} cambió mientras se conciliaba; no se liberó", candidateId);
 		}
-
-		// The rows close either way. The refusal is what the bank said about each of them
-		// and that does not stop being true because somebody else re-stamped the claim.
-		closeAll(attempts, CheckoutAttemptCloseReason.REJECTED, counters);
 	}
 
 	/**

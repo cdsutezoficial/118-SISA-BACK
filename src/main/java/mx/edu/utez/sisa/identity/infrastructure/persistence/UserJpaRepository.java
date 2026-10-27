@@ -20,6 +20,9 @@ public interface UserJpaRepository extends JpaRepository<User, UUID> {
 
 	Optional<User> findByPersonId(UUID personId);
 
+	/** Backs {@code UserRepository.findByLlaveMxSubject} — LlaveMX login/linking. */
+	Optional<User> findByLlaveMxSubject(String llaveMxSubject);
+
 	/**
 	 * Backs {@code ListUsersUseCase} (01-identidad.md). {@code roleKey} is
 	 * matched with a correlated {@code EXISTS} subquery against

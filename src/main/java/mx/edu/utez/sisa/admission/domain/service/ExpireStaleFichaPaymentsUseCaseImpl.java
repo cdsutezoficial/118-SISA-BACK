@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,8 +41,13 @@ public class ExpireStaleFichaPaymentsUseCaseImpl implements ExpireStaleFichaPaym
 	private final Clock clock;
 	private final int deadlineDays;
 
+
+	private final FichaPaymentPort fichaPaymentPort;
+
 	public ExpireStaleFichaPaymentsUseCaseImpl(CandidateRepository candidateRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock, int deadlineDays) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock, int deadlineDays,
+			FichaPaymentPort fichaPaymentPort) {
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.candidateRepository = candidateRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.clock = clock;
@@ -89,6 +95,7 @@ public class ExpireStaleFichaPaymentsUseCaseImpl implements ExpireStaleFichaPaym
 			if (today.isAfter(FichaPaymentWindow.deadlineOf(candidate, closesOn, deadlineDays, zone))
 					&& candidate.markPaymentExpired()) {
 				candidateRepository.save(candidate);
+				cancelCharge(candidate);
 				expired++;
 			}
 		}
@@ -108,6 +115,16 @@ public class ExpireStaleFichaPaymentsUseCaseImpl implements ExpireStaleFichaPaym
 	 * to its own plazo alone, which is the conservative direction — it expires
 	 * later, never earlier than it should.
 	 */
+	/**
+	 * A lapsed ficha's charge stops being a debt: it is cancelled, so it no
+	 * longer shows up as an adeudo of somebody who can no longer pay it.
+	 */
+	private void cancelCharge(Candidate candidate) {
+		if (candidate.getFichaPaymentId() != null) {
+			fichaPaymentPort.cancel(candidate.getFichaPaymentId());
+		}
+	}
+
 	private Optional<LocalDate> closesOnOf(UUID admissionConfigId) {
 		return programAdmissionConfigQueryPort.findById(admissionConfigId)
 				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::closesAt)

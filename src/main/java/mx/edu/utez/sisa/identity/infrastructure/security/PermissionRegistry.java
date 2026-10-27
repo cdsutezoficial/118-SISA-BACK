@@ -132,7 +132,34 @@ public final class PermissionRegistry {
 			e("GET", "/high-school-types/**", "HIGH_SCHOOL_TYPES_READ"),
 			e("POST", "/high-school-types", "HIGH_SCHOOL_TYPES_CREATE"),
 			e("PUT", "/high-school-types/**", "HIGH_SCHOOL_TYPES_UPDATE"),
-			e("PATCH", "/high-school-types/**", "HIGH_SCHOOL_TYPES_CHANGE_STATUS"));
+			e("PATCH", "/high-school-types/**", "HIGH_SCHOOL_TYPES_CHANGE_STATUS"),
+			// finance — núcleo de cobro (Fase 1). Orden por especificidad: la
+			// cotización y el estado de cuenta van antes que el bloque de adeudos
+			// para que el first-match les dé su permiso propio; dentro de los
+			// adeudos, POST .../entries precede al POST de creación porque AntPath
+			// no deja que "/finance/payments" cubra el path anidado.
+			e("GET", "/finance/quote", "PAYMENTS_QUOTE"),
+			e("GET", "/finance/account-statement", "PAYMENTS_READ"),
+			e("GET", "/finance/payments/**", "PAYMENTS_READ"),
+			e("GET", "/finance/payments", "PAYMENTS_READ"),
+			// finance — descuentos (Fase 2, plan:
+			// docs/design/pendientes/pagos/fases/fase-02-descuentos.md).
+			// El saldo a favor se lee con PAYMENTS_READ (es parte del estado de
+			// cuenta de la persona); el reporte tiene su propio permiso. Las
+			// rutas anidadas de benefits van antes que las de payments para que
+			// el first-match les dé su permiso y no caigan en la lectura de
+			// adeudos.
+			e("GET", "/finance/benefits", "BENEFITS_READ"),
+			e("GET", "/finance/benefits/**", "BENEFITS_READ"),
+			e("POST", "/finance/benefits", "BENEFITS_CREATE"),
+			e("PUT", "/finance/benefits/**", "BENEFITS_UPDATE"),
+			e("PATCH", "/finance/benefits/*/cancel", "BENEFITS_CANCEL"),
+			e("GET", "/finance/credits", "PAYMENTS_READ"),
+			e("GET", "/finance/discounts/report", "BENEFITS_REPORT"),
+			e("POST", "/finance/payments/*/entries", "PAYMENTS_SETTLE"),
+			e("POST", "/finance/payments/*/exempt", "BENEFITS_CREATE"),
+			e("POST", "/finance/payments/*/apply-credit", "PAYMENTS_SETTLE"),
+			e("POST", "/finance/payments", "PAYMENTS_CREATE"));
 
 	private static final AntPathMatcher MATCHER = new AntPathMatcher();
 

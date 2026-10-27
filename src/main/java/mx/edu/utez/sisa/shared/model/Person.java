@@ -35,8 +35,9 @@ import java.util.UUID;
  * <p>Person creation is out of scope for Identity (see design.md — "Person
  * creation is out of scope: load-only reference") only in the historical
  * sense that motivated that note; {@code CreatePersonUseCase} is now the
- * real staff-onboarding entry point, and rows are also seeded by
- * {@code TestAccountsSeedRunner}/test fixtures.
+ * real staff-onboarding entry point, and rows are also created by test
+ * fixtures. The dev {@code TestAccountsSeedRunner} no longer seeds persons:
+ * app users exist without a linked person ({@code personId} is optional).
  */
 @Entity
 @Table(name = "person")

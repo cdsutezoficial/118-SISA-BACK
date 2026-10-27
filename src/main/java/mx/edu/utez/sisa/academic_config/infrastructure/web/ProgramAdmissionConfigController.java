@@ -23,11 +23,11 @@ import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.ProgramAdmissionC
 import mx.edu.utez.sisa.academic_config.infrastructure.web.dto.UpdateProgramAdmissionConfigRequest;
 import mx.edu.utez.sisa.admission.domain.service.FichaPaymentWindow;
 import mx.edu.utez.sisa.shared.web.dto.OptionResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,7 +40,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -91,12 +90,11 @@ public class ProgramAdmissionConfigController {
 	private final Clock clock;
 
 	/**
-	 * Days a ficha may take to be paid, the same {@code sisa.admission.payment
-	 * .deadline-days} the registration and the sweep read. The picker's copy of the
-	 * occupancy rule needs it to decide whether an old claim still holds its slot,
-	 * and it has to be the same number or the picker and the checkout disagree.
+	 * Minutes an open checkout attempt holds a place — the same
+	 * {@code sisa.admission.payment.checkout-hold-minutes} the checkout reads,
+	 * or the picker and the checkout would disagree about what is occupied.
 	 */
-	private final int fichaDeadlineDays;
+	private final int checkoutHoldMinutes;
 
 	public ProgramAdmissionConfigController(ListProgramAdmissionConfigsUseCase listProgramAdmissionConfigsUseCase,
 			OpenProgramAdmissionUseCase openProgramAdmissionUseCase,
@@ -104,7 +102,7 @@ public class ProgramAdmissionConfigController {
 			UpdateProgramAdmissionConfigUseCase updateProgramAdmissionConfigUseCase,
 			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase,
 			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository, Clock clock,
-			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
 		this.listProgramAdmissionConfigsUseCase = listProgramAdmissionConfigsUseCase;
 		this.openProgramAdmissionUseCase = openProgramAdmissionUseCase;
 		this.getProgramAdmissionConfigUseCase = getProgramAdmissionConfigUseCase;
@@ -112,7 +110,7 @@ public class ProgramAdmissionConfigController {
 		this.changeProgramAdmissionConfigStatusUseCase = changeProgramAdmissionConfigStatusUseCase;
 		this.programAdmissionConfigJpaRepository = programAdmissionConfigJpaRepository;
 		this.clock = clock;
-		this.fichaDeadlineDays = fichaDeadlineDays;
+		this.checkoutHoldMinutes = checkoutHoldMinutes;
 	}
 
 	@PostMapping
@@ -148,19 +146,15 @@ public class ProgramAdmissionConfigController {
 	 * the admission zone, so a career could appear in the list and be refused by
 	 * the very next screen. One clock, one zone, one answer.
 	 *
-	 * <p>The two cutoffs the occupancy subquery needs are computed by
-	 * {@code FichaPaymentWindow} rather than here, because the checkout's copy of
-	 * that rule needs the identical two values and this controller is not a place
-	 * to keep a second implementation of a date rule alive.
+	 	 * <p>The cutoff the occupancy subquery needs (open checkout attempts younger
+	 * than the 15-minute hold) comes from {@code FichaPaymentWindow}, the same
+	 * value the checkout's copy of the rule uses.
 	 */
 	@GetMapping("/options")
 	public List<OptionResponse> listProgramAdmissionConfigOptions() {
-		LocalDate today = LocalDate.now(clock);
-		Instant midnightToday = FichaPaymentWindow.startOfDay(today, clock.getZone());
-		Instant registeredNoLaterThan = FichaPaymentWindow.latestPayableRegistration(today, fichaDeadlineDays,
-				clock.getZone());
-		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(clock.instant(), registeredNoLaterThan,
-				midnightToday).stream()
+		Instant now = clock.instant();
+		return programAdmissionConfigJpaRepository.findOpenOfferedOptions(now,
+				FichaPaymentWindow.attemptsHoldingSince(now, checkoutHoldMinutes)).stream()
 				.map(o -> new OptionResponse(o.getId(), o.getProgramName(), o.getModality().name())).toList();
 	}
 

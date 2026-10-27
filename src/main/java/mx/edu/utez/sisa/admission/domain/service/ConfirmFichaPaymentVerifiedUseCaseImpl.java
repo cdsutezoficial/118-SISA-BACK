@@ -1,20 +1,18 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttempt;
-import mx.edu.utez.sisa.admission.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +61,7 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 
 	private final CandidateRepository candidateRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+	private final FichaPaymentPort fichaPaymentPort;
 
 	private final EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -74,11 +72,11 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 	private final CheckoutSlotClaimer checkoutSlotClaimer;
 
 	public ConfirmFichaPaymentVerifiedUseCaseImpl(CandidateRepository candidateRepository,
-			AdmissionPaymentRepository admissionPaymentRepository, EvoPaymentsGatewayPort evoPaymentsGateway,
+			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
 			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
 		this.candidateRepository = candidateRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.confirmAdmissionPaymentUseCase = confirmAdmissionPaymentUseCase;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -91,11 +89,11 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
-		AdmissionPayment payment = admissionPaymentRepository.findByCandidateId(candidateId)
+		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
 
-		if (payment.getPaymentStatus() == AdmissionPaymentStatus.PAID) {
+		if (charge.isPaid()) {
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
@@ -126,7 +124,9 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 
 		warnIfUnderpaid(candidate.getFolio(), attempt, status);
 
-		ConfirmPaymentResult result = confirmAdmissionPaymentUseCase.confirm(candidateId);
+		// The captured attempt's own snapshot is what gets booked: a later
+		// checkout may have re-quoted the ficha with a different discount.
+		ConfirmPaymentResult result = confirmAdmissionPaymentUseCase.confirm(candidateId, orderId);
 		checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.CAPTURED);
 		return result;
 	}
@@ -134,7 +134,7 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 	/**
 	 * The {@code orderId} must be an attempt this candidate opened and has not settled.
 	 *
-	 * <p>This replaced an equality check against {@code payment.orderId}, and the swap
+	  * <p>This replaced an equality check against the ficha's single stored order id, and the swap
 	 * looks like a loosening until you see what it enables. Two real situations were
 	 * unanswerable before: the applicant pays, the browser re-enters checkout before the
 	 * confirmation lands, and the ficha's column now holds the <em>second</em> order

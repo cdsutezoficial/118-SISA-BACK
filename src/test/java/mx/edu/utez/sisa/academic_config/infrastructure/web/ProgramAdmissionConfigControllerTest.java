@@ -40,10 +40,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -367,8 +367,8 @@ class ProgramAdmissionConfigControllerTest {
 		when(projection.getId()).thenReturn(configId);
 		when(projection.getProgramName()).thenReturn("Ingeniería en Software");
 		when(projection.getModality()).thenReturn(ProgramModality.PRESENCIAL);
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(Instant.class),
-				any(Instant.class))).thenReturn(List.of(projection));
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(Instant.class)))
+				.thenReturn(List.of(projection));
 
 		Instant beforeCall = Instant.now();
 		mockMvc.perform(get("/program-admission-configs/options"))
@@ -381,33 +381,21 @@ class ProgramAdmissionConfigControllerTest {
 		// sales window and the quota are filtered in SQL against this instant, so a
 		// caller that stopped passing it would silently get every OPEN config back.
 		ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
-		ArgumentCaptor<Instant> registeredNoLaterThan = ArgumentCaptor.forClass(Instant.class);
-		ArgumentCaptor<Instant> midnightToday = ArgumentCaptor.forClass(Instant.class);
+		ArgumentCaptor<Instant> attemptsOpenedSince = ArgumentCaptor.forClass(Instant.class);
 		verify(programAdmissionConfigJpaRepository).findOpenOfferedOptions(now.capture(),
-				registeredNoLaterThan.capture(), midnightToday.capture());
+				attemptsOpenedSince.capture());
 		assertThat(now.getValue()).isBetween(beforeCall, Instant.now());
 
-		// The claim-expiry half of the occupancy rule is about days, so it reaches the
-		// query as two instants pinned to midnight in the admission zone. Deriving both
-		// from the same clock is what stops the picker and the checkout from
-		// disagreeing about which day a claim dies — and midnight, not "now", is what
-		// keeps a ficha payable for the whole of its last day instead of losing it at
-		// 00:01.
-		LocalDate today = LocalDate.now(ZONE);
-		assertThat(midnightToday.getValue()).isEqualTo(FichaPaymentWindow.startOfDay(today, ZONE));
-		assertThat(registeredNoLaterThan.getValue())
-				.isEqualTo(FichaPaymentWindow.latestPayableRegistration(today, PAYMENT_WINDOW_DAYS, ZONE));
-		// A ficha registered on day D is payable through D+10, so on a given day the
-		// earliest registration still alive is exactly 10 days back. Nine would hand
-		// everybody an extra day and would contradict the deadline the domain computes.
-		assertThat(ChronoUnit.DAYS.between(registeredNoLaterThan.getValue(), midnightToday.getValue()))
-				.isEqualTo(PAYMENT_WINDOW_DAYS);
+		// An open checkout attempt holds a place for 15 minutes (the life of an EVO
+		// session), measured from the same "now": older attempts count for nothing.
+		assertThat(attemptsOpenedSince.getValue()).isEqualTo(FichaPaymentWindow.attemptsHoldingSince(now.getValue(), 15));
+		assertThat(Duration.between(attemptsOpenedSince.getValue(), now.getValue())).isEqualTo(Duration.ofMinutes(15));
 	}
 
 	@Test
 	void listProgramAdmissionConfigOptionsReturnsEmptyListWhenNoOpenConfigs() throws Exception {
-		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(Instant.class),
-				any(Instant.class))).thenReturn(List.of());
+		when(programAdmissionConfigJpaRepository.findOpenOfferedOptions(any(Instant.class), any(Instant.class)))
+				.thenReturn(List.of());
 
 		mockMvc.perform(get("/program-admission-configs/options"))
 				.andExpect(status().isOk())

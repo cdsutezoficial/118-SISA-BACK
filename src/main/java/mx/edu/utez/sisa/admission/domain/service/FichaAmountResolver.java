@@ -56,15 +56,39 @@ public class FichaAmountResolver {
 	}
 
 	/**
-	 * @param programId the program whose admission concept prices the ficha
-	 * @param onDate    the date the concept must be active on (the registration
-	 *                  date; concept windows are period-scoped)
+	 	 * The ficha's <em>list price</em> for a program on a date: the catalog rate
+	 * of the program's ADMISSION concept, with no discount.
+	 *
+	 * <p>Only for the public pre-registration preview (no candidate yet, so no
+	 * charge). Once a ficha exists its price is its finance charge's, priced
+	 * live by {@code FichaPaymentPort#quote} — that is the one every screen of
+	 * an issued ficha shows and the one the checkout charges.
+	 *
+	 * @param programId   the program whose admission concept prices the ficha
+	 * @param onDate      the date the concept must be active on
 	 */
 	public FichaAmount resolve(UUID programId, LocalDate onDate) {
 		PaymentConceptQueryPort.FichaConcept concept = requireSingleActiveConcept(programId, onDate);
-		BigDecimal amount = paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
+		BigDecimal rate = paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
 				.orElseThrow(() -> describeMissingRate(concept.name()));
-		return new FichaAmount(amount, concept.name());
+				return new FichaAmount(rate, concept.name());
+	}
+
+	/**
+	 * The program's ADMISSION concept that prices the ficha, under the strict
+	 * rule (exactly one ACTIVE concept, sellable on {@code onDate}, with a rate
+	 * that prices the program). Its {@code code} is what the ficha's finance
+	 * charge is raised for — never a hard-coded label.
+	 *
+	 * @throws FichaPaymentConceptNotFoundException if none, or none priced
+	 * @throws AmbiguousFichaPaymentConceptException if more than one
+	 * @throws PaymentConceptExpiredException       if outside its window
+	 */
+	public PaymentConceptQueryPort.FichaConcept resolveConcept(UUID programId, LocalDate onDate) {
+		PaymentConceptQueryPort.FichaConcept concept = requireSingleActiveConcept(programId, onDate);
+		paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
+				.orElseThrow(() -> describeMissingRate(concept.name()));
+		return concept;
 	}
 
 	/**
@@ -213,8 +237,8 @@ public class FichaAmountResolver {
 	}
 
 	/**
-	 * @param amount     what the applicant must pay, resolved from the concept's
-	 *                   rate for this program on this date
+	 * @param amount      the list price: the concept's rate for this program on
+	 *                    this date
 	 * @param conceptName the catalog concept's name, shown to the applicant
 	 */
 	public record FichaAmount(BigDecimal amount, String conceptName) {

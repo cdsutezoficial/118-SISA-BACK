@@ -90,11 +90,22 @@ class UpdatePlanLevelUseCaseImplTest {
 	}
 
 	@Test
-	void updateLevel_rejectsLevelNumberOutsideTotalLevelsRange() {
+	void updateLevel_acceptsLevelNumberBeyondTotalLevels() {
+		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
+		when(planRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		PlanLevelResult result = useCase.updateLevel(
+				new UpdatePlanLevelCommand(planId, levelId, 99, PlanLevelType.REGULAR, null));
+
+		assertThat(result.levelNumber()).isEqualTo(99);
+	}
+
+	@Test
+	void updateLevel_rejectsLevelNumberBelowOne() {
 		when(planRepository.findById(planId)).thenReturn(Optional.of(plan));
 
 		assertThatThrownBy(() -> useCase
-				.updateLevel(new UpdatePlanLevelCommand(planId, levelId, 99, PlanLevelType.REGULAR, null)))
+				.updateLevel(new UpdatePlanLevelCommand(planId, levelId, 0, PlanLevelType.REGULAR, null)))
 				.isInstanceOf(InvalidPlanDataException.class);
 
 		verify(planRepository, never()).save(any());

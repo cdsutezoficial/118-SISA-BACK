@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.port.out;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -12,8 +13,7 @@ import java.util.UUID;
  * same transaction. Exposing a plain "read the cap" method next to a plain
  * "count the fichas" method invites exactly the two-call race this exists to
  * prevent, so the lock and the cap travel together here and the count is taken
- * by {@link AdmissionPaymentRepository#countOccupiedByConfigId} while the lock
- * is still held.
+ * by {@link #countOccupiedExcluding} while the lock is still held.
  */
 public interface AdmissionQuotaPort {
 
@@ -33,8 +33,20 @@ public interface AdmissionQuotaPort {
 	QuotaState lockQuota(UUID admissionConfigId);
 
 	/**
+	 * Places of the config taken by <em>other</em> candidates: fichas whose
+	 * charge is {@code PAID}/{@code EXEMPT}, plus fichas with a checkout attempt
+	 * still open that was started at or after {@code attemptsOpenedSince}
+	 * (now − 15 min). Call it while holding {@link #lockQuota}.
+	 *
+	 * @param candidateId the candidate asking, left out of the count so a retry
+	 *                    of their own checkout never competes with itself;
+	 *                    {@code null} counts everybody
+	 */
+	long countOccupiedExcluding(UUID admissionConfigId, UUID candidateId, Instant attemptsOpenedSince);
+
+	/**
 	 * The cap. The count that is compared against it is taken by
-	 * {@link AdmissionPaymentRepository#countOccupiedByConfigId}, keyed by the
+	 * {@link #countOccupiedExcluding}, keyed by the
 	 * same {@code admissionConfigId} the lock was taken on — the caller already
 	 * holds it and does not need it returned here.
 	 *

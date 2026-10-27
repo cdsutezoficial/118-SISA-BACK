@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -22,6 +23,18 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
  * how a caller stays on the same day the applicant is looking at.
  */
 public final class FichaPaymentWindow {
+
+	/**
+	 * The instant from which open checkout attempts still hold a quota place.
+	 *
+	 * <p>An attempt holds its place for the life of an EVO hosted session
+	 * ({@code sisa.admission.payment.checkout-hold-minutes}): a younger
+	 * {@code STARTED} attempt counts as occupied, an older one counts for
+	 * nothing, so no job has to release it.
+	 */
+	public static Instant attemptsHoldingSince(Instant now, int checkoutHoldMinutes) {
+		return now.minus(Duration.ofMinutes(checkoutHoldMinutes));
+	}
 
 	private FichaPaymentWindow() {
 	}
@@ -65,35 +78,5 @@ public final class FichaPaymentWindow {
 	public static boolean isPayableOn(Candidate candidate, LocalDate processClosesOn, int paymentWindowDays,
 			LocalDate today, ZoneId zone) {
 		return !today.isAfter(deadlineOf(candidate, processClosesOn, paymentWindowDays, zone));
-	}
-
-	/**
-	 * First instant of {@code today} in the given zone.
-	 *
-	 * <p>Queries store timestamps but the rules are written in days, so a
-	 * {@code >=} comparison against the start of today is how a query answers
-	 * "which day is it". That is what keeps a process closing on the 26th open for
-	 * the whole of the 26th instead of expiring at the midnight that started it.
-	 */
-	public static Instant startOfDay(LocalDate today, ZoneId zone) {
-		return today.atStartOfDay(zone).toInstant();
-	}
-
-	/**
-	 * The earliest registration a ficha can still carry and be payable today.
-	 *
-	 * <p>{@code today - N}, the exact mirror of {@link Candidate#paymentDeadline}
-	 * adding {@code N} to the registration day. A ficha registered on the 20th has
-	 * its deadline on the 30th, so on the 30th the 20th is the earliest registration
-	 * still alive and anything older has lapsed. Writing it as {@code today - (N-1)}
-	 * here would hand everybody an extra day, and it would disagree with the
-	 * deadline the very same class computes — the one bug this method must not have
-	 * is two different answers to "when does a ficha expire" in one place.
-	 *
-	 * <p>A {@code LocalDate} subtraction and not a duration on timestamps, because
-	 * the rule is about calendar days.
-	 */
-	public static Instant latestPayableRegistration(LocalDate today, int paymentWindowDays, ZoneId zone) {
-		return today.minusDays(paymentWindowDays).atStartOfDay(zone).toInstant();
 	}
 }

@@ -179,8 +179,9 @@ public class UseCaseConfig {
 	}
 
 	@Bean
-	public ListAcademicDivisionsUseCase listAcademicDivisionsUseCase(AcademicDivisionRepository divisionRepository) {
-		return new ListAcademicDivisionsUseCaseImpl(divisionRepository);
+	public ListAcademicDivisionsUseCase listAcademicDivisionsUseCase(AcademicDivisionRepository divisionRepository,
+			AcademicProgramRepository programRepository) {
+		return new ListAcademicDivisionsUseCaseImpl(divisionRepository, programRepository);
 	}
 
 	@Bean

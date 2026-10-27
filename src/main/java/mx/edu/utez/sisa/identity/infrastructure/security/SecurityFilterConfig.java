@@ -234,18 +234,47 @@ public class SecurityFilterConfig {
 							"/candidates/*/payments/confirm", "/candidates/*/payments/checkout",
 							"/candidates/*/payments/release")
 					.permitAll()
-						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf").permitAll()
+						.requestMatchers(HttpMethod.GET, "/candidates/*", "/candidates/*/ficha.pdf",
+								"/candidates/*/payment-access").permitAll()
 						// Staff candidate list. Exact "/candidates" — NOT covered by the
 						// public "/candidates/*" matcher above (a trailing "/{segment}" is
 						// required), so it must be declared explicitly. ADMIN bypasses the
 						// fine-grained layer; SE/Director go through CANDIDATES_READ.
+						// Finanzas too (2026-10-22): it grants discounts on a
+						// candidate's charges, and finds the candidate by folio/CURP
+						// here. List only — the detail below stays SE/Director.
 						.requestMatchers(HttpMethod.GET, "/candidates")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
 						// Staff candidate detail. Two segments deep, so the public
 						// "/candidates/*" matcher above does not reach it either.
 						.requestMatchers(HttpMethod.GET, "/candidates/*/detail")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
+						.permitAll()
+						// Llave Morelos OAuth (RF-AUTH-002 / RF-AUTH-003). Public by
+						// design: the whole point is that the caller has no SISA
+						// session yet — start begins the round and the provider's
+						// callback lands here with only an authorization code. The
+						// proof of identity is the PKCE verifier in the flow cookie
+						// plus the state round-trip, not a JWT.
+						// Linking is the one LlaveMX endpoint that is NOT public:
+						// unlike login (where the provider is the authenticator) and
+						// candidate verification (where no account is touched),
+						// this writes llave_mx_subject onto an existing User, so it
+						// answers only to a signed-in ADMIN — the same role the
+						// /usuarios/detalle screen that hosts the button already
+						// requires.
+						.requestMatchers(HttpMethod.POST, "/auth/llave-mx/link").hasRole("ADMIN")
+						// Prefill is public for the same reason the callbacks are:
+						// it answers after the provider round-tripped, when there is
+						// still no session. Its credential is not the missing JWT but
+						// the signed, HttpOnly verification ticket the callback left
+						// behind, so an unauthenticated caller without that cookie
+						// gets 403 from the ticket check, not anonymous data.
+						.requestMatchers("/auth/llave-mx/start", "/auth/llave-mx/status",
+								"/auth/llave-mx/prefill", "/auth/llave-mx/callback",
+								"/oauth/llave/digital/callback",
+								"/SISAVA/oauth/llave/digital/callback")
 						.permitAll()
 						.requestMatchers(HttpMethod.GET, "/roles", "/roles/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.POST, "/roles").hasRole("ADMIN")
@@ -338,6 +367,32 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.PATCH, "/payment-areas/**")
 						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						// finance — núcleo de cobro (Fase 1, plan:
+						// docs/design/pendientes/pagos/fases/fase-01-nucleo-cobro.md).
+						// Primera superficie del bounded context `finance`; igual que
+						// /payment-concepts, la Administra Finanzas, así que reutiliza
+						// el par ADMIN/PERSONAL_FINANZAS. Un solo matcher por verbo
+						// (GET y POST) sobre "/finance/**": cubre cotización, adeudos,
+						// abonos y estado de cuenta sin listar cada ruta, y se apoya
+						// en el permiso fino PAYMENTS_* (PermissionRegistry) para el
+						// detalle. Debe preceder a anyRequest().
+						// Los descuentos (Fase 2) los administra SE además de
+						// Finanzas, así que su subárbol se autoriza por delante con
+						// los tres roles: el matcher sin verbo cubre GET/POST/PUT/
+						// PATCH de /finance/benefits/** y debe preceder a los de
+						// /finance/** para ganar el first-match. El resto de
+						// /finance/** (adeudos, cotización, saldo a favor) sigue en
+						// el par ADMIN/PERSONAL_FINANZAS.
+						.requestMatchers("/finance/benefits/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.POST, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PUT, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
+						.requestMatchers(HttpMethod.PATCH, "/finance/**")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS")
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/options").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs/*/ficha-amount").permitAll()
 						.requestMatchers(HttpMethod.GET, "/program-admission-configs", "/program-admission-configs/**")
@@ -366,6 +421,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PATCH, "/high-school-types/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.GET, "/postal-codes/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/states").permitAll()
 						.requestMatchers(HttpMethod.GET, "/municipalities").permitAll()
 						.anyRequest().authenticated())

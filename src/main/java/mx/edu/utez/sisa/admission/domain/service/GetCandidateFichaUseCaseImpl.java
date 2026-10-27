@@ -1,12 +1,12 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPayment;
-import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentConcept;
+import java.util.List;
+import java.util.Optional;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.AdmissionPaymentRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -17,6 +17,9 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredException;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
+import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.shared.model.Address;
 import mx.edu.utez.sisa.shared.model.DiversityProfile;
 import mx.edu.utez.sisa.shared.model.EmploymentInfo;
@@ -55,7 +58,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 
 	private final CandidatePersonRepository candidatePersonRepository;
 
-	private final AdmissionPaymentRepository admissionPaymentRepository;
+	private final FichaPaymentPort fichaPaymentPort;
+	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
@@ -67,19 +71,28 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 
 	private final FichaAmountResolver fichaAmountResolver;
 
+	private final FichaDisplayPrice fichaDisplayPrice;
+
 	private final Clock clock;
 
 	private final int fichaDeadlineDays;
 
+	/**
+	 * @param fichaDisplayPrice prices the ficha from its finance charge, live;
+	 *                          {@code null} falls back to the program's list price
+	 */
 	public GetCandidateFichaUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			AdmissionPaymentRepository admissionPaymentRepository,
+			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
-			FichaAmountResolver fichaAmountResolver, Clock clock, int fichaDeadlineDays) {
+			FichaAmountResolver fichaAmountResolver, FichaDisplayPrice fichaDisplayPrice, Clock clock,
+			int fichaDeadlineDays) {
+		this.fichaDisplayPrice = fichaDisplayPrice;
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
-		this.admissionPaymentRepository = admissionPaymentRepository;
+		this.fichaPaymentPort = fichaPaymentPort;
+		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.placeNameLookupPort = placeNameLookupPort;
 		this.outreachChannelRepository = outreachChannelRepository;
@@ -97,20 +110,17 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 				.orElse(null);
 	}
 
-	private java.util.Optional<FichaData> assemble(Candidate candidate) {
-		AdmissionPayment payment = admissionPaymentRepository
-				.findByCandidateIdAndConcept(candidate.getId(), AdmissionPaymentConcept.ADMISSION_FICHA)
-				.orElse(null);
+	private Optional<FichaData> assemble(Candidate candidate) {
+		FichaPaymentPort.FichaCharge payment = FichaCharges.of(candidate, fichaPaymentPort).orElse(null);
 		if (payment == null) {
-			return java.util.Optional.empty();
+			return Optional.empty();
 		}
-		FichaData.PaymentData inductionPayment = admissionPaymentRepository
-				.findByCandidateIdAndConcept(candidate.getId(), AdmissionPaymentConcept.INDUCTION_COURSE)
-				.map(this::toPaymentData)
-				.orElse(null);
+		// The induction course is not charged yet; when it is, it will be another
+		// finance charge of the candidate, read the same way as the ficha.
+		FichaData.PaymentData inductionPayment = null;
 		Person person = candidatePersonRepository.findById(candidate.getPersonId()).orElse(null);
 		if (person == null) {
-			return java.util.Optional.empty();
+			return Optional.empty();
 		}
 		AdmissionConfigInfo config = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
 				.orElse(null);
@@ -136,16 +146,18 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		// The closing date comes from the config, not from the ticket's
 		// registrationDeadline snapshot: staff close a cohort by editing the config,
 		// and a PDF reprint is exactly where a stale promise would do the most damage.
-		LocalDate processClosesOn = config == null ? payment.getRegistrationDeadline()
+		LocalDate registrationDeadline = payment.registrationDeadline(clock.getZone());
+		LocalDate processClosesOn = config == null ? registrationDeadline
 				: config.closesAt().atZone(clock.getZone()).toLocalDate();
 		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
-		return java.util.Optional.of(new FichaData(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
+		FichaDisplayPrice.Price price = price(config, payment);
+		return Optional.of(new FichaData(candidate.getId(), candidate.getPersonId(), candidate.getFolio(),
+				candidate.getStatus(), candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
 				config == null ? null : config.divisionName(), person.getCurp(),
 				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
-				person.getHomePhone(), person.getMobilePhone(), payment.getReferenceNumber(),
-				liveAmount(config, payment), payment.getRegistrationDeadline(), paymentClosesOn, paymentDeadline,
-				payment.getPaymentStatus(), payment.getReceiptNumber(), payment.getPaidAt(), payment.getOrderId(),
+				person.getHomePhone(), person.getMobilePhone(), payment.referenceNumber(),
+				price.amount(), registrationDeadline, paymentClosesOn, paymentDeadline,
+				payment.status(), payment.receiptNumber(), payment.paidAt(), orderIdOf(candidate.getId()),
 				new FichaData.DatosGenerales(person.getBirthDate(), person.getGender(), person.getNationality(),
 						resolveState(person.getBirthStateId()), resolveMunicipality(person.getBirthMunicipalityId()),
 						person.getMaritalStatus(), person.getNativeLanguage(), Boolean.TRUE.equals(person.getHasChildren())),
@@ -180,12 +192,21 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								resolveState(school.getSchoolStateId()),
 								resolveMunicipality(school.getSchoolMunicipalityId()), school.getForeignCountry(),
 								school.getSchoolCity(), school.getGpa(), school.getCct()),
-				inductionPayment));
+				inductionPayment, price.originalAmount(), price.discountAmount(), price.discountReason()));
 	}
 
-	private FichaData.PaymentData toPaymentData(AdmissionPayment payment) {
-		return new FichaData.PaymentData(payment.getConcept(), payment.getAmount(), payment.getReferenceNumber(),
-				payment.getPaymentStatus(), payment.getReceiptNumber(), payment.getPaidAt(), payment.getOrderId());
+	/**
+	 * The EVO order shown on the ficha: the one that captured, or else the most
+	 * recent attempt; {@code null} when the applicant never opened a checkout.
+	 */
+	private String orderIdOf(UUID candidateId) {
+		if (checkoutAttemptRepository == null) {
+			return null;
+		}
+		List<CheckoutAttempt> attempts = checkoutAttemptRepository.findAllByCandidateId(candidateId);
+		return attempts.stream().filter(a -> a.getCloseReason() == CheckoutAttemptCloseReason.CAPTURED)
+				.map(CheckoutAttempt::getOrderId).findFirst()
+				.orElse(attempts.isEmpty() ? null : attempts.get(attempts.size() - 1).getOrderId());
 	}
 
 	/**
@@ -206,12 +227,20 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 	 * with no price omits the amount rather than print a number the system will
 	 * not charge.
 	 */
-	private BigDecimal liveAmount(AdmissionConfigInfo config, AdmissionPayment payment) {
+	private FichaDisplayPrice.Price price(AdmissionConfigInfo config, FichaPaymentPort.FichaCharge payment) {
+		if (fichaDisplayPrice != null) {
+			return fichaDisplayPrice.of(payment.financePaymentId(), config == null ? null : config.programId());
+		}
+		return new FichaDisplayPrice.Price(null, null, liveAmount(config), null);
+	}
+
+	private BigDecimal liveAmount(AdmissionConfigInfo config) {
 		if (config == null) {
-			return payment.getAmount();
+			return null;
 		}
 		try {
-			return fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock)).amount();
+			return fichaAmountResolver.resolve(config.programId(), LocalDate.now(clock))
+					.amount();
 		} catch (FichaPaymentConceptNotFoundException | PaymentConceptExpiredException
 				| AmbiguousFichaPaymentConceptException ex) {
 			return null;

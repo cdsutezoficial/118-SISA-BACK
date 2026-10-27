@@ -12,10 +12,10 @@ import java.util.UUID;
 
 /**
  * JPA-backed {@link PersonRepository} adapter delegating to
- * {@link PersonJpaRepository}. {@code save} is used both by
- * {@code TestAccountsSeedRunner}/test fixtures (original usage) and now by
+ * {@link PersonJpaRepository}. {@code save} is used by test fixtures and by
  * {@code CreatePersonUseCaseImpl} (plan:
- * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.1).
+ * {@code docs/plans/2026-07-28-persons-and-user-management.md} — 4.1); the
+ * dev {@code TestAccountsSeedRunner} no longer creates person rows.
  */
 @Component
 public class PersonRepositoryAdapter implements PersonRepository {

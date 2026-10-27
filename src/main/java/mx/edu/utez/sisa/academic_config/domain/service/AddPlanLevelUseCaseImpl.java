@@ -11,10 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Adds a {@code PlanLevel} to an existing {@code AcademicPlan} (spec: "Add
- * and Update Plan Level"). Enforces the {@code [1, totalLevels]} range at
- * this layer; duplicate {@code levelNumber} rejection is delegated to
- * {@link AcademicPlan#addLevel} (design.md — Decision: "Boundary enforcement
- * — no path to children except through the plan").
+ * and Update Plan Level"). Enforces that {@code levelNumber} is {@code >= 1}
+ * — the number is a free label, not an index, so a 4-level plan may be
+ * numbered 7, 8, 9, 10; duplicate {@code levelNumber} rejection is delegated
+ * to {@link AcademicPlan#addLevel} (design.md — Decision: "Boundary
+ * enforcement — no path to children except through the plan").
  */
 public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 
@@ -29,9 +30,9 @@ public class AddPlanLevelUseCaseImpl implements AddPlanLevelUseCase {
 	public PlanLevelResult addLevel(AddPlanLevelCommand command) {
 		AcademicPlan plan = planRepository.findById(command.planId())
 				.orElseThrow(() -> new AcademicPlanNotFoundException("Academic plan not found: " + command.planId()));
-		if (command.levelNumber() < 1 || command.levelNumber() > plan.getTotalLevels()) {
-			throw new InvalidPlanDataException("El número de nivel debe estar entre 1 y el total de niveles del plan ("
-					+ plan.getTotalLevels() + "): " + command.levelNumber());
+		if (command.levelNumber() < 1) {
+			throw new InvalidPlanDataException(
+					"El número de nivel debe ser un entero mayor o igual a 1: " + command.levelNumber());
 		}
 
 		plan.addLevel(command.levelNumber(), command.type(),

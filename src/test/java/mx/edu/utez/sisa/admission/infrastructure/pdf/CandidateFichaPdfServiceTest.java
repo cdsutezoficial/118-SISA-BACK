@@ -280,6 +280,7 @@ class CandidateFichaPdfServiceTest {
 	private static FichaData fullFicha(LocalDate paymentDeadline) {
 		return new FichaData(
 				UUID.fromString("11111111-1111-1111-1111-111111111111"),
+				UUID.fromString("99999999-9999-9999-9999-999999999999"),
 				"ADM-2026-000001",
 				CandidateStatus.REGISTERED,
 				Instant.parse("2026-01-20T12:00:00Z"),
@@ -313,17 +314,18 @@ class CandidateFichaPdfServiceTest {
 						"Jiquilpan"),
 				new InformacionComplementaria(true, "Asma leve", false, null, true, "Purépecha", true, "Purépecha",
 						true, false, true, true, true),
-new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
+				new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 					new BigDecimal("6500.00"), "Ferretería López", "Cajero", LocalTime.of(9, 0), LocalTime.of(18, 0)),
 				new SeleccionCarrera("Mixta", "Amigo que estudia aquí", true, "Enero – Abril 2026"),
 				new AntecedentesEscolares("CBTis 121", "Bachillerato General", true, "Michoacán de Ocampo", "Jiquilpan",
 						null, null, new BigDecimal("8.90"), "16DCT0121B"),
-				null);
+				null, null, null, null);
 	}
 
 	private static FichaData minimalFicha() {
 		return new FichaData(
 				UUID.fromString("33333333-3333-3333-3333-333333333333"),
+				UUID.fromString("88888888-8888-8888-8888-888888888888"),
 				"ADM-2026-000099",
 				CandidateStatus.REGISTERED,
 				Instant.parse("2026-01-20T12:00:00Z"),
@@ -353,6 +355,6 @@ new Ingresos(new BigDecimal("8500.00"), true, "Negocio propio", "351 516 23 41",
 				new Ingresos(null, false, null, "", null, "", "", null, null),
 				new SeleccionCarrera("", "", false, ""),
 				new AntecedentesEscolares("", "", true, "", "", null, "", null, ""),
-				null);
+				null, null, null, null);
 	}
 }
