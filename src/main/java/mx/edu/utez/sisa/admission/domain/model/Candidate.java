@@ -176,6 +176,16 @@ public class Candidate {
 		return outreachChannelId;
 	}
 
+	/**
+	 * Corrige los datos de la selección que no afectan el cobro: el canal por
+	 * el que se enteró y si la carrera es su primera opción. La carrera en sí
+	 * no se cambia aquí (requiere recotizar la ficha).
+	 */
+	public void updateSelection(UUID outreachChannelId, boolean isFirstChoice) {
+		this.outreachChannelId = outreachChannelId;
+		this.isFirstChoice = isFirstChoice;
+	}
+
 	public boolean isEnabledForInduction() {
 		return isEnabledForInduction;
 	}

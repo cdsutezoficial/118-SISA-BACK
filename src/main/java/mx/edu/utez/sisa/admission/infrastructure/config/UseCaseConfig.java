@@ -17,7 +17,9 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
@@ -42,7 +44,9 @@ import mx.edu.utez.sisa.admission.domain.service.ReconcileFichaPaymentsUseCaseIm
 import mx.edu.utez.sisa.admission.domain.service.ExpireStaleFichaPaymentsUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.FichaDisplayPrice;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
+import mx.edu.utez.sisa.admission.domain.service.GetCandidateEditFormUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.UpdateCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImpl;
@@ -338,6 +342,22 @@ public class UseCaseConfig {
 		} catch (IllegalArgumentException ex) {
 			return "";
 		}
+	}
+
+	@Bean
+	public GetCandidateEditFormUseCase getCandidateEditFormUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+		return new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
+				programAdmissionConfigQueryPort);
+	}
+
+	@Bean
+	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
+			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
+			HighSchoolTypeRepository highSchoolTypeRepository) {
+		return new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
+				outreachChannelRepository, highSchoolTypeRepository);
 	}
 
 	@Bean
