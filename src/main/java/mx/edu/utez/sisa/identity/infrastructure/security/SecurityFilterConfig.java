@@ -249,6 +249,13 @@ public class SecurityFilterConfig {
 						// "/candidates/*" matcher above does not reach it either.
 						.requestMatchers(HttpMethod.GET, "/candidates/*/detail")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
+						// Edición de la ficha (Fase 7 · T2): solo Servicios Escolares.
+						// El GET va dos segmentos abajo y el PUT es otro método, así
+						// que el permitAll de GET "/candidates/*" no alcanza a ninguno.
+						.requestMatchers(HttpMethod.GET, "/candidates/*/edit")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						.requestMatchers(HttpMethod.PUT, "/candidates/*")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers("/auth/login", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password")
 						.permitAll()
 						// Llave Morelos OAuth (RF-AUTH-002 / RF-AUTH-003). Public by

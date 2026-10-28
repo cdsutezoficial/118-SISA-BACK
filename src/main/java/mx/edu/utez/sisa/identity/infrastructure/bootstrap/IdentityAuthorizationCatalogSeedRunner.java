@@ -129,6 +129,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("HIGH_SCHOOL_TYPES_UPDATE", "Actualizar tipo de bachillerato"),
 			permission("HIGH_SCHOOL_TYPES_CHANGE_STATUS", "Cambiar estatus de tipo de bachillerato"),
 			permission("CANDIDATES_READ", "Consultar candidatos"),
+			permission("CANDIDATES_UPDATE", "Editar la ficha de candidatos"),
 			permission("STATES_READ", "Consultar estados"),
 			permission("MUNICIPALITIES_READ", "Consultar municipios"));
 
@@ -225,7 +226,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 				"OUTREACH_CHANNELS_READ", "OUTREACH_CHANNELS_CREATE", "OUTREACH_CHANNELS_UPDATE",
 				"OUTREACH_CHANNELS_CHANGE_STATUS", "HIGH_SCHOOL_TYPES_READ", "HIGH_SCHOOL_TYPES_CREATE",
 				"HIGH_SCHOOL_TYPES_UPDATE", "HIGH_SCHOOL_TYPES_CHANGE_STATUS", "CANDIDATES_READ",
-				"BENEFITS_READ", "BENEFITS_CREATE", "BENEFITS_UPDATE", "BENEFITS_CANCEL", "BENEFITS_REPORT",
+				"CANDIDATES_UPDATE", "BENEFITS_READ", "BENEFITS_CREATE", "BENEFITS_UPDATE", "BENEFITS_CANCEL", "BENEFITS_REPORT",
 				"STATES_READ", "MUNICIPALITIES_READ"));
 
 		permissionsByRole.put(RoleType.PERSONAL_FINANZAS, orderedSet("PAYMENT_CONCEPTS_READ",
