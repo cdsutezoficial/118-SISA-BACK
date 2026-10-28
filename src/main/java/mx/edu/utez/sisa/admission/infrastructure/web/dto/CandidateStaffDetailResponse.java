@@ -13,19 +13,32 @@ import java.util.UUID;
  * Staff-only detail projection behind {@code GET /candidates/{id}/detail}.
  * Reuses the assembled ficha query but narrows it to the fields the office's
  * detail screen actually shows on its first two tabs.
+ *
+ * <p>The ficha's payment carries its price breakdown — the concept, what it
+ * costs, the discount and why — so the office reads the same "cuesta X −
+ * descuento Y = Z" the applicant sees. {@code amount} is the total owed (live
+ * while the ficha is open, the charged amount once paid).
  */
 public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, String folio, String fullName,
 		CandidateStatus candidateStatus, Instant registeredAt, String programName, String divisionName, String curp,
 		String email, String homePhone, String mobilePhone, String outreachChannelName,
 		PaymentResponse admissionPayment, PaymentResponse inductionPayment) {
 
-	public record PaymentResponse(AdmissionPaymentConcept concept, BigDecimal amount, String referenceNumber,
+	/**
+	 * @param conceptName    the catalog concept charged, or {@code null} when unknown
+	 * @param originalAmount the concept's cost before the discount, or {@code null} when unknown
+	 * @param discountAmount the discount, or {@code null} when there is none
+	 * @param discountReason why the discount was granted, or {@code null}
+	 */
+	public record PaymentResponse(AdmissionPaymentConcept concept, String conceptName, BigDecimal originalAmount,
+			BigDecimal discountAmount, String discountReason, BigDecimal amount, String referenceNumber,
 			AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {
 
 		public static PaymentResponse from(FichaData.PaymentData payment) {
 			return payment == null ? null
-					: new PaymentResponse(payment.concept(), payment.amount(), payment.referenceNumber(),
-							payment.paymentStatus(), payment.receiptNumber(), payment.paidAt(), payment.orderId());
+					: new PaymentResponse(payment.concept(), null, null, null, null, payment.amount(),
+							payment.referenceNumber(), payment.paymentStatus(), payment.receiptNumber(),
+							payment.paidAt(), payment.orderId());
 		}
 	}
 
@@ -34,8 +47,10 @@ public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, Stri
 				ficha.candidateStatus(), ficha.registeredAt(), ficha.programName(), ficha.divisionName(), ficha.curp(),
 				ficha.email(), ficha.homePhone(), ficha.mobilePhone(),
 				ficha.seleccionCarrera() == null ? null : ficha.seleccionCarrera().outreachChannelName(),
-				new PaymentResponse(AdmissionPaymentConcept.ADMISSION_FICHA, ficha.amount(), ficha.referenceNumber(),
-						ficha.paymentStatus(), ficha.receiptNumber(), ficha.paidAt(), ficha.orderId()),
+				new PaymentResponse(AdmissionPaymentConcept.ADMISSION_FICHA, ficha.conceptName(),
+						ficha.originalAmount(), ficha.discountAmount(), ficha.discountReason(), ficha.amount(),
+						ficha.referenceNumber(), ficha.paymentStatus(), ficha.receiptNumber(), ficha.paidAt(),
+						ficha.orderId()),
 				PaymentResponse.from(ficha.inductionPayment()));
 	}
 

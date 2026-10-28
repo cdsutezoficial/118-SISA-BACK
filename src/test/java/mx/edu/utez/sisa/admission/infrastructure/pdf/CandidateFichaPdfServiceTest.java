@@ -319,7 +319,7 @@ class CandidateFichaPdfServiceTest {
 				new SeleccionCarrera("Mixta", "Amigo que estudia aquí", true, "Enero – Abril 2026"),
 				new AntecedentesEscolares("CBTis 121", "Bachillerato General", true, "Michoacán de Ocampo", "Jiquilpan",
 						null, null, new BigDecimal("8.90"), "16DCT0121B"),
-				null, null, null, null);
+				null, null, null, null, null);
 	}
 
 	private static FichaData minimalFicha() {
@@ -355,6 +355,6 @@ class CandidateFichaPdfServiceTest {
 				new Ingresos(null, false, null, "", null, "", "", null, null),
 				new SeleccionCarrera("", "", false, ""),
 				new AntecedentesEscolares("", "", true, "", "", null, "", null, ""),
-				null, null, null, null);
+				null, null, null, null, null);
 	}
 }
