@@ -535,12 +535,12 @@ class RegisterCandidateUseCaseImplTest {
 						false, false),
 				new Ingresos(BigDecimal.ZERO, false, null, null, null, null, null, null, null),
 				new AntecedentesEscolares("Prep", SCHOOL_TYPE_ID, true, UUID.randomUUID(), UUID.randomUUID(), null,
-						null, BigDecimal.valueOf(8.5), null, false),
+						null, null, BigDecimal.valueOf(8.5), null, false),
 				new SeleccionCarrera(ADMISSION_CONFIG_ID, CHANNEL_ID, true), true);
 	}
 
 	private static DatosGenerales datosGenerales() {
 		return new DatosGenerales("CURP0000000000000000", "Juan", "Perez", "Lopez", LocalDate.of(2006, 1, 1),
-				Gender.M, "Mexicana", null, null, null, null, MaritalStatus.SOLTERO, "Español", false);
+				Gender.M, "Mexicana", null, null, null, null, null, MaritalStatus.SOLTERO, "Español", false);
 	}
 }

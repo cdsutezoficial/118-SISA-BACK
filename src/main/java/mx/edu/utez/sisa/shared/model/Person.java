@@ -90,6 +90,15 @@ public class Person {
 	@Column(name = "birth_municipality_id")
 	private UUID birthMunicipalityId;
 
+	/**
+	 * País de nacimiento de una persona extranjera. Antes de existir esta
+	 * columna el país se guardaba en {@code birth_foreign_state}; los registros
+	 * viejos se leen con ese respaldo (ver {@code GetCandidateEditFormUseCaseImpl}).
+	 */
+	@Column(name = "birth_country", length = 100)
+	private String birthCountry;
+
+	/** Estado/provincia de nacimiento de una persona extranjera. */
 	@Column(name = "birth_foreign_state")
 	private String birthForeignState;
 
@@ -259,6 +268,14 @@ public class Person {
 
 	public void setBirthMunicipalityId(UUID birthMunicipalityId) {
 		this.birthMunicipalityId = birthMunicipalityId;
+	}
+
+	public String getBirthCountry() {
+		return birthCountry;
+	}
+
+	public void setBirthCountry(String birthCountry) {
+		this.birthCountry = birthCountry;
 	}
 
 	public String getBirthForeignState() {

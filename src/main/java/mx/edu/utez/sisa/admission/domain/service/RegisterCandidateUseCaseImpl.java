@@ -5,11 +5,6 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
-import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
-import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales;
-import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Domicilio;
-import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.InformacionComplementaria;
-import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
@@ -25,11 +20,6 @@ import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundExcept
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
-import mx.edu.utez.sisa.shared.model.Address;
-import mx.edu.utez.sisa.shared.model.DiversityProfile;
-import mx.edu.utez.sisa.shared.model.EmploymentInfo;
-import mx.edu.utez.sisa.shared.model.HealthProfile;
-import mx.edu.utez.sisa.shared.model.HighSchoolBackground;
 import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -156,7 +146,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	public CandidateRegistrationResult register(RegisterCandidateCommand command) {
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = validate(command);
 
-		Person savedPerson = candidatePersonRepository.save(buildPerson(command));
+		Person savedPerson = candidatePersonRepository.save(CandidatePersonMapper.newPerson(command));
 
 		Candidate candidate = new Candidate(savedPerson.getId(), command.seleccionCarrera().admissionConfigId(),
 				generateFolio(), command.llaveMxVerified(), command.seleccionCarrera().isFirstChoice(),
@@ -370,77 +360,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 */
 	private String formatDate(Instant instant) {
 		return DATE_FORMAT.format(instant.atZone(clock.getZone()).toLocalDate());
-	}
-
-	private Person buildPerson(RegisterCandidateCommand command) {
-		DatosGenerales datos = command.datosGenerales();
-		Person person = new Person(datos.curp(), datos.firstName(), datos.lastName1(), datos.lastName2(), null);
-		person.setPersonalEmail(command.contacto().personalEmail());
-		person.setHomePhone(command.contacto().homePhone());
-		person.setMobilePhone(command.contacto().mobilePhone());
-		person.setBirthDate(datos.birthDate());
-		person.setGender(datos.gender());
-		person.setNationality(datos.nationality());
-		person.setBirthStateId(datos.birthStateId());
-		person.setBirthMunicipalityId(datos.birthMunicipalityId());
-		person.setBirthForeignState(datos.birthForeignState());
-		person.setBirthForeignMunicipality(datos.birthForeignMunicipality());
-		person.setMaritalStatus(datos.maritalStatus());
-		person.setNativeLanguage(datos.nativeLanguage());
-		person.setHasChildren(datos.hasChildren());
-		person.setMonthlyFamilyIncome(command.ingresos().monthlyFamilyIncome());
-		person.setAddress(toAddress(command.domicilio()));
-		person.setHealthProfile(toHealthProfile(command.informacionComplementaria()));
-		person.setDiversityProfile(toDiversityProfile(command.informacionComplementaria()));
-		person.setEmploymentInfo(toEmploymentInfo(command.ingresos()));
-		person.setHighSchoolBackground(toHighSchoolBackground(command.antecedentesEscolares()));
-		return person;
-	}
-
-	private static Address toAddress(Domicilio domicilio) {
-		if (domicilio == null) {
-			return null;
-		}
-		return new Address(domicilio.street(), domicilio.exteriorNumber(), domicilio.interiorNumber(),
-				domicilio.neighborhood(), domicilio.locality(), domicilio.postalCode(), domicilio.stateId(),
-				domicilio.municipalityId(), null, null);
-	}
-
-	private static HealthProfile toHealthProfile(InformacionComplementaria info) {
-		if (info == null) {
-			return null;
-		}
-		return new HealthProfile(info.hasPreexistingCondition(), info.conditionDescription(), info.hasDisability(),
-				info.disabilityDescription(), null);
-	}
-
-	private static DiversityProfile toDiversityProfile(InformacionComplementaria info) {
-		if (info == null) {
-			return null;
-		}
-		return new DiversityProfile(info.parentsSpeakIndigenousLanguage(), info.speaksIndigenousLanguage(),
-				info.selfIdentifiesIndigenous(), info.selfIdentifiesNonBinary(), info.belongsToLgbttiqCommunity(),
-				info.isAfrodescendant(), info.selfIdentifiesAfrodescendant(), info.parentsIndigenousLanguage(),
-				info.indigenousLanguage());
-	}
-
-	private static EmploymentInfo toEmploymentInfo(Ingresos ingresos) {
-		if (ingresos == null) {
-			return null;
-		}
-		return new EmploymentInfo(ingresos.isEmployed(), ingresos.employmentType(), ingresos.companyName(),
-				ingresos.jobTitle(), ingresos.workPhone(), ingresos.monthlyIncome(), ingresos.workStartTime(),
-				ingresos.workEndTime());
-	}
-
-	private static HighSchoolBackground toHighSchoolBackground(AntecedentesEscolares antecedentes) {
-		if (antecedentes == null) {
-			return null;
-		}
-		return new HighSchoolBackground(antecedentes.schoolName(), antecedentes.schoolCity(),
-				antecedentes.schoolTypeId(), antecedentes.gpa(), antecedentes.studiedInMexico(),
-				antecedentes.schoolStateId(), antecedentes.schoolMunicipalityId(), antecedentes.cct(),
-				antecedentes.cctConfirmed(), antecedentes.foreignCountry(), null, null, null);
 	}
 
 	/**

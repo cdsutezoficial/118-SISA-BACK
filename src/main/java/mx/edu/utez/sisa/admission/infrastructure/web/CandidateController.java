@@ -428,7 +428,8 @@ public class CandidateController {
 	private static DatosGenerales toDatosGenerales(RegisterCandidateRequest.DatosGenerales d) {
 		return new DatosGenerales(d.curp(), d.nombres(), d.apellidoPaterno(), d.apellidoMaterno(),
 				parseDate(d.fechaNacimiento()), toGender(d.sexo()), d.nacionalidad(), d.birthStateId(),
-				d.birthMunicipalityId(), d.paisNacimiento(), d.ciudadNacimiento(), toMaritalStatus(d.estadoCivil()),
+				d.birthMunicipalityId(), trimToNull(d.paisNacimiento()), trimToNull(d.estadoNacimiento()),
+				trimToNull(d.ciudadNacimiento()), toMaritalStatus(d.estadoCivil()),
 				d.lenguaNatal(), d.tieneHijos());
 	}
 
@@ -463,8 +464,8 @@ public class CandidateController {
 	private static AntecedentesEscolares toAntecedentesEscolares(RegisterCandidateRequest.AntecedentesEscolares a) {
 		boolean cctConfirmed = a.cct() != null && !a.cct().isBlank() && a.cct().equals(a.cctConfirmacion());
 		return new AntecedentesEscolares(a.nombrePreparatoria(), a.schoolTypeId(), a.estudioBachilleratoEnMexico(),
-				a.schoolStateId(), a.schoolMunicipalityId(), a.paisPreparatoria(), a.ciudadPreparatoria(), a.promedio(),
-				a.cct(), cctConfirmed);
+				a.schoolStateId(), a.schoolMunicipalityId(), a.paisPreparatoria(), trimToNull(a.estadoPreparatoria()),
+				a.ciudadPreparatoria(), a.promedio(), a.cct(), cctConfirmed);
 	}
 
 	private static SeleccionCarrera toSeleccionCarrera(RegisterCandidateRequest.SeleccionCarrera s) {
