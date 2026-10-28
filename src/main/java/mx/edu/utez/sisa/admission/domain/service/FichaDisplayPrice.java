@@ -42,12 +42,13 @@ public class FichaDisplayPrice {
 			if (financePaymentId != null) {
 				FichaPaymentPort.FichaQuote quote = fichaPaymentPort.quote(financePaymentId);
 				return new Price(quote.originalAmount(), quote.discountAmount(), quote.amountDue(),
-						quote.discountReason());
+						quote.discountReason(), quote.conceptName());
 			}
 			if (programId == null) {
 				return Price.NONE;
 			}
-			return new Price(null, null, fichaAmountResolver.resolve(programId, LocalDate.now(clock)).amount(), null);
+			FichaAmountResolver.FichaAmount listPrice = fichaAmountResolver.resolve(programId, LocalDate.now(clock));
+			return new Price(null, null, listPrice.amount(), null, listPrice.conceptName());
 		} catch (FichaPaymentConceptNotFoundException | PaymentConceptExpiredException
 				| AmbiguousFichaPaymentConceptException ex) {
 			return Price.NONE;
@@ -59,11 +60,12 @@ public class FichaDisplayPrice {
 	 * @param discountAmount the discount, or {@code null} when unknown
 	 * @param amount         what is owed, or {@code null} when it cannot be priced
 	 * @param discountReason why the discount was granted, or {@code null}
+	 * @param conceptName    the catalog concept the ficha is charged as, or {@code null} when unknown
 	 */
 	public record Price(BigDecimal originalAmount, BigDecimal discountAmount, BigDecimal amount,
-			String discountReason) {
+			String discountReason, String conceptName) {
 
-		static final Price NONE = new Price(null, null, null, null);
+		static final Price NONE = new Price(null, null, null, null, null);
 
 	}
 }
