@@ -4,6 +4,28 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-10-28] Servicios Escolares edita la ficha del candidato
+
+Rama: `feat/editar-ficha-candidato`. Plan: `118-SISA-CLAUDE/docs/design/pendientes/editar-ficha-candidato/`.
+
+### Qué cambió
+
+- **Permiso nuevo `CANDIDATES_UPDATE`**, sembrado solo para `SERVICIOS_ESCOLARES` (ADMIN lo
+  hereda). El seed lo agrega al reiniciar; hay que volver a iniciar sesión para verlo.
+- `GET /candidates/{id}/edit`: la ficha completa con IDs de catálogo y los mismos formatos
+  del registro (fecha `dd/MM/yyyy`, horas `HH:mm`, etiquetas de sexo y estado civil).
+- `PUT /candidates/{id}`: recibe el mismo cuerpo que `POST /candidates` y sobrescribe
+  todos los datos de la ficha, incluidos los de LlaveMX. No toca folio, estado ni pagos.
+  CURP de otra persona → 409. Cambio de carrera → 400 (llega con la recotización).
+- `CandidatePersonMapper`: el registro y la edición vuelcan la ficha sobre la persona con el
+  mismo código. En la edición los perfiles hijos se modifican en su lugar (`@MapsId`).
+- **Extranjeros:** ahora se guardan el estado de nacimiento (`person.birth_country` nueva +
+  `birth_foreign_state`) y el estado de la preparatoria (`school_foreign_state`). Antes se
+  pedían y se perdían; los registros viejos tenían el país en `birth_foreign_state` y se
+  leen con ese respaldo.
+
+---
+
 ## [2026-10-25] La ficha es un cargo de finanzas: precio en vivo y descuento por cargo
 
 Commits: `25c1667`, `9f13ba9`, `2aa2ca9`, `797e950`.
