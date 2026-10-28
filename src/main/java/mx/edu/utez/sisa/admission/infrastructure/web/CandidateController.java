@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
@@ -24,9 +25,11 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingres
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateEditFormResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
@@ -56,6 +59,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -113,6 +117,10 @@ public class CandidateController {
 
 	private final ListCandidatesUseCase listCandidatesUseCase;
 
+	private final GetCandidateEditFormUseCase getCandidateEditFormUseCase;
+
+	private final UpdateCandidateUseCase updateCandidateUseCase;
+
 	private final CandidateFichaMailService fichaMailService;
 
 	private final CandidateFichaPdfService fichaPdfService;
@@ -127,6 +135,7 @@ public class CandidateController {
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
 			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
+			GetCandidateEditFormUseCase getCandidateEditFormUseCase, UpdateCandidateUseCase updateCandidateUseCase,
 			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
 			LlaveMxVerificationTicketService verificationTicketService,
@@ -138,6 +147,8 @@ public class CandidateController {
 		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
 		this.listCandidatesUseCase = listCandidatesUseCase;
+		this.getCandidateEditFormUseCase = getCandidateEditFormUseCase;
+		this.updateCandidateUseCase = updateCandidateUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
@@ -398,6 +409,28 @@ public class CandidateController {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
 		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
+	}
+
+	/**
+	 * Ficha completa para el formulario de edición de Servicios Escolares
+	 * ({@code CANDIDATES_UPDATE}, Fase 7 · T2). A diferencia de {@code /detail},
+	 * trae los IDs de catálogo y los formatos del registro.
+	 */
+	@GetMapping("/{id}/edit")
+	public ResponseEntity<CandidateEditFormResponse> getEditForm(@PathVariable UUID id) {
+		return ResponseEntity.ok(CandidateEditFormResponse.from(getCandidateEditFormUseCase.get(id)));
+	}
+
+	/**
+	 * Guarda la ficha editada por Servicios Escolares. Recibe el mismo cuerpo que
+	 * el registro; {@code llaveMxVerified} se ignora (la verificación no se edita).
+	 * Responde con la ficha ya guardada.
+	 */
+	@PutMapping("/{id}")
+	public ResponseEntity<CandidateEditFormResponse> update(@PathVariable UUID id,
+			@Valid @RequestBody RegisterCandidateRequest request) {
+		updateCandidateUseCase.update(id, toCommand(request, false));
+		return ResponseEntity.ok(CandidateEditFormResponse.from(getCandidateEditFormUseCase.get(id)));
 	}
 
 	@GetMapping("/{id}/ficha.pdf")
