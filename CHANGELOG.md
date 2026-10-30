@@ -15,14 +15,46 @@ Rama: `feat/editar-ficha-candidato`. Plan: `118-SISA-CLAUDE/docs/design/pendient
 - `GET /candidates/{id}/edit`: la ficha completa con IDs de catálogo y los mismos formatos
   del registro (fecha `dd/MM/yyyy`, horas `HH:mm`, etiquetas de sexo y estado civil).
 - `PUT /candidates/{id}`: recibe el mismo cuerpo que `POST /candidates` y sobrescribe
-  todos los datos de la ficha, incluidos los de LlaveMX. No toca folio, estado ni pagos.
-  CURP de otra persona → 409. Cambio de carrera → 400 (llega con la recotización).
+  todos los datos de la ficha, incluidos los de LlaveMX. No toca folio ni estado.
+  CURP de otra persona → 409. Si cambia la carrera, recotiza la ficha (ver abajo).
 - `CandidatePersonMapper`: el registro y la edición vuelcan la ficha sobre la persona con el
   mismo código. En la edición los perfiles hijos se modifican en su lugar (`@MapsId`).
 - **Extranjeros:** ahora se guardan el estado de nacimiento (`person.birth_country` nueva +
   `birth_foreign_state`) y el estado de la preparatoria (`school_foreign_state`). Antes se
   pedían y se perdían; los registros viejos tenían el país en `birth_foreign_state` y se
   leen con ese respaldo.
+
+### Cambio de carrera desde la ficha
+
+- **Sin pagar:** el mismo cargo pasa a la carrera nueva (`Payment.reassignProgram`) y
+  conserva su descuento, 100 % o parcial; un descuento dado al concepto sin cargo se liga al
+  cargo para que lo siga.
+- **Pagada:** el cargo pagado queda como historial. Se crea el cargo de la carrera nueva a
+  tarifa completa, sin descuento (ya se usó), con precio fijo (`payment.price_locked`), y lo
+  pagado se le abona como saldo a favor (`PaymentCredit` + abono `CREDIT`). Si cuesta más,
+  queda la diferencia por pagar en el portal (`candidate.program_change_payment_id`, plazo de
+  `deadline-days` desde el cambio); si cuesta menos, sobra saldo a favor. El candidato sigue
+  `PAID` y conserva su lugar; la carrera nueva debe tener cupo.
+- No se permite con el candidato `ENROLLED`, con la ficha vencida ni con un pago en línea en
+  curso (409 `ADMISSION_PROGRAM_CHANGE_NOT_ALLOWED`). "En curso" es un intento `STARTED`
+  dentro de la retención del checkout (`checkout-hold-minutes`) y con algo por cobrar: un
+  intento que quedó abierto al cerrar el panel de EVO sin pagar ya no bloquea.
+- `GET /candidates/{id}/program-change-preview?admissionConfigId=` (`CANDIDATES_UPDATE`):
+  los montos del cambio sin guardar nada. `GET .../edit` ahora trae `programChangeAllowed`,
+  el motivo si no se permite (`programChangeBlockedReason`) y la diferencia pendiente.
+- Portal: `payment-access` trae `programChange` y el checkout/confirmación cobran la
+  diferencia cuando existe; al pagarla, el cargo nuevo pasa a ser la ficha.
+- Historial: tabla nueva `candidate_program_change` (quién, cuándo, de qué carrera a cuál y
+  con qué montos).
+
+### Pagos en el detalle del candidato
+
+- `GET /candidates/{id}/account` (`CANDIDATES_READ`): los cobros de la ficha (vigente,
+  diferencia pendiente e historial) con sus abonos, el saldo a favor disponible y sus
+  movimientos, y los cambios de carrera.
+- `GET /candidates/{id}/detail` trae también las secciones capturadas en la ficha.
+- Finanzas: `ListCreditsUseCase` (saldos a favor de un candidato) y el estado de cuenta
+  incluye la referencia y la carrera de cada cargo.
 
 ---
 
