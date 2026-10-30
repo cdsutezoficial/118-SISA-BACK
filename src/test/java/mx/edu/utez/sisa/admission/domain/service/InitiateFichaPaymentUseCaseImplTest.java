@@ -917,4 +917,52 @@ class InitiateFichaPaymentUseCaseImplTest {
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
 		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
 	}
+
+	// ── Diferencia por cambio de carrera ────────────────────────────────────
+
+	private static final UUID DIFFERENCE_ID = UUID.randomUUID();
+
+	private static Candidate candidateOwingADifference() {
+		Candidate candidate = candidate();
+		candidate.markPaid();
+		candidate.awaitProgramChangePayment(DIFFERENCE_ID);
+		return candidate;
+	}
+
+	private static FichaPaymentPort.ProgramChangeCharge difference(Instant dueAt) {
+		return new FichaPaymentPort.ProgramChangeCharge(DIFFERENCE_ID, FichaTestData.REFERENCE + "-C1",
+				new BigDecimal("1750.00"), new BigDecimal("1420.00"), new BigDecimal("330.00"), dueAt, false, false,
+				null, null);
+	}
+
+	@Test
+	void aPendingDifferenceIsChargedForWhatIsLeftWithoutRequoting() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.plusSeconds(86_400))));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0002", "TESTUTEZ", "SUCCESS0002", "v1"));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		assertThat(result.orderId()).isEqualTo(ORDER_ID);
+		verify(checkoutSlotClaimer).claimProgramChange(CANDIDATE_ID, ORDER_ID, DIFFERENCE_ID,
+				new BigDecimal("330.00"));
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order -> new BigDecimal("330.00")
+				.compareTo(order.amount()) == 0 && (FichaTestData.REFERENCE + "-C1").equals(order.reference())
+				&& "Diferencia cambio de carrera ADM-2026-000001".equals(order.description())));
+		verify(fichaPaymentPort, never()).freeze(any());
+		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
+	}
+
+	@Test
+	void aDifferencePastItsDeadlineIsNotCharged() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.minusSeconds(60))));
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(FichaPaymentExpiredException.class);
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
 }

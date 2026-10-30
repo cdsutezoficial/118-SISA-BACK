@@ -195,7 +195,7 @@ class FinanceControllerTest {
 	private static StatementPayment statementPayment(UUID paymentId, PaymentStatus status) {
 		return new StatementPayment(paymentId, "TUITION", new BigDecimal("1000.00"), new BigDecimal("1000.00"),
 				new BigDecimal("300.00"), new BigDecimal("700.00"), status, PaymentOrigin.CASHIER, null,
-				Instant.parse("2026-10-19T00:00:00Z"), null, List.of());
+				Instant.parse("2026-10-19T00:00:00Z"), null, List.of(), "REF-TUITION", null);
 	}
 
 	private record CreatePaymentBody(UUID candidateId, String conceptCode, UUID programId, PaymentOrigin origin) {

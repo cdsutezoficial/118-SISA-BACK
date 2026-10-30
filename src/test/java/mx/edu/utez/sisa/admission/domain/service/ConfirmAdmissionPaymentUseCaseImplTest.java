@@ -149,4 +149,28 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.confirm(candidateId, null)).isInstanceOf(CandidateAlreadyPaidException.class);
 		verify(fichaPaymentPort, never()).settle(any());
 	}
+
+	@Test
+	void confirm_aCareerChangeDifferenceMakesTheNewChargeTheFicha() {
+		UUID differenceId = UUID.randomUUID();
+		candidate.markPaid();
+		candidate.awaitProgramChangePayment(differenceId);
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(differenceId))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(differenceId)));
+		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(fichaPaymentPort.settle(any())).thenReturn(new FichaPaymentPort.SettledFicha(AMOUNT,
+				BigDecimal.ZERO.setScale(2), AMOUNT, AMOUNT, null, false));
+
+		var result = useCase.confirm(candidateId, null);
+
+		ArgumentCaptor<FichaPaymentPort.SettleFichaCommand> settled = ArgumentCaptor
+				.forClass(FichaPaymentPort.SettleFichaCommand.class);
+		verify(fichaPaymentPort).settle(settled.capture());
+		assertThat(settled.getValue().financePaymentId()).isEqualTo(differenceId);
+		assertThat(result.receiptNumber()).endsWith("-C");
+		assertThat(candidate.getFichaPaymentId()).isEqualTo(differenceId);
+		assertThat(candidate.getProgramChangePaymentId()).isNull();
+		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
+	}
 }

@@ -42,7 +42,8 @@ public interface RegisterCandidateUseCase {
 	}
 
 	record DatosGenerales(String curp, String firstName, String lastName1, String lastName2, LocalDate birthDate,
-			Gender gender, String nationality, UUID birthStateId, UUID birthMunicipalityId, String birthForeignState,
+			Gender gender, String nationality, UUID birthStateId, UUID birthMunicipalityId, String birthCountry,
+			String birthForeignState,
 			String birthForeignMunicipality, MaritalStatus maritalStatus, String nativeLanguage, boolean hasChildren) {
 	}
 
@@ -66,8 +67,8 @@ public interface RegisterCandidateUseCase {
 	}
 
 	record AntecedentesEscolares(String schoolName, UUID schoolTypeId, boolean studiedInMexico, UUID schoolStateId,
-			UUID schoolMunicipalityId, String foreignCountry, String schoolCity, BigDecimal gpa, String cct,
-			boolean cctConfirmed) {
+			UUID schoolMunicipalityId, String foreignCountry, String schoolForeignState, String schoolCity,
+			BigDecimal gpa, String cct, boolean cctConfirmed) {
 	}
 
 	record SeleccionCarrera(UUID admissionConfigId, UUID outreachChannelId, boolean isFirstChoice) {

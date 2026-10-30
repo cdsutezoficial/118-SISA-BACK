@@ -97,6 +97,15 @@ public class Candidate {
 	@Column(name = "ficha_payment_id")
 	private UUID fichaPaymentId;
 
+	/**
+	 * El cargo que dejó un cambio de carrera con la ficha ya pagada y que todavía
+	 * falta pagar (la diferencia). Mientras exista, {@link #fichaPaymentId} sigue
+	 * apuntando al cargo pagado, que es el que le guarda su lugar en el cupo; al
+	 * pagarse, este pasa a ser la ficha. {@code null} cuando no hay nada pendiente.
+	 */
+	@Column(name = "program_change_payment_id")
+	private UUID programChangePaymentId;
+
 	protected Candidate() {
 		// JPA
 	}
@@ -174,6 +183,44 @@ public class Candidate {
 
 	public UUID getOutreachChannelId() {
 		return outreachChannelId;
+	}
+
+	/**
+	 * Corrige los datos de la selección que no afectan el cobro: el canal por
+	 * el que se enteró y si la carrera es su primera opción. La carrera en sí
+	 * no se cambia aquí (requiere recotizar la ficha).
+	 */
+	public void updateSelection(UUID outreachChannelId, boolean isFirstChoice) {
+		this.outreachChannelId = outreachChannelId;
+		this.isFirstChoice = isFirstChoice;
+	}
+
+	/** La carrera (configuración de admisión) a la que se cambia el candidato. */
+	public void changeAdmissionConfig(UUID admissionConfigId) {
+		this.admissionConfigId = admissionConfigId;
+	}
+
+	public UUID getProgramChangePaymentId() {
+		return programChangePaymentId;
+	}
+
+	/** El cargo que se cobra hoy: la diferencia pendiente si la hay, si no la ficha. */
+	public UUID collectingPaymentId() {
+		return programChangePaymentId != null ? programChangePaymentId : fichaPaymentId;
+	}
+
+	/** El cambio de carrera dejó una diferencia por pagar en {@code paymentId}. */
+	public void awaitProgramChangePayment(UUID paymentId) {
+		this.programChangePaymentId = paymentId;
+	}
+
+	/**
+	 * El cargo de la carrera nueva quedó pagado (con el saldo a favor, o con el
+	 * pago de la diferencia): ahora es la ficha y ya no hay nada pendiente.
+	 */
+	public void adoptFichaPayment(UUID paymentId) {
+		this.fichaPaymentId = paymentId;
+		this.programChangePaymentId = null;
 	}
 
 	public boolean isEnabledForInduction() {

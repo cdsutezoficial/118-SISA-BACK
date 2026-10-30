@@ -64,6 +64,65 @@ public interface FichaPaymentPort {
 	/** Cancels the charge if it is still open and unpaid; no-op otherwise. */
 	void cancel(UUID financePaymentId);
 
+	// ── Cambio de carrera ────────────────────────────────────────────────────
+
+	/** Sin pagar: el precio vivo que tendría el mismo cargo en la carrera nueva (no escribe). */
+	FichaQuote quoteForProgram(UUID financePaymentId, String conceptCode, UUID programId);
+
+	/** Sin pagar: el mismo cargo pasa a la carrera nueva y conserva su descuento. */
+	void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId);
+
+	/** Pagada: los números de {@link #rebill} sin escribir nada. */
+	ProgramChangeAmounts previewRebill(UUID fromPaymentId, String conceptCode, UUID programId);
+
+	/**
+	 * Pagada: cargo nuevo a la tarifa de la carrera nueva (sin descuento, precio
+	 * fijo), pagado con lo que ya se había pagado como saldo a favor.
+	 */
+	ProgramChangeAmounts rebill(RebillFichaCommand command);
+
+	/** Un cargo de cambio de carrera con sus montos fijos; vacío si no existe. */
+	Optional<ProgramChangeCharge> findProgramChangeCharge(UUID financePaymentId);
+
+	/**
+	 * @param fromPaymentId el cargo que se deja (el pagado, o una diferencia
+	 *                      anterior aún sin pagar, que se cancela)
+	 * @param dueAt         fecha límite para pagar la diferencia
+	 * @param reference     referencia con la que se paga la diferencia
+	 * @param actingUserId  quién hizo el cambio
+	 */
+	record RebillFichaCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt,
+			String reference, UUID actingUserId) {
+	}
+
+	/**
+	 * @param financePaymentId el cargo nuevo; {@code null} en la vista previa
+	 * @param newAmount        tarifa de la carrera nueva, sin descuento
+	 * @param alreadyPaid      lo que había recibido el cargo que se deja
+	 * @param otherCredit      saldo a favor que ya tenía y también se aplica
+	 * @param toPay            lo que falta pagar ("debe pagar más")
+	 * @param creditLeft       lo que sobra como saldo a favor
+	 */
+	record ProgramChangeAmounts(UUID financePaymentId, BigDecimal newAmount, BigDecimal alreadyPaid,
+			BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft) {
+
+		public boolean settled() {
+			return toPay.signum() == 0;
+		}
+	}
+
+	/**
+	 * @param newAmount  tarifa de la carrera nueva
+	 * @param carried    lo que se le abonó con saldo a favor
+	 * @param toPay      lo que falta pagar
+	 * @param paid       ya quedó pagado
+	 * @param cancelled  se reemplazó por otro cambio de carrera
+	 */
+	record ProgramChangeCharge(UUID financePaymentId, String referenceNumber, BigDecimal newAmount,
+			BigDecimal carried, BigDecimal toPay, Instant dueAt, boolean paid, boolean cancelled, Instant paidAt,
+			String receiptNumber) {
+	}
+
 	/**
 	 * @param candidateId the applicant — the charge's anchor
 	 * @param conceptCode the catalog {@code PaymentConcept.code} of the

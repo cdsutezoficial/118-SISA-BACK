@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.admission.infrastructure.web.dto;
 
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase.PaymentAccess;
 
 import java.math.BigDecimal;
@@ -40,13 +41,15 @@ public record FichaPaymentAccessResponse(UUID candidateId, String folio, String 
 		BigDecimal amount, String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 		String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
 		LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
-		BigDecimal originalAmount, BigDecimal discountAmount, String discountReason) {
+		BigDecimal originalAmount, BigDecimal discountAmount, String discountReason,
+		AccessFichaPaymentUseCase.ProgramChangeDue programChange) {
 
 	public static FichaPaymentAccessResponse from(PaymentAccess access) {
 		return new FichaPaymentAccessResponse(access.candidateId(), access.folio(), access.nombre(),
 				access.programName(), access.amount(), access.referenceNumber(), access.registrationDeadline(),
 				access.paymentStatus(), access.receiptNumber(), access.paidAt(), access.alreadyPaid(),
 				access.paymentClosesOn(), access.paymentDeadline(), access.candidateStatus(),
-				access.paymentExpired(), access.originalAmount(), access.discountAmount(), access.discountReason());
+				access.paymentExpired(), access.originalAmount(), access.discountAmount(), access.discountReason(),
+				access.programChange());
 	}
 }

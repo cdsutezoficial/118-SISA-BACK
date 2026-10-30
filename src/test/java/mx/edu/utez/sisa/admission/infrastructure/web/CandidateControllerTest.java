@@ -13,6 +13,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.Candidate
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesQuery;
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseOutcome;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseResult;
@@ -52,6 +53,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -93,6 +95,18 @@ class CandidateControllerTest {
 
 	@MockitoBean
 	private ListCandidatesUseCase listCandidatesUseCase;
+
+	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase getCandidateEditFormUseCase;
+
+	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase updateCandidateUseCase;
+
+	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
+
+	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase getCandidateAccountUseCase;
 
 	@MockitoBean
 	private CandidateFichaMailService fichaMailService;
@@ -355,7 +369,7 @@ class CandidateControllerTest {
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
 				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED,
-				false, null, null, null);
+				false, null, null, null, null);
 	}
 
 	@Test
@@ -400,7 +414,7 @@ class CandidateControllerTest {
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
-				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false, null, null, null));
+				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false, null, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
@@ -421,7 +435,7 @@ class CandidateControllerTest {
 						"REF-20260924-000101", REGISTRATION_DEADLINE,
 						mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false,
 						PAYMENT_CLOSES_ON, PAYMENT_DEADLINE,
-						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true, null, null, null));
+						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true, null, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
@@ -664,6 +678,92 @@ class CandidateControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value(expectedMessage));
 		verify(registerCandidateUseCase, never()).register(any());
+	}
+
+	// ── edición de la ficha (Fase 7 · T2) ──
+
+	@Test
+	void editFormUsesTheRegistrationFormats() throws Exception {
+		when(getCandidateEditFormUseCase.get(ID)).thenReturn(editForm());
+
+		mockMvc.perform(get("/candidates/{id}/edit", ID)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.folio").value("ADM-2026-000001"))
+				.andExpect(jsonPath("$.modality").value("PRESENCIAL"))
+				.andExpect(jsonPath("$.programChangeAllowed").value(false))
+				.andExpect(jsonPath("$.datosGenerales.fechaNacimiento").value("01/01/2005"))
+				.andExpect(jsonPath("$.datosGenerales.sexo").value("Femenino"))
+				.andExpect(jsonPath("$.datosGenerales.estadoCivil").value("Unión libre"))
+				.andExpect(jsonPath("$.domicilio.stateId").value(GEO_ID))
+				.andExpect(jsonPath("$.ingresos.horaInicio").value("09:00"))
+				.andExpect(jsonPath("$.antecedentesEscolares.cctConfirmacion").value("17DCT0001A"))
+				.andExpect(jsonPath("$.seleccionCarrera.admissionConfigId").value(CFG_ID));
+	}
+
+	@Test
+	void updateParsesTheBodyLikeRegistrationAndIgnoresLlaveMx() throws Exception {
+		when(getCandidateEditFormUseCase.get(ID)).thenReturn(editForm());
+
+		UUID editorId = UUID.randomUUID();
+		mockMvc.perform(put("/candidates/{id}", ID).principal(authentication(editorId))
+				.contentType(MediaType.APPLICATION_JSON).content(VALID_REGISTRATION)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.folio").value("ADM-2026-000001"));
+
+		org.mockito.ArgumentCaptor<RegisterCandidateCommand> captor = org.mockito.ArgumentCaptor
+				.forClass(RegisterCandidateCommand.class);
+		verify(updateCandidateUseCase).update(org.mockito.ArgumentMatchers.eq(ID), captor.capture(),
+				org.mockito.ArgumentMatchers.eq(editorId));
+		assertThat(captor.getValue().datosGenerales().birthDate()).isEqualTo(java.time.LocalDate.of(2005, 1, 1));
+		assertThat(captor.getValue().datosGenerales().gender()).isEqualTo(mx.edu.utez.sisa.shared.model.Gender.F);
+		assertThat(captor.getValue().llaveMxVerified()).isFalse();
+	}
+
+	@Test
+	void updateValidatesTheBodyLikeRegistration() throws Exception {
+		mockMvc.perform(put("/candidates/{id}", ID).contentType(MediaType.APPLICATION_JSON)
+				.content(VALID_REGISTRATION.replace("\"" + CFG_ID + "\"", "null")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("La carrera es obligatoria."));
+		verify(updateCandidateUseCase, never()).update(any(), any(), any());
+	}
+
+	@Test
+	void updateReportsACurpOfAnotherPersonAsConflict() throws Exception {
+		doThrow(new mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException(
+				"La CURP ya está registrada a nombre de otra persona.")).when(updateCandidateUseCase)
+				.update(any(), any(), any());
+
+		mockMvc.perform(put("/candidates/{id}", ID).principal(authentication(UUID.randomUUID()))
+				.contentType(MediaType.APPLICATION_JSON).content(VALID_REGISTRATION))
+				.andExpect(status().isConflict());
+	}
+
+	private static mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm editForm() {
+		UUID geo = UUID.fromString(GEO_ID);
+		UUID cfg = UUID.fromString(CFG_ID);
+		RegisterCandidateCommand ficha = new RegisterCandidateCommand(
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.DatosGenerales(
+						"GOCD050101HDFRNS04", "Juan", "Perez", "Gomez", java.time.LocalDate.of(2005, 1, 1),
+						mx.edu.utez.sisa.shared.model.Gender.F, "Mexicana", geo, geo, null, null, null,
+						mx.edu.utez.sisa.shared.model.MaritalStatus.UNION_LIBRE, "Español", false),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Domicilio("Avenida Juarez",
+						"1", null, "Centro", "Oaxaca", "68000", geo, geo),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto(
+						"juan.perez@example.com", null, null),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.InformacionComplementaria(
+						false, null, false, null, false, null, false, null, false, false, false, false, false),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos(
+						new java.math.BigDecimal("12000"), true, "Medio tiempo", null, null, null, null,
+						java.time.LocalTime.of(9, 0), java.time.LocalTime.of(14, 0)),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares(
+						"Colegio Nacional", null, true, geo, geo, null, null, "", new java.math.BigDecimal("9.0"),
+						"17DCT0001A", true),
+				new mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera(cfg, null,
+						true),
+				true);
+		return new mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm(ID,
+				"ADM-2026-000001", mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAID, true,
+				"Ingeniería en Software", mx.edu.utez.sisa.shared.model.ProgramModality.PRESENCIAL, false,
+				"El candidato ya está inscrito: la carrera ya no se cambia desde la ficha.", ficha, null);
 	}
 
 	private static final String CFG_ID = "11111111-1111-1111-1111-111111111111";

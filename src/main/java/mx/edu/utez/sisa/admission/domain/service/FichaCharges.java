@@ -21,4 +21,16 @@ public final class FichaCharges {
 		}
 		return fichaPaymentPort.findCharge(candidate.getFichaPaymentId());
 	}
+
+	/**
+	 * The charge being collected right now: the difference a career change left
+	 * to pay when there is one, otherwise the ficha itself.
+	 */
+	public static Optional<FichaPaymentPort.FichaCharge> collecting(Candidate candidate,
+			FichaPaymentPort fichaPaymentPort) {
+		if (candidate == null || candidate.collectingPaymentId() == null) {
+			return Optional.empty();
+		}
+		return fichaPaymentPort.findCharge(candidate.collectingPaymentId());
+	}
 }

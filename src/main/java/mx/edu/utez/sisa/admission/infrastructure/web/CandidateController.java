@@ -6,8 +6,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
@@ -24,13 +27,16 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingres
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
 import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateEditFormResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateAccountResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateStaffDetailResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
@@ -56,6 +62,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -111,7 +118,15 @@ public class CandidateController {
 
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
+	private final GetCandidateAccountUseCase getCandidateAccountUseCase;
+
 	private final ListCandidatesUseCase listCandidatesUseCase;
+
+	private final GetCandidateEditFormUseCase getCandidateEditFormUseCase;
+
+	private final UpdateCandidateUseCase updateCandidateUseCase;
+
+	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
 	private final CandidateFichaMailService fichaMailService;
 
@@ -127,6 +142,9 @@ public class CandidateController {
 			InitiateFichaPaymentUseCase initiateFichaPaymentUseCase,
 			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
+			GetCandidateEditFormUseCase getCandidateEditFormUseCase, UpdateCandidateUseCase updateCandidateUseCase,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase,
+			GetCandidateAccountUseCase getCandidateAccountUseCase,
 			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
 			LlaveMxVerificationTicketService verificationTicketService,
@@ -137,7 +155,11 @@ public class CandidateController {
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
 		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
+		this.getCandidateAccountUseCase = getCandidateAccountUseCase;
 		this.listCandidatesUseCase = listCandidatesUseCase;
+		this.getCandidateEditFormUseCase = getCandidateEditFormUseCase;
+		this.updateCandidateUseCase = updateCandidateUseCase;
+		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
@@ -400,6 +422,50 @@ public class CandidateController {
 		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
 	}
 
+	/**
+	 * Pagos del candidato para el detalle de Servicios Escolares: la ficha vigente,
+	 * la diferencia pendiente de un cambio de carrera, los cobros que quedaron como
+	 * historial, el saldo a favor y los cambios de carrera.
+	 */
+	@GetMapping("/{id}/account")
+	public ResponseEntity<CandidateAccountResponse> getAccount(@PathVariable UUID id) {
+		return ResponseEntity.ok(CandidateAccountResponse.from(getCandidateAccountUseCase.get(id)));
+	}
+
+	/**
+	 * Ficha completa para el formulario de edición de Servicios Escolares
+	 * ({@code CANDIDATES_UPDATE}, Fase 7 · T2). A diferencia de {@code /detail},
+	 * trae los IDs de catálogo y los formatos del registro.
+	 */
+	@GetMapping("/{id}/edit")
+	public ResponseEntity<CandidateEditFormResponse> getEditForm(@PathVariable UUID id) {
+		return ResponseEntity.ok(CandidateEditFormResponse.from(getCandidateEditFormUseCase.get(id)));
+	}
+
+	/**
+	 * Guarda la ficha editada por Servicios Escolares. Recibe el mismo cuerpo que
+	 * el registro; {@code llaveMxVerified} se ignora (la verificación no se edita).
+	 * Si cambia la carrera, recotiza la ficha en la misma transacción. Responde
+	 * con la ficha ya guardada.
+	 */
+	@PutMapping("/{id}")
+	public ResponseEntity<CandidateEditFormResponse> update(@PathVariable UUID id,
+			@Valid @RequestBody RegisterCandidateRequest request, Authentication authentication) {
+		updateCandidateUseCase.update(id, toCommand(request, false), UUID.fromString(authentication.getName()));
+		return ResponseEntity.ok(CandidateEditFormResponse.from(getCandidateEditFormUseCase.get(id)));
+	}
+
+	/**
+	 * Lo que pasaría con el cobro si el candidato cambia a {@code admissionConfigId}:
+	 * sin pagar, el precio nuevo con su descuento; pagada, la diferencia a pagar o
+	 * el saldo a favor, y si la carrera nueva tiene lugar. No guarda nada.
+	 */
+	@GetMapping("/{id}/program-change-preview")
+	public ResponseEntity<ChangeCandidateProgramUseCase.ProgramChangePreview> previewProgramChange(
+			@PathVariable UUID id, @RequestParam UUID admissionConfigId) {
+		return ResponseEntity.ok(changeCandidateProgramUseCase.preview(id, admissionConfigId));
+	}
+
 	@GetMapping("/{id}/ficha.pdf")
 	public ResponseEntity<byte[]> downloadFichaPdf(@PathVariable UUID id) {
 		FichaData ficha = getCandidateFichaUseCase.get(id);
@@ -428,7 +494,8 @@ public class CandidateController {
 	private static DatosGenerales toDatosGenerales(RegisterCandidateRequest.DatosGenerales d) {
 		return new DatosGenerales(d.curp(), d.nombres(), d.apellidoPaterno(), d.apellidoMaterno(),
 				parseDate(d.fechaNacimiento()), toGender(d.sexo()), d.nacionalidad(), d.birthStateId(),
-				d.birthMunicipalityId(), d.paisNacimiento(), d.ciudadNacimiento(), toMaritalStatus(d.estadoCivil()),
+				d.birthMunicipalityId(), trimToNull(d.paisNacimiento()), trimToNull(d.estadoNacimiento()),
+				trimToNull(d.ciudadNacimiento()), toMaritalStatus(d.estadoCivil()),
 				d.lenguaNatal(), d.tieneHijos());
 	}
 
@@ -463,8 +530,8 @@ public class CandidateController {
 	private static AntecedentesEscolares toAntecedentesEscolares(RegisterCandidateRequest.AntecedentesEscolares a) {
 		boolean cctConfirmed = a.cct() != null && !a.cct().isBlank() && a.cct().equals(a.cctConfirmacion());
 		return new AntecedentesEscolares(a.nombrePreparatoria(), a.schoolTypeId(), a.estudioBachilleratoEnMexico(),
-				a.schoolStateId(), a.schoolMunicipalityId(), a.paisPreparatoria(), a.ciudadPreparatoria(), a.promedio(),
-				a.cct(), cctConfirmed);
+				a.schoolStateId(), a.schoolMunicipalityId(), a.paisPreparatoria(), trimToNull(a.estadoPreparatoria()),
+				a.ciudadPreparatoria(), a.promedio(), a.cct(), cctConfirmed);
 	}
 
 	private static SeleccionCarrera toSeleccionCarrera(RegisterCandidateRequest.SeleccionCarrera s) {

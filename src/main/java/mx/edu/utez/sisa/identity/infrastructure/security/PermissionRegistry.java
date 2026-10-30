@@ -123,6 +123,11 @@ public final class PermissionRegistry {
 			// admission — candidates (exact path: /candidates/{id} stays public)
 			e("GET", "/candidates", "CANDIDATES_READ"),
 			e("GET", "/candidates/*/detail", "CANDIDATES_READ"),
+			e("GET", "/candidates/*/account", "CANDIDATES_READ"),
+			// Edición de la ficha por Servicios Escolares (Fase 7 · T2).
+			e("GET", "/candidates/*/edit", "CANDIDATES_UPDATE"),
+			e("GET", "/candidates/*/program-change-preview", "CANDIDATES_UPDATE"),
+			e("PUT", "/candidates/*", "CANDIDATES_UPDATE"),
 			// admission — outreach channels
 			e("GET", "/outreach-channels/**", "OUTREACH_CHANNELS_READ"),
 			e("POST", "/outreach-channels", "OUTREACH_CHANNELS_CREATE"),

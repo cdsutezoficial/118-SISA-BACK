@@ -12,7 +12,8 @@ import java.util.UUID;
 /**
  * Staff-only detail projection behind {@code GET /candidates/{id}/detail}.
  * Reuses the assembled ficha query but narrows it to the fields the office's
- * detail screen actually shows on its first two tabs.
+ * detail screen actually shows on its first two tabs, plus the captured ficha
+ * sections for the "Información General" tab.
  *
  * <p>The ficha's payment carries its price breakdown — the concept, what it
  * costs, the discount and why — so the office reads the same "cuesta X −
@@ -22,7 +23,10 @@ import java.util.UUID;
 public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, String folio, String fullName,
 		CandidateStatus candidateStatus, Instant registeredAt, String programName, String divisionName, String curp,
 		String email, String homePhone, String mobilePhone, String outreachChannelName,
-		PaymentResponse admissionPayment, PaymentResponse inductionPayment) {
+		PaymentResponse admissionPayment, PaymentResponse inductionPayment, FichaData.DatosGenerales datosGenerales,
+		FichaData.Domicilio domicilio, FichaData.InformacionComplementaria informacionComplementaria,
+		FichaData.Ingresos ingresos, FichaData.SeleccionCarrera seleccionCarrera,
+		FichaData.AntecedentesEscolares antecedentesEscolares) {
 
 	/**
 	 * @param conceptName    the catalog concept charged, or {@code null} when unknown
@@ -51,7 +55,9 @@ public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, Stri
 						ficha.originalAmount(), ficha.discountAmount(), ficha.discountReason(), ficha.amount(),
 						ficha.referenceNumber(), ficha.paymentStatus(), ficha.receiptNumber(), ficha.paidAt(),
 						ficha.orderId()),
-				PaymentResponse.from(ficha.inductionPayment()));
+				PaymentResponse.from(ficha.inductionPayment()), ficha.datosGenerales(), ficha.domicilio(),
+				ficha.informacionComplementaria(), ficha.ingresos(), ficha.seleccionCarrera(),
+				ficha.antecedentesEscolares());
 	}
 
 	private static String fullName(FichaData ficha) {

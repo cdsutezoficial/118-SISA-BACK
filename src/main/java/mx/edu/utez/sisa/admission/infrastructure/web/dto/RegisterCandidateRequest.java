@@ -83,7 +83,9 @@ public record RegisterCandidateRequest(
 			UUID birthStateId, UUID birthMunicipalityId, String paisNacimiento,
 			String ciudadNacimiento,
 			@NotBlank(message = "El estado civil es obligatorio.") String estadoCivil,
-			String lenguaNatal, boolean tieneHijos) {
+			String lenguaNatal, boolean tieneHijos,
+			// Solo para nacionalidad extranjera; el de un mexicano viaja como birthStateId.
+			String estadoNacimiento) {
 	}
 
 	/** Paso 1 — "Domicilio Actual" (Mexicana branch, mirroring {@code Address} mexican fields). */
@@ -136,6 +138,8 @@ public record RegisterCandidateRequest(
 			@NotBlank(message = "El nombre de la preparatoria es obligatorio.") String nombrePreparatoria,
 			UUID schoolTypeId,
 			boolean estudioBachilleratoEnMexico, UUID schoolStateId, UUID schoolMunicipalityId, String paisPreparatoria,
-			String ciudadPreparatoria, BigDecimal promedio, String cct, String cctConfirmacion) {
+			String ciudadPreparatoria, BigDecimal promedio, String cct, String cctConfirmacion,
+			// Solo para prepa en el extranjero; la de México viaja como schoolStateId.
+			String estadoPreparatoria) {
 	}
 }

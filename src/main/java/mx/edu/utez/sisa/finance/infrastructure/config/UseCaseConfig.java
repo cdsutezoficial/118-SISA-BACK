@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.finance.infrastructure.config;
 
 import mx.edu.utez.sisa.finance.domain.port.in.ApplyCreditToPaymentUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.ChangeChargeProgramUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.ListCreditsUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreatePaymentUseCase;
@@ -26,11 +28,13 @@ import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentEntryRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentRepository;
 import mx.edu.utez.sisa.finance.domain.service.ApplyCreditToPaymentUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.ChangeChargeProgramUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.BenefitResolver;
 import mx.edu.utez.sisa.finance.domain.service.CancelBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CreateBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CreatePaymentUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetAccountStatementUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.ListCreditsUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetDiscountReportUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.ListBenefitsUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.PaymentQuoter;
@@ -234,5 +238,21 @@ public class UseCaseConfig {
 			Clock clock) {
 		return new ApplyCreditToPaymentUseCaseImpl(paymentRepository, paymentEntryRepository, paymentCreditRepository,
 				paymentBenefitRepository, paymentSettlementDecider, clock);
+	}
+
+	@Bean
+	public ListCreditsUseCase listCreditsUseCase(PaymentCreditRepository paymentCreditRepository) {
+		return new ListCreditsUseCaseImpl(paymentCreditRepository);
+	}
+
+	@Bean
+	public ChangeChargeProgramUseCase changeChargeProgramUseCase(PaymentRepository paymentRepository,
+			PaymentEntryRepository paymentEntryRepository, PaymentCreditRepository paymentCreditRepository,
+			PaymentBenefitRepository paymentBenefitRepository, ConceptQueryPort conceptQueryPort,
+			ConceptRateQueryPort conceptRateQueryPort, BenefitResolver benefitResolver, PaymentQuoter paymentQuoter,
+			PaymentSettlementDecider paymentSettlementDecider, Clock clock) {
+		return new ChangeChargeProgramUseCaseImpl(paymentRepository, paymentEntryRepository, paymentCreditRepository,
+				paymentBenefitRepository, conceptQueryPort, conceptRateQueryPort, benefitResolver, paymentQuoter,
+				paymentSettlementDecider, clock);
 	}
 }
