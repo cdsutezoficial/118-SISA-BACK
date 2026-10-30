@@ -121,6 +121,16 @@ public class Payment {
 	@Column(name = "reference_number", length = 40)
 	private String referenceNumber;
 
+	/**
+	 * {@code true} when the amounts were fixed when the charge was raised and
+	 * must never be re-quoted — the charge a career change leaves to pay, whose
+	 * price is the one staff saw on the day of the change. Nullable so
+	 * {@code ddl-auto=update} can add it to existing rows; {@code null} reads
+	 * as {@code false}.
+	 */
+	@Column(name = "price_locked")
+	private Boolean priceLocked;
+
 	protected Payment() {
 		// JPA
 	}
@@ -232,7 +242,44 @@ public class Payment {
 	 * it means the $0 exemption was already booked.
 	 */
 	public boolean isRepriceable() {
-		return status == PaymentStatus.PENDING && amountPaid.signum() == 0;
+		return status == PaymentStatus.PENDING && amountPaid.signum() == 0 && !isPriceLocked();
+	}
+
+	/**
+	 * Fixes the amounts already frozen on the charge for good: from now on it is
+	 * read with those numbers ({@link #isRepriceable()} is {@code false}) and
+	 * settled against them, whatever the catalog or the discounts say later.
+	 */
+	public void lockPrice() {
+		if (!isPriced()) {
+			throw new IllegalStateException("Solo un adeudo cotizado puede fijar su precio: " + id);
+		}
+		this.priceLocked = Boolean.TRUE;
+	}
+
+	public boolean isPriceLocked() {
+		return Boolean.TRUE.equals(priceLocked);
+	}
+
+	/**
+	 * Moves an unpaid charge to another program (career change before paying):
+	 * same row, same reference and deadline, new concept and program. It goes
+	 * back to being a header, so the next quote prices it live against the new
+	 * program's tariff with the discount in force.
+	 *
+	 * @throws IllegalStateException if the charge is no longer repriceable
+	 */
+	public void reassignProgram(String conceptCode, UUID programId) {
+		if (!isRepriceable()) {
+			throw new IllegalStateException(
+					"El adeudo " + id + " ya no se puede reasignar (estado " + status + ").");
+		}
+		this.conceptCode = conceptCode;
+		this.programId = programId;
+		this.originalAmount = null;
+		this.amountDue = null;
+		this.benefitId = null;
+		this.rateId = null;
 	}
 
 	/**

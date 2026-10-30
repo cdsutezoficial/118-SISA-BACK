@@ -252,6 +252,17 @@ public class PaymentBenefit {
 		return studentId;
 	}
 
+	/**
+	 * Ties a discount granted for the concept (no charge) to a charge, so it
+	 * keeps resolving when the charge moves to another concept (career change
+	 * before paying). A discount already tied to a charge is left alone.
+	 */
+	public void linkToPayment(UUID paymentId) {
+		if (this.paymentId == null) {
+			this.paymentId = paymentId;
+		}
+	}
+
 	public UUID getPaymentId() {
 		return paymentId;
 	}
