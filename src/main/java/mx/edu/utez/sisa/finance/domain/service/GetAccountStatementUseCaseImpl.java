@@ -74,7 +74,8 @@ public class GetAccountStatementUseCaseImpl implements GetAccountStatementUseCas
 				: payment.getAmountDue().subtract(payment.getAmountPaid());
 		return new StatementPayment(payment.getId(), payment.getConceptCode(), payment.getOriginalAmount(),
 				payment.getAmountDue(), payment.getAmountPaid(), balance, payment.getStatus(), payment.getOrigin(),
-				payment.getDueAt(), payment.getCreatedAt(), benefit, entries);
+				payment.getDueAt(), payment.getCreatedAt(), benefit, entries, payment.getReferenceNumber(),
+				payment.getProgramId());
 	}
 
 	private static StatementEntry toStatementEntry(PaymentEntry entry) {

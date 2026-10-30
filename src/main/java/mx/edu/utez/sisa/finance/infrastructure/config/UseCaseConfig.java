@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.finance.infrastructure.config;
 
 import mx.edu.utez.sisa.finance.domain.port.in.ApplyCreditToPaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.ChangeChargeProgramUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.ListCreditsUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreatePaymentUseCase;
@@ -33,6 +34,7 @@ import mx.edu.utez.sisa.finance.domain.service.CancelBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CreateBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CreatePaymentUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetAccountStatementUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.ListCreditsUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetDiscountReportUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.ListBenefitsUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.PaymentQuoter;
@@ -236,6 +238,11 @@ public class UseCaseConfig {
 			Clock clock) {
 		return new ApplyCreditToPaymentUseCaseImpl(paymentRepository, paymentEntryRepository, paymentCreditRepository,
 				paymentBenefitRepository, paymentSettlementDecider, clock);
+	}
+
+	@Bean
+	public ListCreditsUseCase listCreditsUseCase(PaymentCreditRepository paymentCreditRepository) {
+		return new ListCreditsUseCaseImpl(paymentCreditRepository);
 	}
 
 	@Bean

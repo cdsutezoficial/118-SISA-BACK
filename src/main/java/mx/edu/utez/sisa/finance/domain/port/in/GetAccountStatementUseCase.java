@@ -28,7 +28,8 @@ public interface GetAccountStatementUseCase {
 	 */
 	record StatementPayment(UUID id, String conceptCode, BigDecimal originalAmount, BigDecimal amountDue,
 			BigDecimal amountPaid, BigDecimal balance, PaymentStatus status, PaymentOrigin origin, Instant dueAt,
-			Instant createdAt, QuotePaymentUseCase.BenefitSummary benefit, List<StatementEntry> entries) {
+			Instant createdAt, QuotePaymentUseCase.BenefitSummary benefit, List<StatementEntry> entries,
+			String referenceNumber, UUID programId) {
 	}
 
 	record StatementEntry(UUID id, BigDecimal amount, PaymentEntryMethod method, PaymentChannel channel,
