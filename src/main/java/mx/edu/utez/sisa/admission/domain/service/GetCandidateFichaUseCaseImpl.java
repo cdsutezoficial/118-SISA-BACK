@@ -192,7 +192,8 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								resolveState(school.getSchoolStateId()),
 								resolveMunicipality(school.getSchoolMunicipalityId()), school.getForeignCountry(),
 								school.getSchoolCity(), school.getGpa(), school.getCct()),
-				inductionPayment, price.originalAmount(), price.discountAmount(), price.discountReason()));
+				inductionPayment, price.originalAmount(), price.discountAmount(), price.discountReason(),
+				price.conceptName()));
 	}
 
 	/**
@@ -231,7 +232,7 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		if (fichaDisplayPrice != null) {
 			return fichaDisplayPrice.of(payment.financePaymentId(), config == null ? null : config.programId());
 		}
-		return new FichaDisplayPrice.Price(null, null, liveAmount(config), null);
+		return new FichaDisplayPrice.Price(null, null, liveAmount(config), null, null);
 	}
 
 	private BigDecimal liveAmount(AdmissionConfigInfo config) {

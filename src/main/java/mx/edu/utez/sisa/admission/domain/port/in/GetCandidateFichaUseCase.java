@@ -56,7 +56,7 @@ public interface GetCandidateFichaUseCase {
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
 			AntecedentesEscolares antecedentesEscolares, PaymentData inductionPayment, BigDecimal originalAmount,
-			BigDecimal discountAmount, String discountReason) {
+			BigDecimal discountAmount, String discountReason, String conceptName) {
 
 		public record PaymentData(AdmissionPaymentConcept concept, BigDecimal amount, String referenceNumber,
 				AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {
