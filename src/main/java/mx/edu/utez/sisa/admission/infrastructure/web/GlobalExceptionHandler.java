@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateProgramChangeNotAllowedException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.DuplicateOutreachChannelNameException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
@@ -106,6 +107,7 @@ public class GlobalExceptionHandler {
 	public static final String CODE_CONCEPT_NOT_FOUND = "ADMISSION_CONCEPT_NOT_FOUND";
 	public static final String CODE_CONCEPT_AMBIGUOUS = "ADMISSION_CONCEPT_AMBIGUOUS";
 	public static final String CODE_ALREADY_PAID = "ADMISSION_ALREADY_PAID";
+	public static final String CODE_PROGRAM_CHANGE_NOT_ALLOWED = "ADMISSION_PROGRAM_CHANGE_NOT_ALLOWED";
 	public static final String CODE_FICHA_DATA_INVALID = "ADMISSION_FICHA_DATA_INVALID";
 	public static final String CODE_VERIFICATION_INVALID = "ADMISSION_VERIFICATION_INVALID";
 	public static final String CODE_EVO_GATEWAY_ERROR = "ADMISSION_EVO_GATEWAY_ERROR";
@@ -284,6 +286,12 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleCandidateAlreadyPaid(CandidateAlreadyPaidException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, CODE_ALREADY_PAID, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(CandidateProgramChangeNotAllowedException.class)
+	public ResponseEntity<ErrorResponse> handleProgramChangeNotAllowed(CandidateProgramChangeNotAllowedException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, CODE_PROGRAM_CHANGE_NOT_ALLOWED, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(InvalidCandidateFichaDataException.class)

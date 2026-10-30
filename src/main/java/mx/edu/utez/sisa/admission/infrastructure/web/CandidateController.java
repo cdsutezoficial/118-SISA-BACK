@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
@@ -121,6 +122,8 @@ public class CandidateController {
 
 	private final UpdateCandidateUseCase updateCandidateUseCase;
 
+	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
+
 	private final CandidateFichaMailService fichaMailService;
 
 	private final CandidateFichaPdfService fichaPdfService;
@@ -136,6 +139,7 @@ public class CandidateController {
 			ReleaseFichaPaymentSlotUseCase releaseFichaPaymentSlotUseCase,
 			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
 			GetCandidateEditFormUseCase getCandidateEditFormUseCase, UpdateCandidateUseCase updateCandidateUseCase,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase,
 			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
 			LlaveMxVerificationTicketService verificationTicketService,
@@ -149,6 +153,7 @@ public class CandidateController {
 		this.listCandidatesUseCase = listCandidatesUseCase;
 		this.getCandidateEditFormUseCase = getCandidateEditFormUseCase;
 		this.updateCandidateUseCase = updateCandidateUseCase;
+		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
 		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
@@ -424,13 +429,25 @@ public class CandidateController {
 	/**
 	 * Guarda la ficha editada por Servicios Escolares. Recibe el mismo cuerpo que
 	 * el registro; {@code llaveMxVerified} se ignora (la verificación no se edita).
-	 * Responde con la ficha ya guardada.
+	 * Si cambia la carrera, recotiza la ficha en la misma transacción. Responde
+	 * con la ficha ya guardada.
 	 */
 	@PutMapping("/{id}")
 	public ResponseEntity<CandidateEditFormResponse> update(@PathVariable UUID id,
-			@Valid @RequestBody RegisterCandidateRequest request) {
-		updateCandidateUseCase.update(id, toCommand(request, false));
+			@Valid @RequestBody RegisterCandidateRequest request, Authentication authentication) {
+		updateCandidateUseCase.update(id, toCommand(request, false), UUID.fromString(authentication.getName()));
 		return ResponseEntity.ok(CandidateEditFormResponse.from(getCandidateEditFormUseCase.get(id)));
+	}
+
+	/**
+	 * Lo que pasaría con el cobro si el candidato cambia a {@code admissionConfigId}:
+	 * sin pagar, el precio nuevo con su descuento; pagada, la diferencia a pagar o
+	 * el saldo a favor, y si la carrera nueva tiene lugar. No guarda nada.
+	 */
+	@GetMapping("/{id}/program-change-preview")
+	public ResponseEntity<ChangeCandidateProgramUseCase.ProgramChangePreview> previewProgramChange(
+			@PathVariable UUID id, @RequestParam UUID admissionConfigId) {
+		return ResponseEntity.ok(changeCandidateProgramUseCase.preview(id, admissionConfigId));
 	}
 
 	@GetMapping("/{id}/ficha.pdf")

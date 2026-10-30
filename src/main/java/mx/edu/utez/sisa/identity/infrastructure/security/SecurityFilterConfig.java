@@ -252,7 +252,7 @@ public class SecurityFilterConfig {
 						// Edición de la ficha (Fase 7 · T2): solo Servicios Escolares.
 						// El GET va dos segmentos abajo y el PUT es otro método, así
 						// que el permitAll de GET "/candidates/*" no alcanza a ninguno.
-						.requestMatchers(HttpMethod.GET, "/candidates/*/edit")
+						.requestMatchers(HttpMethod.GET, "/candidates/*/edit", "/candidates/*/program-change-preview")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.PUT, "/candidates/*")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")

@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
@@ -12,6 +13,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Regist
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.shared.model.Address;
@@ -39,12 +41,19 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	private final FichaPaymentPort fichaPaymentPort;
+
+	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
+
 	public GetCandidateEditFormUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaPaymentPort fichaPaymentPort,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.fichaPaymentPort = fichaPaymentPort;
+		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
 	}
 
 	@Override
@@ -58,9 +67,17 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(candidate.getAdmissionConfigId()).orElse(null);
 
+		String blockedReason = changeCandidateProgramUseCase.blockedReason(candidateId).orElse(null);
+
 		return new CandidateEditForm(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.isLlaveMxVerified(), config == null ? null : config.programName(),
-				config == null ? null : config.modality(), false, toCommand(candidate, person));
+				config == null ? null : config.modality(), blockedReason == null, blockedReason,
+				toCommand(candidate, person), pendingProgramChange(candidate));
+	}
+
+	private FichaPaymentPort.ProgramChangeCharge pendingProgramChange(Candidate candidate) {
+		return candidate.getProgramChangePaymentId() == null ? null
+				: fichaPaymentPort.findProgramChangeCharge(candidate.getProgramChangePaymentId()).orElse(null);
 	}
 
 	private static RegisterCandidateCommand toCommand(Candidate candidate, Person person) {

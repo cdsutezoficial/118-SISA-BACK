@@ -103,6 +103,9 @@ class CandidateControllerTest {
 	private mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase updateCandidateUseCase;
 
 	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
+
+	@MockitoBean
 	private CandidateFichaMailService fichaMailService;
 
 	@MockitoBean
@@ -697,13 +700,15 @@ class CandidateControllerTest {
 	void updateParsesTheBodyLikeRegistrationAndIgnoresLlaveMx() throws Exception {
 		when(getCandidateEditFormUseCase.get(ID)).thenReturn(editForm());
 
-		mockMvc.perform(put("/candidates/{id}", ID).contentType(MediaType.APPLICATION_JSON)
-				.content(VALID_REGISTRATION)).andExpect(status().isOk())
+		UUID editorId = UUID.randomUUID();
+		mockMvc.perform(put("/candidates/{id}", ID).principal(authentication(editorId))
+				.contentType(MediaType.APPLICATION_JSON).content(VALID_REGISTRATION)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.folio").value("ADM-2026-000001"));
 
 		org.mockito.ArgumentCaptor<RegisterCandidateCommand> captor = org.mockito.ArgumentCaptor
 				.forClass(RegisterCandidateCommand.class);
-		verify(updateCandidateUseCase).update(org.mockito.ArgumentMatchers.eq(ID), captor.capture());
+		verify(updateCandidateUseCase).update(org.mockito.ArgumentMatchers.eq(ID), captor.capture(),
+				org.mockito.ArgumentMatchers.eq(editorId));
 		assertThat(captor.getValue().datosGenerales().birthDate()).isEqualTo(java.time.LocalDate.of(2005, 1, 1));
 		assertThat(captor.getValue().datosGenerales().gender()).isEqualTo(mx.edu.utez.sisa.shared.model.Gender.F);
 		assertThat(captor.getValue().llaveMxVerified()).isFalse();
@@ -715,17 +720,18 @@ class CandidateControllerTest {
 				.content(VALID_REGISTRATION.replace("\"" + CFG_ID + "\"", "null")))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("La carrera es obligatoria."));
-		verify(updateCandidateUseCase, never()).update(any(), any());
+		verify(updateCandidateUseCase, never()).update(any(), any(), any());
 	}
 
 	@Test
 	void updateReportsACurpOfAnotherPersonAsConflict() throws Exception {
 		doThrow(new mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException(
 				"La CURP ya está registrada a nombre de otra persona.")).when(updateCandidateUseCase)
-				.update(any(), any());
+				.update(any(), any(), any());
 
-		mockMvc.perform(put("/candidates/{id}", ID).contentType(MediaType.APPLICATION_JSON)
-				.content(VALID_REGISTRATION)).andExpect(status().isConflict());
+		mockMvc.perform(put("/candidates/{id}", ID).principal(authentication(UUID.randomUUID()))
+				.contentType(MediaType.APPLICATION_JSON).content(VALID_REGISTRATION))
+				.andExpect(status().isConflict());
 	}
 
 	private static mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm editForm() {
@@ -753,7 +759,8 @@ class CandidateControllerTest {
 				true);
 		return new mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm(ID,
 				"ADM-2026-000001", mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAID, true,
-				"Ingeniería en Software", mx.edu.utez.sisa.shared.model.ProgramModality.PRESENCIAL, false, ficha);
+				"Ingeniería en Software", mx.edu.utez.sisa.shared.model.ProgramModality.PRESENCIAL, false,
+				"El candidato ya está inscrito: la carrera ya no se cambia desde la ficha.", ficha, null);
 	}
 
 	private static final String CFG_ID = "11111111-1111-1111-1111-111111111111";

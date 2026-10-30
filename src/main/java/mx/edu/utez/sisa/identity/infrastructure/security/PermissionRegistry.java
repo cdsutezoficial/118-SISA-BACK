@@ -125,6 +125,7 @@ public final class PermissionRegistry {
 			e("GET", "/candidates/*/detail", "CANDIDATES_READ"),
 			// Edición de la ficha por Servicios Escolares (Fase 7 · T2).
 			e("GET", "/candidates/*/edit", "CANDIDATES_UPDATE"),
+			e("GET", "/candidates/*/program-change-preview", "CANDIDATES_UPDATE"),
 			e("PUT", "/candidates/*", "CANDIDATES_UPDATE"),
 			// admission — outreach channels
 			e("GET", "/outreach-channels/**", "OUTREACH_CHANNELS_READ"),

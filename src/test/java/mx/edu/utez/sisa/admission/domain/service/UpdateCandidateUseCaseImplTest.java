@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
+import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.AntecedentesEscolares;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Contacto;
@@ -15,13 +16,13 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Regist
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
-import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
 import mx.edu.utez.sisa.shared.model.Address;
 import mx.edu.utez.sisa.shared.model.Gender;
@@ -65,6 +66,7 @@ class UpdateCandidateUseCaseImplTest {
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
 	private static final UUID STATE_ID = UUID.randomUUID();
 	private static final UUID MUNICIPALITY_ID = UUID.randomUUID();
+	private static final UUID ACTOR_ID = UUID.randomUUID();
 
 	@Mock
 	private CandidateRepository candidateRepository;
@@ -81,6 +83,12 @@ class UpdateCandidateUseCaseImplTest {
 	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	@Mock
+	private FichaPaymentPort fichaPaymentPort;
+
+	@Mock
+	private ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
+
 	private UpdateCandidateUseCaseImpl useCase;
 
 	private GetCandidateEditFormUseCaseImpl getEditForm;
@@ -92,9 +100,9 @@ class UpdateCandidateUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository);
+				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
 		getEditForm = new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort);
+				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
 
 		person = CandidatePersonMapper.newPerson(command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID));
 		ReflectionTestUtils.setField(person, "id", PERSON_ID);
@@ -117,7 +125,8 @@ class UpdateCandidateUseCaseImplTest {
 		HealthProfile originalHealth = person.getHealthProfile();
 		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN10")).thenReturn(Optional.empty());
 
-		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan Carlos", CONFIG_ID, NEW_CHANNEL_ID));
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan Carlos", CONFIG_ID, NEW_CHANNEL_ID),
+				ACTOR_ID);
 
 		assertThat(person.getCurp()).isEqualTo("PEGJ900101HMSRRN10");
 		assertThat(person.getFirstName()).isEqualTo("Juan Carlos");
@@ -137,7 +146,7 @@ class UpdateCandidateUseCaseImplTest {
 	void keepingTheSameCurpIsNotAConflict() {
 		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN09")).thenReturn(Optional.of(person));
 
-		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID));
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
 
 		verify(candidatePersonRepository).save(person);
 	}
@@ -149,17 +158,20 @@ class UpdateCandidateUseCaseImplTest {
 		when(candidatePersonRepository.findByCurp("OTRA900101HMSRRN01")).thenReturn(Optional.of(other));
 
 		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
-				command("OTRA900101HMSRRN01", "Juan", CONFIG_ID, CHANNEL_ID)))
+				command("OTRA900101HMSRRN01", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID))
 				.isInstanceOf(CandidateAlreadyExistsException.class);
 		verify(candidatePersonRepository, never()).save(any());
 	}
 
 	@Test
-	void rejectsAProgramChangeUntilRepricingExists() {
-		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
-				command("PEGJ900101HMSRRN09", "Juan", UUID.randomUUID(), CHANNEL_ID)))
-				.isInstanceOf(InvalidCandidateFichaDataException.class);
-		verify(candidatePersonRepository, never()).save(any());
+	void handsTheProgramChangeToItsUseCaseAfterSavingTheData() {
+		UUID newConfig = UUID.randomUUID();
+		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(person));
+
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", newConfig, CHANNEL_ID), ACTOR_ID);
+
+		verify(candidatePersonRepository).save(person);
+		verify(changeCandidateProgramUseCase).change(CANDIDATE_ID, newConfig, ACTOR_ID);
 	}
 
 	@Test
@@ -168,7 +180,7 @@ class UpdateCandidateUseCaseImplTest {
 		when(outreachChannelRepository.findById(NEW_CHANNEL_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
-				command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, NEW_CHANNEL_ID)))
+				command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, NEW_CHANNEL_ID), ACTOR_ID))
 				.isInstanceOf(OutreachChannelNotFoundException.class);
 	}
 
@@ -178,7 +190,7 @@ class UpdateCandidateUseCaseImplTest {
 		when(highSchoolTypeRepository.findById(SCHOOL_TYPE_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
-				command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID)))
+				command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID))
 				.isInstanceOf(HighSchoolTypeNotFoundException.class);
 	}
 
@@ -187,18 +199,20 @@ class UpdateCandidateUseCaseImplTest {
 		UUID unknown = UUID.randomUUID();
 		when(candidateRepository.findById(unknown)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> useCase.update(unknown, command("X", "Y", CONFIG_ID, CHANNEL_ID)))
+		assertThatThrownBy(() -> useCase.update(unknown, command("X", "Y", CONFIG_ID, CHANNEL_ID), ACTOR_ID))
 				.isInstanceOf(CandidateNotFoundException.class);
 	}
 
 	@Test
 	void editFormReturnsWhatRegistrationStoredWithCatalogIds() {
 		when(programAdmissionConfigQueryPort.findById(CONFIG_ID)).thenReturn(Optional.empty());
+		when(changeCandidateProgramUseCase.blockedReason(CANDIDATE_ID)).thenReturn(Optional.empty());
 
 		CandidateEditForm form = getEditForm.get(CANDIDATE_ID);
 
 		assertThat(form.folio()).isEqualTo("ADM-2026-000001");
-		assertThat(form.programChangeAllowed()).isFalse();
+		assertThat(form.programChangeAllowed()).isTrue();
+		assertThat(form.pendingProgramChange()).isNull();
 		assertThat(form.ficha().datosGenerales().curp()).isEqualTo("PEGJ900101HMSRRN09");
 		assertThat(form.ficha().datosGenerales().birthStateId()).isEqualTo(STATE_ID);
 		assertThat(form.ficha().domicilio().municipalityId()).isEqualTo(MUNICIPALITY_ID);
@@ -224,7 +238,7 @@ class UpdateCandidateUseCaseImplTest {
 						"Medellín", a.gpa(), a.cct(), a.cctConfirmed()),
 				base.seleccionCarrera(), false);
 
-		useCase.update(CANDIDATE_ID, foreign);
+		useCase.update(CANDIDATE_ID, foreign, ACTOR_ID);
 
 		assertThat(person.getBirthCountry()).isEqualTo("Colombia");
 		assertThat(person.getBirthForeignState()).isEqualTo("Antioquia");

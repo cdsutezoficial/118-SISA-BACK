@@ -18,6 +18,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
+import mx.edu.utez.sisa.admission.domain.service.ChangeCandidateProgramUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
@@ -345,19 +349,34 @@ public class UseCaseConfig {
 	}
 
 	@Bean
+	public ChangeCandidateProgramUseCase changeCandidateProgramUseCase(CandidateRepository candidateRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
+			FichaPaymentPort fichaPaymentPort, AdmissionQuotaPort admissionQuotaPort,
+			CheckoutAttemptRepository checkoutAttemptRepository,
+			CandidateProgramChangeRepository candidateProgramChangeRepository, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+		return new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
+				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes);
+	}
+
+	@Bean
 	public GetCandidateEditFormUseCase getCandidateEditFormUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaPaymentPort fichaPaymentPort,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		return new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort);
+				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
 	}
 
 	@Bean
 	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository) {
+			HighSchoolTypeRepository highSchoolTypeRepository,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		return new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository);
+				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
 	}
 
 	@Bean

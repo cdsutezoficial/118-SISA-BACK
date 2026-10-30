@@ -3,10 +3,12 @@ package mx.edu.utez.sisa.admission.infrastructure.web.dto;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase.CandidateEditForm;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -22,11 +24,31 @@ import java.util.UUID;
  */
 public record CandidateEditFormResponse(UUID candidateId, String folio, CandidateStatus status,
 		boolean llaveMxVerified, String programName, String modality, boolean programChangeAllowed,
-		RegisterCandidateRequest.DatosGenerales datosGenerales, RegisterCandidateRequest.Domicilio domicilio,
+		String programChangeBlockedReason, RegisterCandidateRequest.DatosGenerales datosGenerales, RegisterCandidateRequest.Domicilio domicilio,
 		RegisterCandidateRequest.Contacto contacto,
 		RegisterCandidateRequest.InformacionComplementaria informacionComplementaria,
 		RegisterCandidateRequest.Ingresos ingresos, RegisterCandidateRequest.SeleccionCarrera seleccionCarrera,
-		RegisterCandidateRequest.AntecedentesEscolares antecedentesEscolares) {
+		RegisterCandidateRequest.AntecedentesEscolares antecedentesEscolares,
+		PendingProgramChange pendingProgramChange) {
+
+	/**
+	 * La diferencia que dejó un cambio de carrera y falta pagar en el portal.
+	 *
+	 * @param newAmount tarifa de la carrera nueva
+	 * @param carried   lo que ya pagó y se le abonó
+	 * @param toPay     lo que falta pagar
+	 */
+	public record PendingProgramChange(String referenceNumber, BigDecimal newAmount, BigDecimal carried,
+			BigDecimal toPay, Instant dueAt) {
+
+		static PendingProgramChange from(FichaPaymentPort.ProgramChangeCharge charge) {
+			if (charge == null || charge.paid() || charge.cancelled()) {
+				return null;
+			}
+			return new PendingProgramChange(charge.referenceNumber(), charge.newAmount(), charge.carried(),
+					charge.toPay(), charge.dueAt());
+		}
+	}
 
 	private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -36,10 +58,10 @@ public record CandidateEditFormResponse(UUID candidateId, String folio, Candidat
 		RegisterCandidateUseCase.RegisterCandidateCommand f = form.ficha();
 		return new CandidateEditFormResponse(form.candidateId(), form.folio(), form.status(), form.llaveMxVerified(),
 				form.programName(), form.modality() == null ? null : form.modality().name(),
-				form.programChangeAllowed(), datosGenerales(f.datosGenerales()), domicilio(f.domicilio()),
+				form.programChangeAllowed(), form.programChangeBlockedReason(), datosGenerales(f.datosGenerales()), domicilio(f.domicilio()),
 				contacto(f.contacto()), informacionComplementaria(f.informacionComplementaria()),
 				ingresos(f.ingresos()), seleccionCarrera(f.seleccionCarrera()),
-				antecedentes(f.antecedentesEscolares()));
+				antecedentes(f.antecedentesEscolares()), PendingProgramChange.from(form.pendingProgramChange()));
 	}
 
 	private static RegisterCandidateRequest.DatosGenerales datosGenerales(RegisterCandidateUseCase.DatosGenerales d) {
