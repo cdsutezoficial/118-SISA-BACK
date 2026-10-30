@@ -21,6 +21,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.math.BigDecimal;
 import java.time.Clock;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Set;
@@ -211,6 +212,10 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
+		if (candidate.getProgramChangePaymentId() != null) {
+			return initiateProgramChangeCheckout(candidateId, candidate, returnPath);
+		}
+
 		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
@@ -247,10 +252,43 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		checkoutSlotClaimer.claim(candidateId, orderId, price);
 
+		return openEvoSession(candidateId, orderId, charge.referenceNumber(), orderDescription(candidate.getFolio()),
+				amount, returnPath);
+	}
+
+	/**
+	 * The difference a career change left to pay, after the ficha was paid. Its
+	 * price was fixed at the change, so nothing is re-quoted: EVO is asked for
+	 * what is left. The ficha's own windows do not apply — only the deadline the
+	 * change gave it.
+	 */
+	private InitiateCheckoutResult initiateProgramChangeCheckout(UUID candidateId, Candidate candidate,
+			String returnPath) {
+		FichaPaymentPort.ProgramChangeCharge charge = fichaPaymentPort
+				.findProgramChangeCharge(candidate.getProgramChangePaymentId())
+				.orElseThrow(() -> new CandidateNotFoundException(
+						"El candidato no tiene diferencia de pago: " + candidateId));
+		if (charge.paid() || charge.toPay().signum() == 0) {
+			throw new CandidateAlreadyPaidException(
+					"La diferencia del candidato " + candidate.getFolio() + " ya estaba pagada.");
+		}
+		if (charge.dueAt() != null && Instant.now(clock).isAfter(charge.dueAt())) {
+			throw new FichaPaymentExpiredException(
+					"El plazo para pagar la diferencia por cambio de carrera venció. Comunícate con Servicios Escolares.");
+		}
+
+		String orderId = orderIdBuilder.build(candidate.getFolio());
+		checkoutSlotClaimer.claimProgramChange(candidateId, orderId, charge.financePaymentId(), charge.toPay());
+		return openEvoSession(candidateId, orderId, charge.referenceNumber(),
+				programChangeOrderDescription(candidate.getFolio()), charge.toPay(), returnPath);
+	}
+
+	/** Asks EVO for the hosted session of an attempt already committed. */
+	private InitiateCheckoutResult openEvoSession(UUID candidateId, String orderId, String reference,
+			String description, BigDecimal amount, String returnPath) {
 		String returnUrl = resolveReturnUrl(returnPath);
-		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId,
-				charge.referenceNumber(), orderDescription(candidate.getFolio()), amount,
-				currency, withCheckoutParams(returnUrl, candidateId, orderId),
+		EvoPaymentsGatewayPort.EvoOrder order = new EvoPaymentsGatewayPort.EvoOrder(orderId, reference, description,
+				amount, currency, withCheckoutParams(returnUrl, candidateId, orderId),
 				withCheckoutParams(resolveCancelUrl(returnPath, returnUrl), candidateId, orderId));
 
 		EvoPaymentsGatewayPort.EvoSession session;
@@ -403,6 +441,10 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 */
 	static String orderDescription(String folio) {
 		return "Ficha de Admision " + folio;
+	}
+
+	static String programChangeOrderDescription(String folio) {
+		return "Diferencia cambio de carrera " + folio;
 	}
 
 	private static String withCheckoutParams(String baseUrl, UUID candidateId, String orderId) {

@@ -93,7 +93,24 @@ public interface AccessFichaPaymentUseCase {
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
 			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
-			BigDecimal originalAmount, BigDecimal discountAmount, String discountReason) {
+			BigDecimal originalAmount, BigDecimal discountAmount, String discountReason,
+			ProgramChangeDue programChange) {
 
+	}
+
+	/**
+	 * La diferencia que dejó un cambio de carrera con la ficha ya pagada. La ficha
+	 * sigue pagada ({@code alreadyPaid}); esto es lo que falta, y se paga en el
+	 * mismo portal.
+	 *
+	 * @param programName la carrera nueva
+	 * @param newAmount   lo que cuesta la carrera nueva
+	 * @param carried     lo que ya había pagado, abonado a la carrera nueva
+	 * @param toPay       lo que falta pagar
+	 * @param dueOn       último día para pagarla
+	 * @param expired     el plazo ya pasó: el portal no ofrece el pago
+	 */
+	record ProgramChangeDue(String referenceNumber, String programName, BigDecimal newAmount, BigDecimal carried,
+			BigDecimal toPay, LocalDate dueOn, boolean expired) {
 	}
 }

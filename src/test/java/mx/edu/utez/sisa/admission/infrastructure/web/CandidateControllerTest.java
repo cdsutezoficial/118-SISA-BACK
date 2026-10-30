@@ -366,7 +366,7 @@ class CandidateControllerTest {
 				alreadyPaid ? "REC-20260924-000001" : null,
 				alreadyPaid ? java.time.Instant.parse("2026-09-24T15:30:00Z") : null, alreadyPaid,
 				PAYMENT_CLOSES_ON, PAYMENT_DEADLINE, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED,
-				false, null, null, null);
+				false, null, null, null, null);
 	}
 
 	@Test
@@ -411,7 +411,7 @@ class CandidateControllerTest {
 				"Ana Torres Ramos", "Ing. en Tecnologías de la Información", new BigDecimal("500.00"),
 				"REF-20260924-000101", REGISTRATION_DEADLINE,
 				mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false, null,
-				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false, null, null, null));
+				null, mx.edu.utez.sisa.admission.domain.model.CandidateStatus.REGISTERED, false, null, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))
@@ -432,7 +432,7 @@ class CandidateControllerTest {
 						"REF-20260924-000101", REGISTRATION_DEADLINE,
 						mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus.PENDING, null, null, false,
 						PAYMENT_CLOSES_ON, PAYMENT_DEADLINE,
-						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true, null, null, null));
+						mx.edu.utez.sisa.admission.domain.model.CandidateStatus.PAYMENT_EXPIRED, true, null, null, null, null));
 
 		mockMvc.perform(post("/candidates/payment-access").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"folio\":\"" + FOLIO + "\",\"curpSuffix\":\"" + SUFFIX + "\"}"))

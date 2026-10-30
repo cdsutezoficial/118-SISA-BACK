@@ -71,7 +71,9 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
-		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
+		// The difference a career change left to pay, when there is one; the ficha otherwise.
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		FichaPaymentPort.FichaCharge charge = FichaCharges.collecting(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
 		if (charge.isPaid()) {
@@ -82,14 +84,19 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		// Same transaction: the finance charge and the candidate are settled
 		// together, or neither is. The numbers booked are the captured
 		// attempt's, when there is one; the receipt goes on the abono.
-		String receipt = generateReceipt(candidate.getFolio());
+		String receipt = generateReceipt(candidate.getFolio()) + (programChange ? "-C" : "");
 		CheckoutAttempt attempt = capturedOrderId == null ? null
 				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
 		FichaPaymentPort.SettledFicha settled = fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(
 				charge.financePaymentId(), chargedBy(attempt), attempt != null, capturedOrderId, receipt,
 				charge.referenceNumber(), null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR));
 
-		candidate.markPaid();
+		if (programChange) {
+			// Paid in full: the new career's charge is the ficha from now on.
+			candidate.adoptFichaPayment(charge.financePaymentId());
+		} else {
+			candidate.markPaid();
+		}
 		candidateRepository.save(candidate);
 
 		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);

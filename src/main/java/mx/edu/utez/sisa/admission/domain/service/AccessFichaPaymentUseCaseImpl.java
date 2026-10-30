@@ -128,7 +128,22 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
 				alreadyPaid ? payment.paidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
 				candidate.getStatus(), paymentExpired, price.originalAmount(), price.discountAmount(),
-				price.discountReason());
+				price.discountReason(), programChangeDue(candidate, config));
+	}
+
+	private ProgramChangeDue programChangeDue(Candidate candidate,
+			ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
+		if (candidate.getProgramChangePaymentId() == null) {
+			return null;
+		}
+		return fichaPaymentPort.findProgramChangeCharge(candidate.getProgramChangePaymentId())
+				.filter(charge -> !charge.paid() && !charge.cancelled())
+				.map(charge -> {
+					LocalDate dueOn = charge.dueAt() == null ? null : charge.dueAt().atZone(clock.getZone()).toLocalDate();
+					return new ProgramChangeDue(charge.referenceNumber(), config == null ? null : config.programName(),
+							charge.newAmount(), charge.carried(), charge.toPay(), dueOn,
+							dueOn != null && LocalDate.now(clock).isAfter(dueOn));
+				}).orElse(null);
 	}
 
 	/**

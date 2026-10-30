@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -103,6 +104,22 @@ public class CheckoutSlotClaimer {
 		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, price.financePaymentId(), candidateId, null,
 				price.amountDue(), now, price.rateId(), price.originalAmount(), price.discountAmount(),
 				price.benefitId()));
+	}
+
+	/**
+	 * Opens the checkout attempt for the difference a career change left to pay.
+	 * No quota check: a paid candidate already holds a place, and the change
+	 * itself checked the new career had one. The attempt carries no price
+	 * snapshot — the charge's price is fixed, so it is settled with its own
+	 * numbers.
+	 *
+	 * @param amount what EVO is asked for: what is left to pay
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void claimProgramChange(UUID candidateId, String orderId, UUID paymentId, BigDecimal amount) {
+		requireCandidate(candidateId);
+		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, paymentId, candidateId, null, amount,
+				Instant.now(clock), null, null, null, null));
 	}
 
 	/**
