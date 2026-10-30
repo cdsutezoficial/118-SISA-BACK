@@ -106,6 +106,9 @@ class CandidateControllerTest {
 	private mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
 	@MockitoBean
+	private mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase getCandidateAccountUseCase;
+
+	@MockitoBean
 	private CandidateFichaMailService fichaMailService;
 
 	@MockitoBean

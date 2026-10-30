@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
@@ -35,6 +36,7 @@ import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListItemResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateListResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateRegistrationResponse;
+import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateAccountResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateStaffDetailResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationRequest;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CheckoutInitiationResponse;
@@ -116,6 +118,8 @@ public class CandidateController {
 
 	private final GetCandidateFichaUseCase getCandidateFichaUseCase;
 
+	private final GetCandidateAccountUseCase getCandidateAccountUseCase;
+
 	private final ListCandidatesUseCase listCandidatesUseCase;
 
 	private final GetCandidateEditFormUseCase getCandidateEditFormUseCase;
@@ -140,6 +144,7 @@ public class CandidateController {
 			GetCandidateFichaUseCase getCandidateFichaUseCase, ListCandidatesUseCase listCandidatesUseCase,
 			GetCandidateEditFormUseCase getCandidateEditFormUseCase, UpdateCandidateUseCase updateCandidateUseCase,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase,
+			GetCandidateAccountUseCase getCandidateAccountUseCase,
 			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
 			LlaveMxVerificationTicketService verificationTicketService,
@@ -150,6 +155,7 @@ public class CandidateController {
 		this.initiateFichaPaymentUseCase = initiateFichaPaymentUseCase;
 		this.releaseFichaPaymentSlotUseCase = releaseFichaPaymentSlotUseCase;
 		this.getCandidateFichaUseCase = getCandidateFichaUseCase;
+		this.getCandidateAccountUseCase = getCandidateAccountUseCase;
 		this.listCandidatesUseCase = listCandidatesUseCase;
 		this.getCandidateEditFormUseCase = getCandidateEditFormUseCase;
 		this.updateCandidateUseCase = updateCandidateUseCase;
@@ -414,6 +420,16 @@ public class CandidateController {
 			throw new CandidateNotFoundException("No existe el candidato: " + id);
 		}
 		return ResponseEntity.ok(CandidateStaffDetailResponse.from(ficha));
+	}
+
+	/**
+	 * Pagos del candidato para el detalle de Servicios Escolares: la ficha vigente,
+	 * la diferencia pendiente de un cambio de carrera, los cobros que quedaron como
+	 * historial, el saldo a favor y los cambios de carrera.
+	 */
+	@GetMapping("/{id}/account")
+	public ResponseEntity<CandidateAccountResponse> getAccount(@PathVariable UUID id) {
+		return ResponseEntity.ok(CandidateAccountResponse.from(getCandidateAccountUseCase.get(id)));
 	}
 
 	/**

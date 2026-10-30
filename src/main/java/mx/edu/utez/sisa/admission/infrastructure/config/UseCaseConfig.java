@@ -20,6 +20,9 @@ import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateEditFormUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAccountPort;
+import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase;
+import mx.edu.utez.sisa.admission.domain.service.GetCandidateAccountUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeCandidateProgramUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
@@ -368,6 +371,15 @@ public class UseCaseConfig {
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		return new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
 				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
+	}
+
+	@Bean
+	public GetCandidateAccountUseCase getCandidateAccountUseCase(CandidateRepository candidateRepository,
+			CandidateAccountPort candidateAccountPort,
+			CandidateProgramChangeRepository candidateProgramChangeRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+		return new GetCandidateAccountUseCaseImpl(candidateRepository, candidateAccountPort,
+				candidateProgramChangeRepository, programAdmissionConfigQueryPort);
 	}
 
 	@Bean

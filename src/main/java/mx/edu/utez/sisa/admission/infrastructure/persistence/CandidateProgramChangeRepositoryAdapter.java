@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateProgramChange;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -27,5 +28,10 @@ public class CandidateProgramChangeRepositoryAdapter implements CandidateProgram
 	@Override
 	public long countByCandidateId(UUID candidateId) {
 		return jpaRepository.countByCandidateId(candidateId);
+	}
+
+	@Override
+	public List<CandidateProgramChange> findByCandidateId(UUID candidateId) {
+		return jpaRepository.findByCandidateId(candidateId);
 	}
 }

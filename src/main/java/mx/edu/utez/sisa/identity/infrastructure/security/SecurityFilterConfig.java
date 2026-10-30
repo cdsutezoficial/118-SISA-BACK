@@ -247,7 +247,7 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
 						// Staff candidate detail. Two segments deep, so the public
 						// "/candidates/*" matcher above does not reach it either.
-						.requestMatchers(HttpMethod.GET, "/candidates/*/detail")
+						.requestMatchers(HttpMethod.GET, "/candidates/*/detail", "/candidates/*/account")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						// Edición de la ficha (Fase 7 · T2): solo Servicios Escolares.
 						// El GET va dos segmentos abajo y el PUT es otro método, así
