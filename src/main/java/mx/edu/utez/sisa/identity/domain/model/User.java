@@ -173,6 +173,21 @@ public class User {
 		this.updatedAt = Instant.now();
 	}
 
+	/**
+	 * Links this account to a {@link mx.edu.utez.sisa.shared.model.Person} when
+	 * it was created without one. Used by the dev/test seed to give the seeded
+	 * {@code DIRECTOR_DIVISION} account a real {@code personId}, which the
+	 * division's director picker needs (the aggregate stores a Person FK).
+	 * No-op when the account is already linked, so it is safe to re-run.
+	 */
+	public void linkPerson(UUID personId) {
+		if (this.personId != null || personId == null) {
+			return;
+		}
+		this.personId = personId;
+		this.updatedAt = Instant.now();
+	}
+
 	public UUID getId() {
 		return id;
 	}
