@@ -190,6 +190,7 @@ class UpdatePaymentConceptUseCaseImplTest {
 		when(paymentRateRepository.findActiveByConceptId(conceptId))
 				.thenReturn(List.of(new PaymentRate(conceptId, retiredProgram, null, BigDecimal.valueOf(500), null,
 						LocalDateTime.now())));
+		when(paymentConceptRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		useCase.updatePaymentConcept(quotaCommand(conceptId, 1));
 

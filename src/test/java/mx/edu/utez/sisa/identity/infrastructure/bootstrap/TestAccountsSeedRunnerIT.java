@@ -69,9 +69,13 @@ class TestAccountsSeedRunnerIT {
 		for (Map.Entry<String, RoleType> expected : EXPECTED.entrySet()) {
 			Optional<User> user = userRepository.findByUsername(expected.getKey());
 			assertThat(user).withFailMessage("Expected seeded account %s", expected.getKey()).isPresent();
-			assertThat(user.get().getPersonId())
-					.withFailMessage("Seeded account %s must not fabricate a person row", expected.getKey())
-					.isNull();
+			// The director is the one exception: TestDirectorPersonSeedRunner links a
+			// person to it so the division picker can list it (PR #49).
+			if (expected.getValue() != RoleType.DIRECTOR_DIVISION) {
+				assertThat(user.get().getPersonId())
+						.withFailMessage("Seeded account %s must not fabricate a person row", expected.getKey())
+						.isNull();
+			}
 
 			List<UserRole> grants = userRoleRepository.findByUserId(user.get().getId());
 			assertThat(grants).withFailMessage("Account %s must carry exactly one role", expected.getKey()).hasSize(1);
