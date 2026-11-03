@@ -26,8 +26,19 @@ import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
  * new session is opened; captured on any other charge — it becomes saldo a
  * favor and its row is closed;</li>
  * <li><b>refused</b> — the row is closed and the new session goes ahead;</li>
- * <li><b>unresolved</b> — no new session: both could end up charged.</li>
+ * <li><b>authorized but not captured</b> — no new session: the bank holds money
+ * that can still be captured, so both could end up charged;</li>
+ * <li><b>anything else unresolved</b> — the new session goes ahead and the old
+ * row stays open for the nightly reconciliation.</li>
  * </ul>
+ *
+ * <p>Why "unresolved" alone does not block: the gateway answers the same for a
+ * session the applicant opened and closed without typing a card as for one
+ * still running — no capture and no refusal. Blocking on that locked the
+ * applicant out for good (seen in local testing, 2026-11-03), because the
+ * reconciliation keeps such a row open too. An authorization is the only
+ * answer that proves money is actually in flight; for the rest, the
+ * overpayment path books a late capture as saldo a favor.
  *
  * <p>An attempt the bank cannot be asked about (an outage, or an order the
  * gateway does not know) neither blocks nor is closed: it stays open for the
@@ -87,7 +98,7 @@ public class PendingCheckoutGuard {
 				case CAPTURED -> paid |= applyCapture(candidate, attempt, answer.get());
 				case RELEASEABLE -> checkoutSlotClaimer.closeAttempt(attempt.getOrderId(),
 						CheckoutAttemptCloseReason.REJECTED);
-				case HELD_UNKNOWN -> inFlight = true;
+				case HELD_UNKNOWN -> inFlight |= authorizedNotCaptured(answer.get());
 			}
 		}
 		if (paid) {
@@ -98,6 +109,10 @@ public class PendingCheckoutGuard {
 			throw new PaymentInProgressException(
 					"Tienes un pago en proceso con el banco. Espera a que se confirme antes de intentar de nuevo.");
 		}
+	}
+
+	private static boolean authorizedNotCaptured(EvoPaymentsGatewayPort.EvoOrderStatus answer) {
+		return answer.totalAuthorizedAmount() != null && answer.totalAuthorizedAmount().signum() > 0;
 	}
 
 	private Optional<EvoPaymentsGatewayPort.EvoOrderStatus> ask(CheckoutAttempt attempt) {

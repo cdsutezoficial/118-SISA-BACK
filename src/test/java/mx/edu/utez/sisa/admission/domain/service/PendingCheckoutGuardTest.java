@@ -86,13 +86,26 @@ class PendingCheckoutGuardTest {
 		verify(checkoutSlotClaimer).closeAttempt(OLD_ORDER, CheckoutAttemptCloseReason.REJECTED);
 	}
 
-	/** Two live sessions could both be charged: the second is not opened. */
+	/** Money authorized and not yet captured could still be charged: no second session. */
 	@Test
-	void aSessionStillInProgressBlocksTheNewOne() {
-		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "PENDING", AMOUNT, null));
+	void anAuthorizationNotYetCapturedBlocksTheNewOne() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "SUCCESS", AMOUNT, AMOUNT, null, null,
+				null, null, null, null));
 
 		assertThatThrownBy(() -> guard.requireNoPaymentInFlight(candidate()))
 				.isInstanceOf(PaymentInProgressException.class);
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/**
+	 * A session opened and closed without a card reads as unresolved — no capture, no
+	 * refusal. It must not lock the applicant out; it stays open for the reconciliation.
+	 */
+	@Test
+	void anAbandonedSessionDoesNotBlockAndStaysOpen() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "PENDING", AMOUNT, null));
+
+		assertThatCode(() -> guard.requireNoPaymentInFlight(candidate())).doesNotThrowAnyException();
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
 	}
 
