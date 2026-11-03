@@ -1,9 +1,11 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -173,19 +175,25 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	/**
 	 * Phase 2: act on the fold.
 	 *
-	 * <p>The ficha is read once, here, and its claim travels with the decision. An
-	 * already-paid ficha is settled on the answers alone — nothing about her place is
-	 * touched, ever.
+	 * <p>Every charge the group's attempts point at is read once, here. A candidate can
+	 * hold attempts of more than one charge — the paid ficha and the difference a career
+	 * change left — so "is it paid?" is asked of each attempt's own charge, never of
+	 * whichever row the query returned first. An already-paid ficha is settled on the
+	 * answers alone — nothing about her place is touched, ever.
 	 */
 	private void settleFicha(UUID candidateId, List<CheckoutAttempt> attempts, Counters counters) {
 		Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts = askBankAboutEveryAttempt(attempts);
 
-		boolean alreadyPaid = fichaPaymentPort.findCharge(attempts.get(0).getPaymentId())
-				.map(FichaPaymentPort.FichaCharge::isPaid).orElse(false);
+		Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges = new HashMap<>();
+		for (CheckoutAttempt attempt : attempts) {
+			charges.computeIfAbsent(attempt.getPaymentId(), fichaPaymentPort::findCharge);
+		}
+		boolean holdsPaidCharge = charges.values().stream().flatMap(Optional::stream)
+				.anyMatch(FichaPaymentPort.FichaCharge::isPaid);
 
 		switch (OrderSettlementDecider.decideFicha(new ArrayList<>(verdicts.values()))) {
-			case CAPTURED -> captureWon(candidateId, attempts, verdicts, counters, alreadyPaid);
-			case RELEASEABLE -> releaseIsSafe(alreadyPaid, attempts, counters);
+			case CAPTURED -> captureWon(candidateId, attempts, verdicts, charges, counters);
+			case RELEASEABLE -> releaseIsSafe(holdsPaidCharge, attempts, counters);
 			case HELD_UNKNOWN -> counters.held(attempts.size());
 		}
 	}
@@ -206,12 +214,12 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	 * and one is {@code CAPTURED}, and both are true.
 	 */
 	private void captureWon(UUID candidateId, List<CheckoutAttempt> attempts,
-			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts, Counters counters,
-			boolean alreadyPaid) {
-		CheckoutAttempt capturing = capturingAttempt(attempts, verdicts);
+			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts,
+			Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges, Counters counters) {
+		CheckoutAttempt capturing = capturingAttempt(attempts, verdicts, charges);
 		boolean settledHere = false;
 
-		if (!alreadyPaid && capturing != null) {
+		if (capturing != null) {
 			try {
 				confirmFichaPaymentVerifiedUseCase.confirm(candidateId, capturing.getOrderId());
 				settledHere = true;
@@ -233,12 +241,23 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 		for (CheckoutAttempt attempt : attempts) {
 			OrderSettlementDecider.Verdict verdict = verdicts.get(attempt);
 			if (verdict == OrderSettlementDecider.Verdict.CAPTURED) {
-				if (!settledHere) {
-					// Either the ficha was already paid, or no open row could carry the
-					// confirmation. Nothing settles it this run, so the capturing row simply
+				if (attempt == capturing && settledHere) {
+					continue; // the confirmation closed it
+				}
+				if (isPaid(charges, attempt)) {
+					// Its charge is already paid, so nothing settles it this run: the row
 					// records what the bank said — unless it is already closed, which
 					// closeAttempt leaves alone.
 					closeAttempt(attempt, CheckoutAttemptCloseReason.CAPTURED, counters);
+				} else {
+					// Money on a charge that cannot be settled here: cancelled, missing, or
+					// paid by a sibling a moment ago. Closing the row would make the money
+					// invisible, so it stays open to be asked about again.
+					if (attempt.isOpen()) {
+						log.warn("Captura sin aplicar en la ficha {}: orden {} del cargo {}", candidateId,
+								attempt.getOrderId(), attempt.getPaymentId());
+					}
+					counters.held(1);
 				}
 			} else if (verdict == OrderSettlementDecider.Verdict.RELEASEABLE) {
 				closeAttempt(attempt, CheckoutAttemptCloseReason.REJECTED, counters);
@@ -270,18 +289,29 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	}
 
 	/**
-	 * The attempt to hand to the confirmation: one the bank says captured, and one nobody
-	 * has settled yet.
+	 * The attempt to hand to the confirmation: one the bank says captured, one nobody
+	 * has settled yet, and one whose own charge is still waiting for that money.
 	 *
-	 * <p>Both halves are load-bearing. Without the first, an already-paid ficha would be
+	 * <p>All three are load-bearing. Without the first, an already-paid ficha would be
 	 * re-confirmed. Without the second, a capture whose row the browser closed a moment
 	 * ago would be thrown at a confirmation that only accepts an open attempt, and the
 	 * run would log a failure for a payment that had already been settled correctly.
+	 * Without the third, a capture on the paid ficha would hide a capture on the
+	 * difference a career change left.
 	 */
 	private CheckoutAttempt capturingAttempt(List<CheckoutAttempt> attempts,
-			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts) {
+			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts,
+			Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges) {
 		return attempts.stream().filter(attempt -> verdicts.get(attempt) == OrderSettlementDecider.Verdict.CAPTURED)
-				.filter(CheckoutAttempt::isOpen).findFirst().orElse(null);
+				.filter(CheckoutAttempt::isOpen)
+				.filter(attempt -> charges.get(attempt.getPaymentId())
+						.map(charge -> !charge.isPaid() && !charge.cancelled()).orElse(false))
+				.findFirst().orElse(null);
+	}
+
+	private static boolean isPaid(Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges,
+			CheckoutAttempt attempt) {
+		return charges.get(attempt.getPaymentId()).map(FichaPaymentPort.FichaCharge::isPaid).orElse(false);
 	}
 
 	private void closeAll(List<CheckoutAttempt> attempts, CheckoutAttemptCloseReason reason, Counters counters) {

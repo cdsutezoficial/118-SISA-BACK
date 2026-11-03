@@ -355,4 +355,25 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(CandidateNotFoundException.class);
 	}
+
+	/**
+	 * E3: the attempt must belong to the charge being collected today. After a career
+	 * change the candidate owes a difference; a capture on an attempt of the old ficha
+	 * charge must not settle it.
+	 */
+	@Test
+	void anAttemptOfAChargeNoLongerCollectedIsRefused() {
+		UUID differenceChargeId = UUID.randomUUID();
+		Candidate candidate = candidate();
+		candidate.awaitProgramChangePayment(differenceChargeId);
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(differenceChargeId))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(differenceChargeId)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(InvalidPaymentVerificationException.class);
+		verify(evoPaymentsGateway, never()).retrieveOrder(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
+	}
 }

@@ -105,7 +105,7 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 					"El identificador del pedido es obligatorio para confirmar el pago.");
 		}
 
-		CheckoutAttempt attempt = requireOwnOpenAttempt(candidateId, orderId);
+		CheckoutAttempt attempt = requireOwnOpenAttempt(candidateId, candidate, orderId);
 
 		// The ATTEMPT's order is the source of truth, not the ficha's: `orderId` on the
 		// payment is overwritten by every retry, so after a second checkout the first
@@ -148,12 +148,17 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 	 * otherwise, and only with money the bank confirms they paid. Requiring the attempt
 	 * to still be <em>open</em> is what keeps this from re-confirming: a closed attempt
 	 * has already been accounted for.
+	 *
+	 * <p>The attempt must also belong to the charge being collected today. After a
+	 * career change that is the difference, and a capture on the old ficha's charge must
+	 * not settle it.
 	 */
-	private CheckoutAttempt requireOwnOpenAttempt(UUID candidateId, String orderId) {
+	private CheckoutAttempt requireOwnOpenAttempt(UUID candidateId, Candidate candidate, String orderId) {
 		CheckoutAttempt attempt = checkoutAttemptRepository.findByOrderId(orderId)
 				.orElseThrow(() -> new InvalidPaymentVerificationException(
 						"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
-		if (!candidateId.equals(attempt.getCandidateId()) || !attempt.isOpen()) {
+		if (!candidateId.equals(attempt.getCandidateId()) || !attempt.isOpen()
+				|| !candidate.collectingPaymentId().equals(attempt.getPaymentId())) {
 			throw new InvalidPaymentVerificationException(
 					"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo.");
 		}

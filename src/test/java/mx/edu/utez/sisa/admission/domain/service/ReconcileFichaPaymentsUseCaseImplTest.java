@@ -65,6 +65,9 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 	private static final UUID OTHER_CHARGE_ID = UUID.randomUUID();
 
+	/** The charge a career change left to pay, after the ficha was paid. */
+	private static final UUID DIFFERENCE_CHARGE_ID = UUID.randomUUID();
+
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -592,5 +595,82 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		assertThat(result.failedAttempts()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isEqualTo(1);
 		assertThat(result.heldAttempts()).isEqualTo(1);
+	}
+
+	/**
+	 * E3: the career-change case. Ana abandoned a ficha attempt and paid the ficha with
+	 * another; after a career change she paid the difference and lost connection before
+	 * the browser confirmed it. Tonight both rows are open: the abandoned one of the paid
+	 * ficha and the captured one of the difference.
+	 *
+	 * <p>"Already paid" used to be read from the first row's charge, so with the ficha's
+	 * row first the difference was closed as captured and never applied: the bank took
+	 * her money and SISA still showed it owed.
+	 */
+	@Test
+	void aCapturedDifferenceIsSettledWhenThePaidFichaAttemptComesFirst() {
+		String abandoned = "TESTUTEZ-ADM-2026-000001-A";
+		String difference = "TESTUTEZ-ADM-2026-000001-C";
+		givenOpenAttempts(openAttempt(abandoned, CANDIDATE_ID),
+				FichaTestData.attempt(difference, DIFFERENCE_CHARGE_ID, CANDIDATE_ID, QUOTED, OPENED));
+		givenCareerChangeOwed();
+		when(evoPaymentsGateway.retrieveOrder(abandoned)).thenReturn(
+				new EvoPaymentsGatewayPort.EvoOrderStatus(abandoned, "FAILURE", null));
+		when(evoPaymentsGateway.retrieveOrder(difference))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(difference, "SUCCESS", QUOTED));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, difference);
+		verify(checkoutSlotClaimer).closeAttempt(abandoned, CheckoutAttemptCloseReason.REJECTED);
+	}
+
+	/** The same pair the other way round: query order must not decide whose charge is read. */
+	@Test
+	void aCapturedDifferenceIsSettledWhenItComesFirst() {
+		String abandoned = "TESTUTEZ-ADM-2026-000001-A";
+		String difference = "TESTUTEZ-ADM-2026-000001-C";
+		givenOpenAttempts(FichaTestData.attempt(difference, DIFFERENCE_CHARGE_ID, CANDIDATE_ID, QUOTED, OPENED),
+				openAttempt(abandoned, CANDIDATE_ID));
+		givenCareerChangeOwed();
+		when(evoPaymentsGateway.retrieveOrder(abandoned)).thenReturn(
+				new EvoPaymentsGatewayPort.EvoOrderStatus(abandoned, "FAILURE", null));
+		when(evoPaymentsGateway.retrieveOrder(difference))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(difference, "SUCCESS", QUOTED));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, difference);
+	}
+
+	/**
+	 * A capture on a charge that was cancelled (the ficha expired, or a later career change
+	 * replaced the difference) cannot settle anything here, and closing its row would make
+	 * the money invisible. It stays open, to be asked about again.
+	 */
+	@Test
+	void aCaptureOnACancelledChargeStaysOpen() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(FichaTestData.cancelledCharge(CHARGE_ID));
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(captured());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isZero();
+		assertThat(result.heldAttempts()).isEqualTo(1);
+		assertThat(result.failedAttempts()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** The ficha is paid and the difference a career change left is still owed. */
+	private void givenCareerChangeOwed() {
+		givenPayment(paidPayment());
+		when(fichaPaymentPort.findCharge(DIFFERENCE_CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(DIFFERENCE_CHARGE_ID)));
 	}
 }
