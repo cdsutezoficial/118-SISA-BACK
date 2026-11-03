@@ -64,6 +64,17 @@ public interface FichaPaymentPort {
 	/** Cancels the charge if it is still open and unpaid; no-op otherwise. */
 	void cancel(UUID financePaymentId);
 
+	/**
+	 * Books as saldo a favor what an order captured without settling anything
+	 * (a second capture of a paid charge, or one on a cancelled charge).
+	 * Idempotent by order.
+	 *
+	 * @return {@code true} when the order has its saldo a favor, now or from an
+	 *         earlier run; {@code false} when the order is the one that paid the
+	 *         charge, so nothing was left over
+	 */
+	boolean registerOverpayment(UUID financePaymentId, String orderId, BigDecimal amount);
+
 	// ── Cambio de carrera ────────────────────────────────────────────────────
 
 	/** Sin pagar: el precio vivo que tendría el mismo cargo en la carrera nueva (no escribe). */

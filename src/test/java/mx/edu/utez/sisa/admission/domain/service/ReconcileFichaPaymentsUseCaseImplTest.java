@@ -243,7 +243,9 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.closedRows()).isEqualTo(1);
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
-		// The browser got there in the seconds between the query and this write.
+		// The browser got there in the seconds between the query and this write, so this
+		// order is the one that paid: finance books no saldo a favor for it.
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED);
 		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
 	}
 
@@ -648,23 +650,71 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	}
 
 	/**
-	 * A capture on a charge that was cancelled (the ficha expired, or a later career change
-	 * replaced the difference) cannot settle anything here, and closing its row would make
-	 * the money invisible. It stays open, to be asked about again.
+	 * E1: a capture on a charge that was cancelled (a later career change replaced the
+	 * difference, or the ficha expired) settles nothing. The money is booked as saldo a
+	 * favor of the person and the row is closed, so it neither fails every night nor
+	 * disappears.
 	 */
 	@Test
-	void aCaptureOnACancelledChargeStaysOpen() {
+	void aCaptureOnACancelledChargeBecomesSaldoAFavor() {
 		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
 		givenPayment(FichaTestData.cancelledCharge(CHARGE_ID));
 		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(captured());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(true);
+
+		var result = useCase.reconcile();
+
+		assertThat(result.failedAttempts()).isZero();
+		assertThat(result.heldAttempts()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
+	}
+
+	/**
+	 * E1: two tabs, two payments. The ficha was paid by the first; the second capture is
+	 * money the bank holds and the ficha does not need. It used to be closed as captured
+	 * and forgotten; now it is saldo a favor tied to its order.
+	 */
+	@Test
+	void aSecondCaptureOfAPaidFichaBecomesSaldoAFavor() {
+		String second = "TESTUTEZ-ADM-2026-000001-B";
+		givenOpenAttempts(openAttempt(second, CANDIDATE_ID));
+		givenPayment(paidPayment());
+		when(evoPaymentsGateway.retrieveOrder(second))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(second, "SUCCESS", QUOTED));
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, second, QUOTED)).thenReturn(true);
 
 		var result = useCase.reconcile();
 
 		assertThat(result.settledCaptures()).isZero();
-		assertThat(result.heldAttempts()).isEqualTo(1);
-		assertThat(result.failedAttempts()).isZero();
-		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
-		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, second, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(second, CheckoutAttemptCloseReason.CAPTURED);
+	}
+
+	/**
+	 * E1: both captures arrive the same night. The first pays the ficha; the second is
+	 * already an overpayment in that same run, not tomorrow.
+	 */
+	@Test
+	void twoCapturesTheSameNightLeaveOnePaymentAndOneCredit() {
+		String first = "TESTUTEZ-ADM-2026-000001-A";
+		String second = "TESTUTEZ-ADM-2026-000001-B";
+		givenOpenAttempts(openAttempt(first, CANDIDATE_ID), openAttempt(second, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(first))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(first, "SUCCESS", QUOTED));
+		when(evoPaymentsGateway.retrieveOrder(second))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(second, "SUCCESS", QUOTED));
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, second, QUOTED)).thenReturn(true);
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, first);
+		verify(fichaPaymentPort, never()).registerOverpayment(CHARGE_ID, first, QUOTED);
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, second, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(second, CheckoutAttemptCloseReason.CAPTURED);
 	}
 
 	/** The ficha is paid and the difference a career change left is still owed. */

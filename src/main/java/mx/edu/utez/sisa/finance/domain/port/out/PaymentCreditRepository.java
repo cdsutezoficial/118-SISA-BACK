@@ -45,4 +45,10 @@ public interface PaymentCreditRepository {
 	 * The {@code AVAILABLE} credits of a student, oldest first.
 	 */
 	List<PaymentCredit> findAvailableByStudentId(UUID studentId);
+
+	/** The overpayment booked for a gateway order, if any. */
+	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
+
+	/** Every overpayment (a credit tied to a gateway order), newest first. */
+	List<PaymentCredit> findOverpayments();
 }

@@ -135,6 +135,18 @@ public class BenefitController {
 		return ResponseEntity.ok(new CreditListResponse(items, items.size()));
 	}
 
+	/**
+	 * Money the gateway captured without settling anything (E1): a second
+	 * capture of a paid charge, or a capture on a cancelled one. Each is already
+	 * saldo a favor of its owner; this is the list Finanzas reviews.
+	 */
+	@GetMapping("/credits/overpayments")
+	public ResponseEntity<CreditListResponse> listOverpayments() {
+		List<CreditResponse> items = paymentCreditRepository.findOverpayments().stream()
+				.map(FinanceResponseMapper::toCredit).toList();
+		return ResponseEntity.ok(new CreditListResponse(items, items.size()));
+	}
+
 	@GetMapping("/discounts/report")
 	public ResponseEntity<DiscountReportResponse> report(@RequestParam(required = false) Instant from,
 			@RequestParam(required = false) Instant to) {

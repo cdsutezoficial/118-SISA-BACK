@@ -160,6 +160,7 @@ public final class PermissionRegistry {
 			e("PUT", "/finance/benefits/**", "BENEFITS_UPDATE"),
 			e("PATCH", "/finance/benefits/*/cancel", "BENEFITS_CANCEL"),
 			e("GET", "/finance/credits", "PAYMENTS_READ"),
+			e("GET", "/finance/credits/overpayments", "PAYMENTS_READ"),
 			e("GET", "/finance/discounts/report", "BENEFITS_REPORT"),
 			e("POST", "/finance/payments/*/entries", "PAYMENTS_SETTLE"),
 			e("POST", "/finance/payments/*/exempt", "BENEFITS_CREATE"),

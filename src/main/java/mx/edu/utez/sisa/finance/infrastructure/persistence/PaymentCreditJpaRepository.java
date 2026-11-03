@@ -32,4 +32,8 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 	List<PaymentCredit> findByCandidateIdAndStatusOrderByCreatedAtAsc(UUID candidateId, CreditStatus status);
 
 	List<PaymentCredit> findByStudentIdAndStatusOrderByCreatedAtAsc(UUID studentId, CreditStatus status);
+
+	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
+
+	List<PaymentCredit> findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
 }

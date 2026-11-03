@@ -13,6 +13,7 @@ import mx.edu.utez.sisa.finance.domain.port.in.FreezeDebtQuoteUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.GetChargeStatusUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RaiseDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.RegisterOverpaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.SettleDebtUseCase;
 import mx.edu.utez.sisa.finance.shared.exception.ConceptNotFoundException;
 import mx.edu.utez.sisa.finance.shared.exception.NoRateAvailableException;
@@ -54,10 +55,14 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 
 	private final ChangeChargeProgramUseCase changeChargeProgramUseCase;
 
+	private final RegisterOverpaymentUseCase registerOverpaymentUseCase;
+
 	public FichaPaymentAdapter(RaiseDebtUseCase raiseDebtUseCase, QuoteDebtUseCase quoteDebtUseCase,
 			FreezeDebtQuoteUseCase freezeDebtQuoteUseCase, SettleDebtUseCase settleDebtUseCase,
 			CancelDebtUseCase cancelDebtUseCase, GetChargeStatusUseCase getChargeStatusUseCase,
-			ChangeChargeProgramUseCase changeChargeProgramUseCase) {
+			ChangeChargeProgramUseCase changeChargeProgramUseCase,
+			RegisterOverpaymentUseCase registerOverpaymentUseCase) {
+		this.registerOverpaymentUseCase = registerOverpaymentUseCase;
 		this.getChargeStatusUseCase = getChargeStatusUseCase;
 		this.changeChargeProgramUseCase = changeChargeProgramUseCase;
 		this.raiseDebtUseCase = raiseDebtUseCase;
@@ -116,6 +121,11 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	@Override
 	public void cancel(UUID financePaymentId) {
 		cancelDebtUseCase.cancel(financePaymentId);
+	}
+
+	@Override
+	public boolean registerOverpayment(UUID financePaymentId, String orderId, BigDecimal amount) {
+		return registerOverpaymentUseCase.register(financePaymentId, orderId, amount).isPresent();
 	}
 
 	@Override
