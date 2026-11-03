@@ -60,6 +60,7 @@ import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImp
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.InitiateFichaPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.PendingCheckoutGuard;
 import mx.edu.utez.sisa.admission.domain.service.ReleaseFichaPaymentSlotUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
@@ -325,7 +326,7 @@ public class UseCaseConfig {
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
-			CheckoutSlotClaimer checkoutSlotClaimer,
+			CheckoutSlotClaimer checkoutSlotClaimer, PendingCheckoutGuard pendingCheckoutGuard,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths,
 			@Value("${sisa.security.password-reset.frontend-base-url:}") String frontendBaseUrl) {
 		String frontendBasePath = frontendBasePath(frontendBaseUrl);
@@ -335,7 +336,17 @@ public class UseCaseConfig {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
-				fichaAmountResolver, fichaPaymentPort, clock, fichaDeadlineDays, checkoutSlotClaimer);
+				fichaAmountResolver, fichaPaymentPort, clock, fichaDeadlineDays, checkoutSlotClaimer,
+				pendingCheckoutGuard);
+	}
+
+	@Bean
+	public PendingCheckoutGuard pendingCheckoutGuard(CheckoutAttemptRepository checkoutAttemptRepository,
+			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
+			CheckoutSlotClaimer checkoutSlotClaimer,
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+		return new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */

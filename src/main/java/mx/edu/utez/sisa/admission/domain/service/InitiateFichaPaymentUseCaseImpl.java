@@ -136,6 +136,12 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	private final CheckoutSlotClaimer checkoutSlotClaimer;
 
 	/**
+	 * Resolves the candidate's open attempts with the bank before another session
+	 * is opened, so one ficha never has two sessions that could both be charged.
+	 */
+	private final PendingCheckoutGuard pendingCheckoutGuard;
+
+	/**
 	 * A single constructor, deliberately.
 	 *
 	 * <p>This class used to offer shorter overloads. When the concept-window check
@@ -153,7 +159,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 			Set<String> allowedReturnPaths, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, FichaPaymentPort fichaPaymentPort,
 			Clock clock, int fichaDeadlineDays,
-			CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutSlotClaimer checkoutSlotClaimer, PendingCheckoutGuard pendingCheckoutGuard) {
 		this.candidateRepository = candidateRepository;
 
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -170,6 +176,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		this.clock = clock;
 		this.fichaDeadlineDays = fichaDeadlineDays;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
+		this.pendingCheckoutGuard = pendingCheckoutGuard;
 	}
 
 	/**
@@ -226,6 +233,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		}
 
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = requirePaymentWindowOpen(candidate);
+		pendingCheckoutGuard.requireNoPaymentInFlight(candidate);
 
 		// The price is computed again right here, at the click — never taken from
 		// what a screen showed: the concept's tariff in force now minus the
@@ -277,6 +285,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 					"El plazo para pagar la diferencia por cambio de carrera venció. Comunícate con Servicios Escolares.");
 		}
 
+		pendingCheckoutGuard.requireNoPaymentInFlight(candidate);
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		checkoutSlotClaimer.claimProgramChange(candidateId, orderId, charge.financePaymentId(), charge.toPay());
 		return openEvoSession(candidateId, orderId, charge.referenceNumber(),
