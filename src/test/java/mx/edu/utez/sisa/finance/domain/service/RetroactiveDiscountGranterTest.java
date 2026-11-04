@@ -73,6 +73,40 @@ class RetroactiveDiscountGranterTest {
 	}
 
 	@Test
+	void theChargeShowsTheDiscountAndKeepsWhatWasPaid() {
+		Payment charge = paidCharge();
+		when(paymentRepository.findById(charge.getId())).thenReturn(Optional.of(charge));
+		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		PaymentBenefit discount = halfOff(charge.getId());
+
+		new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter())
+				.grant(discount, Instant.now());
+
+		assertThat(charge.getBenefitId()).isEqualTo(discount.getId());
+		assertThat(charge.getAmountDue()).isEqualByComparingTo("560.00");
+		assertThat(charge.getAmountPaid()).isEqualByComparingTo("1120.00");
+		assertThat(charge.getStatus()).isEqualTo(PaymentStatus.PAID);
+		verify(paymentRepository).save(charge);
+	}
+
+	@Test
+	void aSecondDiscountOnlyReturnsWhatTheFirstDidNot() {
+		Payment charge = paidCharge();
+		when(paymentRepository.findById(charge.getId())).thenReturn(Optional.of(charge));
+		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		RetroactiveDiscountGranter granter = new RetroactiveDiscountGranter(paymentRepository,
+				paymentCreditRepository, new PaymentQuoter());
+		granter.grant(halfOff(charge.getId()), Instant.now());
+
+		// Otro 50 % no devuelve nada nuevo; uno menor tampoco.
+		assertThat(granter.grant(halfOff(charge.getId()), Instant.now())).isEmpty();
+		PaymentBenefit tenOff = halfOff(charge.getId());
+		ReflectionTestUtils.setField(tenOff, "percent", new BigDecimal("10"));
+		assertThat(granter.grant(tenOff, Instant.now())).isEmpty();
+		assertThat(charge.getAmountDue()).isEqualByComparingTo("560.00");
+	}
+
+	@Test
 	void anOpenChargeGetsNoCredit() {
 		Payment open = new Payment(candidateId, null, "FICHA-ING", null, null, UUID.randomUUID(), null, null, null,
 				PaymentStatus.PENDING, PaymentOrigin.ADMISSION, null, Instant.parse("2026-10-01T00:00:00Z"));

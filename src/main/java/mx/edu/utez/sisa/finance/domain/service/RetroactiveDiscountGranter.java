@@ -65,13 +65,19 @@ public class RetroactiveDiscountGranter {
 				continue;
 			}
 			BigDecimal newDue = paymentQuoter.quote(payment.getOriginalAmount(), benefit).due();
-			BigDecimal overpaid = payment.getAmountPaid().subtract(newDue);
+			// What the charge still keeps: an earlier discount already lowered its
+			// amount due and returned the rest as saldo, which cannot go back twice.
+			BigDecimal kept = Payment.moneyKept(payment);
+			BigDecimal overpaid = kept.subtract(newDue);
 			if (overpaid.signum() <= 0) {
 				continue;
 			}
+			payment.applyRetroactiveDiscount(benefit.getId(), newDue);
+			paymentRepository.save(payment);
 			credits.add(paymentCreditRepository.save(new PaymentCredit(payment.getCandidateId(),
 					payment.getStudentId(), payment.getId(), benefit.getId(), overpaid, now)));
 		}
 		return credits;
 	}
+
 }

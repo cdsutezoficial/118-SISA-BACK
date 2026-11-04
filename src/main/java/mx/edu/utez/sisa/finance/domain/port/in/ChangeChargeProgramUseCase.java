@@ -16,8 +16,10 @@ import java.util.UUID;
  * concept/program and keeps its discount, so the next quote is the new tariff
  * minus that discount;</li>
  * <li><b>paid</b> — {@link #rebill}: the paid charge stays as history and a
- * new charge is raised at the new tariff with no discount (the old one was
- * used when paying). What was paid becomes saldo a favor and is applied to
+ * new charge is raised at the new tariff minus the discount the person
+ * carries (D6: the discount travels, re-quoted on the new tariff). Only money
+ * moves: what was paid, less what a retroactive discount already returned as
+ * saldo, becomes saldo a favor and is applied to
  * the new charge: what is left to pay is the difference, and what is left
  * over stays as saldo a favor.</li>
  * </ul>
@@ -49,8 +51,10 @@ public interface ChangeChargeProgramUseCase {
 	/**
 	 * @param paymentId     the new charge; {@code null} in a preview
 	 * @param rateId        the tariff row of the new program
-	 * @param newAmount     the new program's tariff, with no discount
-	 * @param alreadyPaid   what the charge being left had received
+	 * @param newAmount     what the new charge costs: the new tariff minus the
+	 *                      discount that travelled
+	 * @param alreadyPaid   the money the charge being left kept (paid, less any
+	 *                      retroactive saldo it already handed back)
 	 * @param otherCredit   saldo a favor the person already had, also applied
 	 * @param creditApplied how much saldo a favor covers of the new charge
 	 * @param toPay         what is left to pay of the new charge

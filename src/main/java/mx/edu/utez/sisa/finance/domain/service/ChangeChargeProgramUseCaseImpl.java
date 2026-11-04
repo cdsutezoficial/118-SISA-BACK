@@ -38,6 +38,12 @@ import java.util.UUID;
  * same {@link PaymentCredit} and {@link PaymentEntryMethod#CREDIT} abono that
  * {@link ApplyCreditToPaymentUseCaseImpl} books — so the new charge shows its
  * real tariff, what was carried over and what is left.
+ *
+ * <p>Money and discount travel separately (D6). Only money moves as saldo: what
+ * the charge received minus what a retroactive discount already handed back as
+ * saldo. The discount the person has goes with her to the new charge and is
+ * re-quoted on the new tariff, whether it was used before paying or arrived
+ * after. Preview and rebill run the same numbers.
  */
 public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCase {
 
@@ -140,12 +146,16 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 		BigDecimal alreadyPaid = carriedOver(from);
 		BigDecimal otherCredit = availableCredits(from).stream().map(PaymentCredit::getAmount)
 				.reduce(ZERO, BigDecimal::add);
+		PaymentQuoter.Quotation quotation = quoteOnNewTariff(from, rate);
+		BigDecimal due = quotation.due();
 		BigDecimal pool = alreadyPaid.add(otherCredit);
-		BigDecimal applied = pool.min(rate.amount());
-		BigDecimal toPay = rate.amount().subtract(applied);
-		return new RebillOutcome(null, rate.id(), rate.amount(), alreadyPaid, otherCredit, applied, toPay,
-				pool.subtract(applied), toPay.signum() == 0 ? PaymentStatus.PAID
-						: applied.signum() > 0 ? PaymentStatus.PARTIAL : PaymentStatus.PENDING);
+		BigDecimal applied = pool.min(due);
+		BigDecimal toPay = due.subtract(applied);
+		PaymentStatus status = quotation.exempt() ? PaymentStatus.EXEMPT
+				: toPay.signum() == 0 ? PaymentStatus.PAID
+						: applied.signum() > 0 ? PaymentStatus.PARTIAL : PaymentStatus.PENDING;
+		return new RebillOutcome(null, rate.id(), due, alreadyPaid, otherCredit, applied, toPay,
+				pool.subtract(applied), status);
 	}
 
 	@Override
@@ -160,6 +170,8 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 		BigDecimal alreadyPaid = carriedOver(from);
 		BigDecimal otherCredit = availableCredits(from).stream().map(PaymentCredit::getAmount)
 				.reduce(ZERO, BigDecimal::add);
+		List<PaymentBenefit> discounts = benefitsThatMove(from);
+		PaymentQuoter.Quotation quotation = quoteOnNewTariff(from, rate, discounts);
 		if (!isSettled(from)) {
 			// A previous career-change charge still unpaid: it is replaced, and what
 			// it had received (saldo a favor carried over) goes back to the person.
@@ -175,19 +187,27 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 				from.getGenerationId(), command.programId(), null, null, null, PaymentStatus.PENDING,
 				from.getOrigin(), command.dueAt(), now);
 		charge.assignReference(command.reference());
-		// The new tariff with no discount: the one there was was used on the
-		// paid charge. Fixed now, so the difference is the one staff saw.
-		charge.reprice(rate.amount(), rate.amount(), null, rate.id(), PaymentStatus.PENDING);
+		// The new tariff with the person's discount re-quoted on it (D6). Fixed
+		// now, so the difference is the one staff saw.
+		PaymentBenefit used = quotation.benefit();
+		charge.reprice(quotation.original(), quotation.due(), used == null ? null : used.getId(), rate.id(),
+				quotation.exempt() ? PaymentStatus.EXEMPT : PaymentStatus.PENDING);
 		charge.lockPrice();
 		charge = paymentRepository.save(charge);
+		for (PaymentBenefit discount : discounts) {
+			discount.moveToPayment(charge.getId());
+			paymentBenefitRepository.save(discount);
+		}
 
 		BigDecimal applied = applyCredits(charge, command.actingUserId(), now);
 		BigDecimal paid = paymentEntryRepository.sumAmountByPaymentId(charge.getId());
-		charge.settle(paid, settlementDecider.decide(charge.getAmountDue(), paid));
+		if (!quotation.exempt()) {
+			charge.settle(paid, settlementDecider.decide(charge.getAmountDue(), paid));
+		}
 		charge = paymentRepository.save(charge);
 
 		BigDecimal pool = alreadyPaid.add(otherCredit);
-		return new RebillOutcome(charge.getId(), rate.id(), rate.amount(), alreadyPaid, otherCredit, applied,
+		return new RebillOutcome(charge.getId(), rate.id(), charge.getAmountDue(), alreadyPaid, otherCredit, applied,
 				charge.getAmountDue().subtract(paid).max(ZERO), pool.subtract(applied), charge.getStatus());
 	}
 
@@ -228,15 +248,28 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 		return applied;
 	}
 
+	private PaymentQuoter.Quotation quoteOnNewTariff(Payment from, ConceptRateQueryPort.ActiveRate rate) {
+		return quoteOnNewTariff(from, rate, benefitsThatMove(from));
+	}
+
+	/** The new tariff with the best discount the person carries, as of today. */
+	private PaymentQuoter.Quotation quoteOnNewTariff(Payment from, ConceptRateQueryPort.ActiveRate rate,
+			List<PaymentBenefit> discounts) {
+		PaymentBenefit benefit = benefitResolver.resolve(discounts, LocalDate.now(clock), from.getPeriodId(),
+				from.getGenerationId()).orElse(null);
+		return paymentQuoter.quote(rate.amount(), benefit);
+	}
+
 	/**
-	 * The money that moves with the payer: what the charge being left received.
-	 * A charge paid with a 100 % discount received $0 — the discount was used.
+	 * The money that moves with the payer: what the charge being left kept. A
+	 * retroactive discount already handed the rest back as saldo a favor (that
+	 * saldo is the person's already, and counting it here would pay it twice). Only money moves; the discount travels on its own (D6).
 	 */
 	private static BigDecimal carriedOver(Payment from) {
 		if (from.getStatus() == PaymentStatus.CANCELLED) {
 			throw new PaymentNotPayableException("El adeudo " + from.getId() + " está cancelado.");
 		}
-		return from.getAmountPaid() == null ? ZERO : from.getAmountPaid();
+		return Payment.moneyKept(from);
 	}
 
 	/** The saldo a favor the person already had, before this change adds any. */
