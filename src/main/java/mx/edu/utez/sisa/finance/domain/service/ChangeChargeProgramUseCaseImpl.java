@@ -41,7 +41,7 @@ import java.util.UUID;
  *
  * <p>Money and discount travel separately (D6). Only money moves as saldo: what
  * the charge received minus what a retroactive discount already handed back as
- * saldo. The discount the person has goes with her to the new charge and is
+ * saldo. The discount the person has goes with them to the new charge and is
  * re-quoted on the new tariff, whether it was used before paying or arrived
  * after. Preview and rebill run the same numbers.
  */

@@ -18,12 +18,20 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 
 	private final PaymentCreditJpaRepository jpaRepository;
 
-	public PaymentCreditRepositoryAdapter(PaymentCreditJpaRepository jpaRepository) {
+	private final FinanceCandidateJpaRepository candidateJpaRepository;
+
+	public PaymentCreditRepositoryAdapter(PaymentCreditJpaRepository jpaRepository,
+			FinanceCandidateJpaRepository candidateJpaRepository) {
 		this.jpaRepository = jpaRepository;
+		this.candidateJpaRepository = candidateJpaRepository;
 	}
 
+	/** Fills whose money it is before writing, so every flow that books saldo ties it to the person (D9). */
 	@Override
 	public PaymentCredit save(PaymentCredit credit) {
+		if (credit.getPersonId() == null) {
+			personOfCandidate(credit.getCandidateId()).ifPresent(credit::assignPerson);
+		}
 		return jpaRepository.save(credit);
 	}
 
@@ -37,9 +45,11 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByIdForUpdate(id);
 	}
 
+	/** Every credit of the person behind this candidate, whichever ficha produced it. */
 	@Override
 	public List<PaymentCredit> findByCandidateId(UUID candidateId) {
-		return jpaRepository.findByCandidateIdOrderByCreatedAtDesc(candidateId);
+		return personOfCandidate(candidateId).map(jpaRepository::findByPerson)
+				.orElseGet(() -> jpaRepository.findByCandidateIdOrderByCreatedAtDesc(candidateId));
 	}
 
 	@Override
@@ -47,9 +57,12 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByStudentIdOrderByCreatedAtDesc(studentId);
 	}
 
+	/** The available saldo of the person behind this candidate, whichever ficha produced it. */
 	@Override
 	public List<PaymentCredit> findAvailableByCandidateId(UUID candidateId) {
-		return jpaRepository.findByCandidateIdAndStatusOrderByCreatedAtAsc(candidateId, CreditStatus.AVAILABLE);
+		return personOfCandidate(candidateId).map(jpaRepository::findAvailableByPerson)
+				.orElseGet(() -> jpaRepository.findByCandidateIdAndStatusOrderByCreatedAtAsc(candidateId,
+						CreditStatus.AVAILABLE));
 	}
 
 	@Override
@@ -65,5 +78,10 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 	@Override
 	public List<PaymentCredit> findOverpayments() {
 		return jpaRepository.findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
+	}
+
+	private Optional<UUID> personOfCandidate(UUID candidateId) {
+		return candidateId == null ? Optional.empty()
+				: candidateJpaRepository.findById(candidateId).map(candidate -> candidate.getPersonId());
 	}
 }

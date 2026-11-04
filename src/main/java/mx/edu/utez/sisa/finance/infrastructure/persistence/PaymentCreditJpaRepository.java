@@ -35,5 +35,25 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 
 	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
 
+	/**
+	 * Every credit of a person, matched by {@code personId} or, for rows saved
+	 * before that column existed, by any candidate record of that person.
+	 */
+	@Query("""
+			SELECT c FROM PaymentCredit c
+			WHERE c.personId = :personId
+			   OR c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.personId = :personId)
+			ORDER BY c.createdAt DESC""")
+	List<PaymentCredit> findByPerson(@Param("personId") UUID personId);
+
+	/** The {@code AVAILABLE} credits of a person, oldest first (same matching). */
+	@Query("""
+			SELECT c FROM PaymentCredit c
+			WHERE c.status = mx.edu.utez.sisa.finance.domain.model.CreditStatus.AVAILABLE
+			  AND (c.personId = :personId
+			       OR c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.personId = :personId))
+			ORDER BY c.createdAt ASC""")
+	List<PaymentCredit> findAvailableByPerson(@Param("personId") UUID personId);
+
 	List<PaymentCredit> findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
 }

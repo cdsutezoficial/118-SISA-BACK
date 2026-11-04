@@ -25,8 +25,9 @@ public interface PaymentCreditRepository {
 	Optional<PaymentCredit> findByIdForUpdate(UUID id);
 
 	/**
-	 * Every credit of an aspirante, newest first — backing {@code GET
-	 * /finance/credits}.
+	 * Every credit of the <b>person</b> behind an aspirante, newest first —
+	 * backing {@code GET /finance/credits}. The saldo is of the person (D9), so
+	 * an earlier ficha's credits show up on a new one.
 	 */
 	List<PaymentCredit> findByCandidateId(UUID candidateId);
 
@@ -36,8 +37,9 @@ public interface PaymentCreditRepository {
 	List<PaymentCredit> findByStudentId(UUID studentId);
 
 	/**
-	 * The {@code AVAILABLE} credits of an aspirante, oldest first. The apply
-	 * flow walks these to cover an adeudo; anything left over stays available.
+	 * The {@code AVAILABLE} credits of the <b>person</b> behind an aspirante,
+	 * oldest first, whichever of their fichas produced them (D9). The apply flow
+	 * walks these to cover an adeudo; anything left over stays available.
 	 */
 	List<PaymentCredit> findAvailableByCandidateId(UUID candidateId);
 
