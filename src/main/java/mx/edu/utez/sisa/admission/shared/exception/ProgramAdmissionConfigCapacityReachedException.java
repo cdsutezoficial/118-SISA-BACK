@@ -6,7 +6,7 @@ package mx.edu.utez.sisa.admission.shared.exception;
  * {@code GlobalExceptionHandler}.
  *
  * <p>The quota counts <em>paid</em> fichas (plus checkouts in progress for at
- * most 15 minutes), not registrations: a hundred people may sign up and the
+ * most 60 minutes), not registrations: a hundred people may sign up and the
  * program keeps showing while fewer than {@code maxCandidates} have paid. That
  * is the "pueden registrarse 100 pero solo pagan 15" rule, and it is why the
  * count behind this exception is a query over the ficha charges and their

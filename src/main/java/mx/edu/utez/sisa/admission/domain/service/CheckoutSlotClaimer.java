@@ -53,7 +53,7 @@ public class CheckoutSlotClaimer {
 
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
 			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;

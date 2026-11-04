@@ -37,7 +37,7 @@ import java.util.UUID;
  * benefit). Whichever attempt the bank captures is booked with the numbers it
  * charged, not with whatever the charge was re-frozen to afterwards.</li>
  * <li><b>Holds a quota slot only while it is young.</b> An open
- * ({@code STARTED}) attempt created less than the checkout hold ago (15 min)
+ * ({@code STARTED}) attempt created less than the checkout hold ago (60 min)
  * counts as an occupied place; after that it counts for nothing, without any
  * job having to release it.</li>
  * </ul>

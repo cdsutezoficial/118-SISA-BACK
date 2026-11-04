@@ -199,7 +199,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * what makes the attempt recordable;</li>
 	 * <li>{@link CheckoutSlotClaimer#claim} — under a row lock, checks the quota
 	 * and opens the checkout attempt with the frozen price, and
-	 * <em>commits</em>: the open attempt is what holds the place (15 min), so
+	 * <em>commits</em>: the open attempt is what holds the place (60 min), so
 	 * there is never a held place without an order id the bank can be asked
 	 * about (§3.6), and the lock is not held while Evo is called;</li>
 	 * <li>the gateway call;</li>

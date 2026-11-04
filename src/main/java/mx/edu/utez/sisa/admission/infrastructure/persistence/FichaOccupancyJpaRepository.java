@@ -19,7 +19,7 @@ import java.util.UUID;
  * <ul>
  * <li><b>settled</b> — {@code PAID} or {@code EXEMPT}: a place sold for good; or</li>
  * <li><b>being paid right now</b> — it has a {@code STARTED} checkout attempt
- * opened at or after {@code attemptsOpenedSince} (now − the 15-minute hold).
+ * opened at or after {@code attemptsOpenedSince} (now − the 60-minute hold).
  * An older open attempt counts for nothing: the hosted session it belonged
  * to is over, and no job has to release it.</li>
  * </ul>

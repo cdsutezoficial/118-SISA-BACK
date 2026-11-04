@@ -369,7 +369,7 @@ public class UseCaseConfig {
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			CandidateProgramChangeRepository candidateProgramChangeRepository, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
 				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes);

@@ -102,7 +102,7 @@ public class ProgramAdmissionConfigController {
 			UpdateProgramAdmissionConfigUseCase updateProgramAdmissionConfigUseCase,
 			ChangeProgramAdmissionConfigStatusUseCase changeProgramAdmissionConfigStatusUseCase,
 			ProgramAdmissionConfigJpaRepository programAdmissionConfigJpaRepository, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		this.listProgramAdmissionConfigsUseCase = listProgramAdmissionConfigsUseCase;
 		this.openProgramAdmissionUseCase = openProgramAdmissionUseCase;
 		this.getProgramAdmissionConfigUseCase = getProgramAdmissionConfigUseCase;
@@ -147,7 +147,7 @@ public class ProgramAdmissionConfigController {
 	 * the very next screen. One clock, one zone, one answer.
 	 *
 	 	 * <p>The cutoff the occupancy subquery needs (open checkout attempts younger
-	 * than the 15-minute hold) comes from {@code FichaPaymentWindow}, the same
+	 * than the 60-minute hold) comes from {@code FichaPaymentWindow}, the same
 	 * value the checkout's copy of the rule uses.
 	 */
 	@GetMapping("/options")
