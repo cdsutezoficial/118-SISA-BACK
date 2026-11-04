@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
@@ -87,6 +88,9 @@ class CheckoutSlotClaimerTest {
 	@Mock
 	private FichaPaymentPort fichaPaymentPort;
 
+	@Mock
+	private CandidateNotificationPort notifications;
+
 	private CheckoutSlotClaimer claimer;
 
 	private Candidate candidate;
@@ -94,7 +98,7 @@ class CheckoutSlotClaimerTest {
 	@BeforeEach
 	void setUp() {
 		claimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository, checkoutAttemptRepository,
-				fichaPaymentPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES);
+				fichaPaymentPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES, notifications);
 		candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 		candidate.linkFichaPayment(CHARGE_ID);
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
@@ -361,6 +365,12 @@ class CheckoutSlotClaimerTest {
 		assertThat(settled.getValue().charged().amountDue()).isEqualByComparingTo("0.00");
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
 		verify(candidateRepository).save(candidate);
+		// F3: an exemption gets its receipt too.
+		ArgumentCaptor<mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult> sent =
+				ArgumentCaptor.forClass(mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult.class);
+		verify(notifications).paymentConfirmed(sent.capture());
+		assertThat(sent.getValue().receiptNumber()).isEqualTo(receipt);
+		assertThat(sent.getValue().amount()).isEqualByComparingTo("0.00");
 	}
 
 	// -- closing = releasing --

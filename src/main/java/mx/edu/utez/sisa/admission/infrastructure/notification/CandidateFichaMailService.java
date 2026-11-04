@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -109,6 +110,20 @@ public class CandidateFichaMailService {
 
 	private static final String TEXT_TEMPLATE = "templates/ficha-pago-confirmacion.txt";
 
+	private static final String NOTICE_HTML_TEMPLATE = "templates/ficha-aviso.html";
+
+	private static final String NOTICE_TEXT_TEMPLATE = "templates/ficha-aviso.txt";
+
+	private static final String GREEN = "#009574";
+
+	private static final String AMBER = "#B45309";
+
+	private static final String ROW_LABEL_STYLE = "padding:6px 20px; font-family:Arial,Helvetica,sans-serif; "
+			+ "font-size:13px; line-height:20px; color:#6B7280; width:45%;";
+
+	private static final String ROW_VALUE_STYLE = "padding:6px 20px; font-family:Arial,Helvetica,sans-serif; "
+			+ "font-size:13px; line-height:20px; color:#333333;";
+
 	private static final String UTF_8 = StandardCharsets.UTF_8.name();
 
 	private final JavaMailSender mailSender;
@@ -132,16 +147,156 @@ public class CandidateFichaMailService {
 	 */
 	public void sendPaymentConfirmation(String to, String name, String folio, String program,
 			BigDecimal amount, String reference, Instant paidAt, String receipt) {
+		sendPaymentConfirmation(to, name, folio, program, amount, reference, paidAt, receipt, null);
+	}
+
+	/**
+	 * The receipt, divided by charge when the charge had received money before (E6):
+	 * the career's total, what was paid earlier (with its receipt and date) and what was
+	 * paid now. A career-change difference also gets its own subject and wording.
+	 *
+	 * @param breakdown {@code null} for a payment that settled its whole charge at once
+	 */
+	public void sendPaymentConfirmation(String to, String name, String folio, String program,
+			BigDecimal amount, String reference, Instant paidAt, String receipt, Breakdown breakdown) {
 		Map<String, String> values = values(name, folio, program, amount, reference, paidAt, receipt);
-		String rendered = render(TEXT_TEMPLATE, values, false);
+		boolean difference = breakdown != null && breakdown.programChange();
+		values.put("titulo", difference ? "¡Pago de la diferencia confirmado!" : "¡Pago de ficha confirmado!");
+		values.put("subtitulo", difference
+				? "Pagaste la diferencia por tu cambio de carrera. Tu ficha queda pagada en la carrera nueva."
+				: "Tu registro de Aspirante quedó completado. Guarda esta pantalla o descarga tu comprobante.");
+		String amountLabel = breakdown != null && breakdown.previouslyPaid() != null
+				&& breakdown.previouslyPaid().signum() > 0 ? "Pagado en este momento" : "Monto pagado";
+		Map<String, String[]> raw = new LinkedHashMap<>();
+		raw.put("montoEtiqueta", new String[] { amountLabel, padLabel(amountLabel) });
+		raw.put("desglose", breakdownRows(breakdown));
+		String rendered = render(TEXT_TEMPLATE, values, raw, false);
 		// Plantilla ausente: el recibo sale igual, con el cuerpo mínimo. Perder el
 		// formato es aceptable; perder el comprobante, no.
 		String text = rendered != null ? rendered
 				: minimalTextBody(name, folio, program, amount, reference, paidAt, receipt);
 		// El HTML es opcional: si falta su plantilla se manda solo texto, que es
 		// justo lo que un cliente de correo sin soporte HTML necesita.
-		String html = render(HTML_TEMPLATE, values, true);
-		dispatch(() -> doSend(to, "Confirmación de pago de tu ficha — " + folio, html, text));
+		String html = render(HTML_TEMPLATE, values, raw, true);
+		String subject = difference ? "Pago de la diferencia por cambio de carrera — " + folio
+				: "Confirmación de pago de tu ficha — " + folio;
+		dispatch(() -> doSend(to, subject, html, text));
+	}
+
+	/**
+	 * E6: the lines of a divided receipt. {@code previousReceipt} and
+	 * {@code previousPaidAt} identify the earlier charge the money came from, when a
+	 * career change carried it.
+	 */
+	public record Breakdown(BigDecimal total, BigDecimal previouslyPaid, String previousReceipt,
+			Instant previousPaidAt, boolean programChange) {
+	}
+
+	/**
+	 * F3: a career change left a difference to pay. Says how much, by when, and where,
+	 * so the applicant learns it without having to open the portal.
+	 *
+	 * @param portalUrl the portal's payment page, or {@code null} when not configured
+	 */
+	public void sendProgramChangeDifference(String to, String name, String folio, String program,
+			BigDecimal newAmount, BigDecimal alreadyPaid, BigDecimal toPay, Instant dueAt, String portalUrl) {
+		Map<String, String> values = noticeValues(name, folio, program, AMBER, "Tienes una diferencia por pagar",
+				"Se cambió tu carrera y el costo de la nueva es mayor a lo que ya pagaste.",
+				"paga la diferencia desde el portal con tu folio antes de la fecha límite. "
+						+ "Mientras no la pagues, tu ficha queda pendiente.");
+		List<String[]> rows = List.of(row("Total de la carrera", money(newAmount)),
+				row("Ya pagado", money(alreadyPaid)), row("Por pagar", money(toPay)),
+				row("Fecha límite", formatInstant(dueAt)));
+		sendNotice(to, "Diferencia por pagar por cambio de carrera — " + folio, values, rows, portalUrl);
+	}
+
+	/**
+	 * F3: a career change left money over, kept as the person's saldo a favor (it does
+	 * not expire, D7).
+	 */
+	public void sendCreditLeft(String to, String name, String folio, String program, BigDecimal credit) {
+		Map<String, String> values = noticeValues(name, folio, program, GREEN, "Tienes saldo a favor",
+				"Se cambió tu carrera y la nueva cuesta menos de lo que ya pagaste.",
+				"el monto quedó como saldo a favor a tu nombre y no caduca. "
+						+ "Puedes usarlo en tus siguientes pagos.");
+		sendNotice(to, "Saldo a favor por cambio de carrera — " + folio, values,
+				List.<String[]>of(row("Saldo a favor", money(credit))), null);
+	}
+
+	private void sendNotice(String to, String subject, Map<String, String> values, List<String[]> rows,
+			String portalUrl) {
+		Map<String, String[]> raw = new LinkedHashMap<>();
+		raw.put("filas", rows(rows));
+		raw.put("enlace", link(portalUrl));
+		String text = render(NOTICE_TEXT_TEMPLATE, values, raw, false);
+		if (text == null) {
+			StringBuilder fallback = new StringBuilder(values.get("titulo")).append("\n\n");
+			rows.forEach(r -> fallback.append(r[0]).append(": ").append(r[1]).append('\n'));
+			text = fallback.toString();
+		}
+		String html = render(NOTICE_HTML_TEMPLATE, values, raw, true);
+		String body = text;
+		dispatch(() -> doSend(to, subject, html, body));
+	}
+
+	private static Map<String, String> noticeValues(String name, String folio, String program, String color,
+			String title, String subtitle, String message) {
+		Map<String, String> values = values(name, folio, program, null, null, null, null);
+		values.put("titulo", title);
+		values.put("subtitulo", subtitle);
+		values.put("mensaje", message);
+		values.put("color", color);
+		return values;
+	}
+
+	private static String[] row(String label, String value) {
+		return new String[] { label, value };
+	}
+
+	/** {html, text} for a run of label/value rows; values are ours and escaped. */
+	private static String[] rows(List<String[]> rows) {
+		StringBuilder html = new StringBuilder();
+		StringBuilder text = new StringBuilder();
+		for (String[] r : rows) {
+			html.append("<tr><td style=\"").append(ROW_LABEL_STYLE).append("\">").append(escapeHtml(r[0]))
+					.append("</td><td style=\"").append(ROW_VALUE_STYLE).append("\">")
+					.append(escapeHtml(collapseWhitespace(r[1]))).append("</td></tr>");
+			text.append("  ").append(padLabel(r[0])).append(' ').append(collapseWhitespace(r[1])).append('\n');
+		}
+		return new String[] { html.toString(), text.toString() };
+	}
+
+	private static String[] breakdownRows(Breakdown breakdown) {
+		if (breakdown == null || breakdown.previouslyPaid() == null || breakdown.previouslyPaid().signum() <= 0) {
+			return new String[] { "", "" };
+		}
+		String earlier = breakdown.previousReceipt() == null ? money(breakdown.previouslyPaid())
+				: money(breakdown.previouslyPaid()) + " (" + breakdown.previousReceipt() + ", "
+						+ formatInstant(breakdown.previousPaidAt()) + ")";
+		return rows(List.of(row(breakdown.programChange() ? "Total de la carrera" : "Total de la ficha",
+				money(breakdown.total())), row("Pagado anteriormente", earlier)));
+	}
+
+	private static String[] link(String url) {
+		if (url == null || url.isBlank()) {
+			return new String[] { "", "" };
+		}
+		String safe = escapeHtml(url.trim());
+		return new String[] { "<p style=\"margin:12px 0 0 0; font-family:Arial,Helvetica,sans-serif; font-size:13px;\">"
+				+ "<a href=\"" + safe + "\" style=\"color:#009574; font-weight:bold;\">Ir al portal de pago</a></p>",
+				"Portal de pago: " + url.trim() + "\n" };
+	}
+
+	private static String padLabel(String label) {
+		StringBuilder padded = new StringBuilder(label).append(' ');
+		while (padded.length() < 27) {
+			padded.append('.');
+		}
+		return padded.toString();
+	}
+
+	private static String money(BigDecimal amount) {
+		return "$" + formatAmount(amount) + " MXN";
 	}
 
 	private void dispatch(Runnable send) {
@@ -250,10 +405,15 @@ public class CandidateFichaMailService {
 	 *             inside a layout table, so an unescaped {@code <} would let a
 	 *             registrant reshape the receipt.
 	 */
-	private static String render(String classpath, Map<String, String> values, boolean html) {
+	private static String render(String classpath, Map<String, String> values, Map<String, String[]> raw,
+			boolean html) {
 		String template = TemplateCache.load(classpath);
 		if (template == null) {
 			return null;
+		}
+		// Rows and links are built here from escaped values, so they go in as markup.
+		for (Map.Entry<String, String[]> entry : raw.entrySet()) {
+			template = template.replace("{{" + entry.getKey() + "}}", entry.getValue()[html ? 0 : 1]);
 		}
 		for (Map.Entry<String, String> entry : values.entrySet()) {
 			String placeholder = "{{" + entry.getKey() + "}}";

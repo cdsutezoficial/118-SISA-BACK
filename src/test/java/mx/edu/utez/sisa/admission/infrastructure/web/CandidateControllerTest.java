@@ -17,7 +17,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Regist
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseOutcome;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase.ReleaseResult;
-import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -109,8 +108,6 @@ class CandidateControllerTest {
 	@MockitoBean
 	private mx.edu.utez.sisa.admission.domain.port.in.GetCandidateAccountUseCase getCandidateAccountUseCase;
 
-	@MockitoBean
-	private CandidateFichaMailService fichaMailService;
 
 	@MockitoBean
 	private CandidateFichaPdfService fichaPdfService;

@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
@@ -44,6 +45,9 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@Mock
 	private CheckoutAttemptRepository checkoutAttemptRepository;
 
+	@Mock
+	private CandidateNotificationPort notifications;
+
 	private ConfirmAdmissionPaymentUseCaseImpl useCase;
 
 	private UUID candidateId;
@@ -52,7 +56,7 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository);
+				checkoutAttemptRepository, notifications);
 		candidateId = UUID.randomUUID();
 		candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
@@ -172,5 +176,45 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		assertThat(candidate.getFichaPaymentId()).isEqualTo(differenceId);
 		assertThat(candidate.getProgramChangePaymentId()).isNull();
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
+	}
+
+	/**
+	 * E6: paying a $100 difference on a $1,850 career whose earlier ficha brought $1,750
+	 * reports $100 paid now, the $1,850 total and the $1,750 with the earlier receipt.
+	 */
+	@Test
+	void confirm_aDifferenceReportsWhatWasPaidNowApartFromTheTotal() {
+		UUID differenceId = UUID.randomUUID();
+		candidate.markPaid();
+		candidate.awaitProgramChangePayment(differenceId);
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(differenceId)).thenReturn(Optional.of(
+				FichaTestData.partlyPaidCharge(differenceId, new BigDecimal("1750.00"))));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.paidCharge(CHARGE_ID)));
+		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		BigDecimal total = new BigDecimal("1850.00");
+		when(fichaPaymentPort.settle(any())).thenReturn(new FichaPaymentPort.SettledFicha(total,
+				BigDecimal.ZERO.setScale(2), total, total, null, false));
+
+		var result = useCase.confirm(candidateId, null);
+
+		assertThat(result.amount()).isEqualByComparingTo("100.00");
+		assertThat(result.total()).isEqualByComparingTo("1850.00");
+		assertThat(result.previouslyPaid()).isEqualByComparingTo("1750.00");
+		assertThat(result.previousReceipt()).isEqualTo("REC-20260922-000001");
+		assertThat(result.previousPaidAt()).isNotNull();
+		assertThat(result.programChange()).isTrue();
+	}
+
+	/** F3: the receipt is announced by the confirmation, whichever path called it. */
+	@Test
+	void confirm_announcesTheReceipt() {
+		stubHappyPath();
+
+		var result = useCase.confirm(candidateId, null);
+
+		verify(notifications).paymentConfirmed(result);
+		assertThat(result.amount()).isEqualByComparingTo(AMOUNT);
+		assertThat(result.divided()).isFalse();
 	}
 }

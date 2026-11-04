@@ -53,6 +53,7 @@ import mx.edu.utez.sisa.admission.domain.service.FichaDisplayPrice;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateEditFormUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.service.SettleCheckoutsBeforeCandidateUpdate;
 import mx.edu.utez.sisa.admission.domain.service.UpdateCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
@@ -235,9 +236,9 @@ public class UseCaseConfig {
 	@Bean
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort candidateNotificationPort) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository);
+				checkoutAttemptRepository, candidateNotificationPort);
 	}
 
 	@Bean
@@ -375,10 +376,12 @@ public class UseCaseConfig {
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			CandidateProgramChangeRepository candidateProgramChangeRepository, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			CandidateNotificationPort candidateNotificationPort) {
 		return new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
-				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes);
+				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes,
+				candidateNotificationPort);
 	}
 
 	@Bean

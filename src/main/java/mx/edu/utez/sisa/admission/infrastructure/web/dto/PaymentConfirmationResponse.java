@@ -14,10 +14,17 @@ import java.util.UUID;
  * {@code ConfirmPaymentResult}.
  */
 public record PaymentConfirmationResponse(UUID candidateId, String folio, CandidateStatus candidateStatus,
-		String referenceNumber, BigDecimal amount, Instant paidAt, String receiptNumber) {
+		String referenceNumber, BigDecimal amount, Instant paidAt, String receiptNumber, BigDecimal total,
+		BigDecimal previouslyPaid, String previousReceipt, Instant previousPaidAt, boolean programChange) {
 
+	/**
+	 * {@code amount} is what this operation paid (E6). {@code total} and
+	 * {@code previouslyPaid} complete the breakdown when the charge had received money
+	 * before, as the difference of a career change does.
+	 */
 	public static PaymentConfirmationResponse from(ConfirmPaymentResult result) {
 		return new PaymentConfirmationResponse(result.candidateId(), result.folio(), result.candidateStatus(),
-				result.referenceNumber(), result.amount(), result.paidAt(), result.receiptNumber());
+				result.referenceNumber(), result.amount(), result.paidAt(), result.receiptNumber(), result.total(),
+				result.previouslyPaid(), result.previousReceipt(), result.previousPaidAt(), result.programChange());
 	}
 }

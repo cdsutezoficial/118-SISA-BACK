@@ -1,17 +1,16 @@
 Confirmación de pago — Ficha de Admisión UTEZ
 ==============================================
 
-¡Pago de ficha confirmado!
+{{titulo}}
 
-Tu registro de Aspirante quedó completado. Guarda esta pantalla
-o descarga tu comprobante.
+{{subtitulo}}
 
   Tu folio .................. {{folio}}
-  Monto pagado .............. ${{monto}} MXN
+  {{montoEtiqueta}} ${{monto}} MXN
 
 Comprobante
 -----------
-  Folio de comprobante ...... {{recibo}}
+{{desglose}}  Folio de comprobante ...... {{recibo}}
   Fecha de pago ............. {{fechaPago}}
   Referencia de pago ........ {{referencia}}
   Carrera ................... {{carrera}}

@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateProgramChange;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase.Mode;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase.ProgramChangePreview;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -88,11 +89,14 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 	private Candidate candidate;
 
+	@Mock
+	private CandidateNotificationPort notifications;
+
 	@BeforeEach
 	void setUp() {
 		useCase = new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
-				programChangeRepository, CLOCK, 10, 15);
+				programChangeRepository, CLOCK, 10, 15, notifications);
 		candidate = new Candidate(UUID.randomUUID(), OLD_CONFIG, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		ReflectionTestUtils.setField(candidate, "registeredAt", Instant.parse("2026-10-25T18:00:00Z"));
@@ -163,6 +167,10 @@ class ChangeCandidateProgramUseCaseImplTest {
 		assertThat(candidate.collectingPaymentId()).isEqualTo(NEW_PAYMENT);
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
 		assertThat(candidate.getAdmissionConfigId()).isEqualTo(NEW_CONFIG);
+		// F3: the applicant is told about the difference without opening the portal.
+		verify(notifications).programChangeLeftDifference(CANDIDATE_ID, new BigDecimal("1750.00"),
+				new BigDecimal("1420.00"), new BigDecimal("330.00"), command.getValue().dueAt());
+		verify(notifications, never()).programChangeLeftCredit(any(), any());
 	}
 
 	@Test
@@ -178,6 +186,9 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		assertThat(candidate.getFichaPaymentId()).isEqualTo(NEW_PAYMENT);
 		assertThat(candidate.getProgramChangePaymentId()).isNull();
+		// F3: what was left over is saldo a favor, and the applicant is told.
+		verify(notifications).programChangeLeftCredit(CANDIDATE_ID, new BigDecimal("400.00"));
+		verify(notifications, never()).programChangeLeftDifference(any(), any(), any(), any(), any());
 	}
 
 	@Test

@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
@@ -51,12 +52,15 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 
 	private final int checkoutHoldMinutes;
 
+	private final CandidateNotificationPort notifications;
+
 	public ChangeCandidateProgramUseCaseImpl(CandidateRepository candidateRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort, AdmissionQuotaPort admissionQuotaPort,
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			CandidateProgramChangeRepository programChangeRepository, Clock clock, int fichaDeadlineDays,
-			int checkoutHoldMinutes) {
+			int checkoutHoldMinutes, CandidateNotificationPort notifications) {
+		this.notifications = notifications;
 		this.candidateRepository = candidateRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
@@ -178,6 +182,15 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		programChangeRepository.save(new CandidateProgramChange(candidate.getId(), fromConfigId, to.id(), true,
 				fromPaymentId, amounts.financePaymentId(), previous, amounts.alreadyPaid(), amounts.newAmount(),
 				amounts.toPay(), amounts.creditLeft(), actingUserId, now));
+
+		// F3: the applicant learns of a difference, or of saldo left over, without
+		// opening the portal. Sent after the change commits.
+		if (!amounts.settled()) {
+			notifications.programChangeLeftDifference(candidate.getId(), amounts.newAmount(), amounts.alreadyPaid(),
+					amounts.toPay(), dueAt);
+		} else if (amounts.creditLeft() != null && amounts.creditLeft().signum() > 0) {
+			notifications.programChangeLeftCredit(candidate.getId(), amounts.creditLeft());
+		}
 	}
 
 	/**

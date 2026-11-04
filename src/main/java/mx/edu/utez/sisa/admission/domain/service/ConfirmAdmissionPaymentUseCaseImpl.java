@@ -2,6 +2,7 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
@@ -10,6 +11,7 @@ import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -56,10 +58,13 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
+	private final CandidateNotificationPort notifications;
+
 
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications) {
+		this.notifications = notifications;
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -91,6 +96,12 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 				charge.financePaymentId(), chargedBy(attempt), attempt != null, capturedOrderId, receipt,
 				charge.referenceNumber(), null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR));
 
+		// E6: the earlier charge the carried money came from, read before the
+		// difference replaces it as the ficha.
+		FichaPaymentPort.FichaCharge previousCharge = programChange && candidate.getFichaPaymentId() != null
+				? fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null)
+				: null;
+
 		if (programChange) {
 			// Paid in full: the new career's charge is the ficha from now on.
 			candidate.adoptFichaPayment(charge.financePaymentId());
@@ -100,9 +111,20 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		candidateRepository.save(candidate);
 
 		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
-		return new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				charge.referenceNumber(), settled.amountPaid(), paid.paidAt() != null ? paid.paidAt() : Instant.now(),
-				paid.receiptNumber() != null ? paid.receiptNumber() : receipt);
+		// E6: `settled.amountPaid()` is everything the charge has received. What this
+		// operation paid is the part the charge did not have before it.
+		BigDecimal before = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
+		BigDecimal total = settled.amountPaid();
+		BigDecimal paidNow = total.subtract(before).max(BigDecimal.ZERO);
+		ConfirmPaymentResult result = new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(),
+				candidate.getStatus(), charge.referenceNumber(), paidNow, paid.paidAt() != null ? paid.paidAt() : Instant.now(),
+				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, total, before,
+				previousCharge == null ? null : previousCharge.receiptNumber(),
+				previousCharge == null ? null : previousCharge.paidAt(), programChange);
+		// F3: here, not in the controller, so the reconciliation's confirmations send a
+		// receipt too. Delivered after this transaction commits.
+		notifications.paymentConfirmed(result);
+		return result;
 	}
 
 	/**

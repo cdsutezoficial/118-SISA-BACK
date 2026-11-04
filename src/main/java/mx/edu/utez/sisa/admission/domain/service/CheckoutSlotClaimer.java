@@ -8,7 +8,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -47,13 +49,16 @@ public class CheckoutSlotClaimer {
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 	private final FichaPaymentPort fichaPaymentPort;
 	private final Clock clock;
+	private final CandidateNotificationPort notifications;
 
 	/** Minutes an open checkout attempt holds a quota place. */
 	private final int checkoutHoldMinutes;
 
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
 			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			CandidateNotificationPort notifications) {
+		this.notifications = notifications;
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -145,6 +150,7 @@ public class CheckoutSlotClaimer {
 			if (use.settled()) {
 				candidate.markPaid();
 				candidateRepository.save(candidate);
+				notifyCreditPayment(candidate, charge.referenceNumber(), receipt, use, null, false);
 				return new CreditClaim(receipt, BigDecimal.ZERO);
 			}
 			paidSoFar = use.amountPaid();
@@ -188,13 +194,28 @@ public class CheckoutSlotClaimer {
 		if (fichaPaymentPort.availableCredit(candidateId).signum() <= 0) {
 			return null;
 		}
-		FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(differencePaymentId,
-				creditReceipt(candidate.getFolio()) + "-C");
+		String receipt = creditReceipt(candidate.getFolio()) + "-C";
+		FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(differencePaymentId, receipt);
 		if (use.settled()) {
+			FichaPaymentPort.FichaCharge previous = candidate.getFichaPaymentId() == null ? null
+					: fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null);
 			candidate.adoptFichaPayment(differencePaymentId);
 			candidateRepository.save(candidate);
+			String reference = fichaPaymentPort.findCharge(differencePaymentId)
+					.map(FichaPaymentPort.FichaCharge::referenceNumber).orElse(null);
+			notifyCreditPayment(candidate, reference, receipt, use, previous, true);
 		}
 		return use;
+	}
+
+	/** F3/E6: the receipt of a charge the saldo a favor finished paying. */
+	private void notifyCreditPayment(Candidate candidate, String reference, String receipt,
+			FichaPaymentPort.CreditUse use, FichaPaymentPort.FichaCharge previous, boolean programChange) {
+		BigDecimal before = use.amountPaid().subtract(use.applied()).max(BigDecimal.ZERO);
+		notifications.paymentConfirmed(new ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult(candidate.getId(),
+				candidate.getFolio(), candidate.getStatus(), reference, use.applied(), Instant.now(clock), receipt,
+				use.amountPaid(), before, previous == null ? null : previous.receiptNumber(),
+				previous == null ? null : previous.paidAt(), programChange));
 	}
 
 	/** {@code SAF-{yyyyMMdd}-{folioSeq}}: a ficha paid with saldo a favor. */
@@ -237,6 +258,10 @@ public class CheckoutSlotClaimer {
 				false, null, receipt, charge.referenceNumber(), null, EXEMPTION_COLLECTOR));
 		candidate.markPaid();
 		candidateRepository.save(candidate);
+		// F3: an exemption is a paid ficha too, and gets its receipt at $0.
+		notifications.paymentConfirmed(new ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult(candidate.getId(),
+				candidate.getFolio(), candidate.getStatus(), charge.referenceNumber(), BigDecimal.ZERO,
+				Instant.now(clock), receipt));
 		return receipt;
 	}
 
