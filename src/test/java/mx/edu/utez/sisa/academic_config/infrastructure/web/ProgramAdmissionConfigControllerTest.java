@@ -386,10 +386,10 @@ class ProgramAdmissionConfigControllerTest {
 				attemptsOpenedSince.capture());
 		assertThat(now.getValue()).isBetween(beforeCall, Instant.now());
 
-		// An open checkout attempt holds a place for 15 minutes (the life of an EVO
+		// An open checkout attempt holds a place for 60 minutes (the life of an EVO
 		// session), measured from the same "now": older attempts count for nothing.
-		assertThat(attemptsOpenedSince.getValue()).isEqualTo(FichaPaymentWindow.attemptsHoldingSince(now.getValue(), 15));
-		assertThat(Duration.between(attemptsOpenedSince.getValue(), now.getValue())).isEqualTo(Duration.ofMinutes(15));
+		assertThat(attemptsOpenedSince.getValue()).isEqualTo(FichaPaymentWindow.attemptsHoldingSince(now.getValue(), 60));
+		assertThat(Duration.between(attemptsOpenedSince.getValue(), now.getValue())).isEqualTo(Duration.ofMinutes(60));
 	}
 
 	@Test
