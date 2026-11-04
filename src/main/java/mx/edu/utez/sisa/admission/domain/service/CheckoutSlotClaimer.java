@@ -107,6 +107,79 @@ public class CheckoutSlotClaimer {
 	}
 
 	/**
+	 * {@link #claim} for a ficha that is paid, in whole or in part, with the
+	 * person's saldo a favor (F9, when they choose to use it), or that already
+	 * received part of its price that way on an earlier try.
+	 *
+	 * <p>One transaction under the quota lock: the place is checked first, then
+	 * the saldo is used, then either the ficha is paid or the attempt for the rest
+	 * is opened. If any step fails nothing is kept, so saldo is never spent on a
+	 * ficha that could not get a place.
+	 *
+	 * <p>Once the ficha has received part of its price its numbers are fixed, so
+	 * the attempt carries no snapshot: EVO is asked only for the rest, and the
+	 * confirmation settles the charge with its own numbers.
+	 *
+	 * @param useCredit whether the person asked to use their saldo now
+	 * @return the receipt when the saldo paid it all; otherwise what EVO must
+	 *         collect
+	 * @throws ProgramAdmissionConfigCapacityReachedException if the career is full
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+	public CreditClaim claimUsingCredit(UUID candidateId, String orderId, FichaPaymentPort.FichaQuote price,
+			boolean useCredit) {
+		Candidate candidate = requireCandidate(candidateId);
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		Instant now = Instant.now(clock);
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidateId, FichaPaymentWindow.attemptsHoldingSince(now, checkoutHoldMinutes));
+		if (occupiedByOthers >= quota.maxCandidates()) {
+			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
+		}
+		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
+
+		BigDecimal paidSoFar = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
+		if (useCredit && fichaPaymentPort.availableCredit(candidateId).signum() > 0) {
+			String receipt = creditReceipt(candidate.getFolio());
+			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(charge.financePaymentId(), receipt);
+			if (use.settled()) {
+				candidate.markPaid();
+				candidateRepository.save(candidate);
+				return new CreditClaim(receipt, BigDecimal.ZERO);
+			}
+			paidSoFar = use.amountPaid();
+		}
+
+		if (paidSoFar.signum() == 0) {
+			checkoutAttemptRepository.save(new CheckoutAttempt(orderId, price.financePaymentId(), candidateId, null,
+					price.amountDue(), now, price.rateId(), price.originalAmount(), price.discountAmount(),
+					price.benefitId()));
+			return new CreditClaim(null, price.amountDue());
+		}
+		BigDecimal rest = price.amountDue().subtract(paidSoFar);
+		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, charge.financePaymentId(), candidateId, null,
+				rest, now, null, null, null, null));
+		return new CreditClaim(null, rest);
+	}
+
+	/**
+	 * @param receipt   the receipt when the saldo paid the whole ficha, else {@code null}
+	 * @param toCollect what EVO has to collect; zero when the saldo paid it all
+	 */
+	public record CreditClaim(String receipt, BigDecimal toCollect) {
+
+		public boolean paidWithCredit() {
+			return receipt != null;
+		}
+	}
+
+	/** {@code SAF-{yyyyMMdd}-{folioSeq}}: a ficha paid with saldo a favor. */
+	private String creditReceipt(String folio) {
+		String seq = folio.substring(folio.lastIndexOf('-') + 1);
+		return String.format("SAF-%s-%s", LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE), seq);
+	}
+
+	/**
 	 * Opens the checkout attempt for the difference a career change left to pay.
 	 * No quota check: a paid candidate already holds a place, and the change
 	 * itself checked the new career had one. The attempt carries no price

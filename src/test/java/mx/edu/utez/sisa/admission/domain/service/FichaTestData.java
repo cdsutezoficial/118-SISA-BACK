@@ -30,6 +30,12 @@ final class FichaTestData {
 				Instant.now(), null, null);
 	}
 
+	/** Unpaid, with part of its price already paid with saldo a favor (F9). */
+	static FichaPaymentPort.FichaCharge partlyPaidCharge(UUID chargeId, BigDecimal amountPaid) {
+		return new FichaPaymentPort.FichaCharge(chargeId, REFERENCE, AdmissionPaymentStatus.PENDING, false,
+				Instant.now().plus(10, ChronoUnit.DAYS), Instant.now(), null, null, amountPaid);
+	}
+
 	static FichaPaymentPort.FichaCharge paidCharge(UUID chargeId) {
 		return new FichaPaymentPort.FichaCharge(chargeId, REFERENCE, AdmissionPaymentStatus.PAID, false,
 				Instant.now().plus(10, ChronoUnit.DAYS), Instant.now(), Instant.now(), "REC-20260922-000001");

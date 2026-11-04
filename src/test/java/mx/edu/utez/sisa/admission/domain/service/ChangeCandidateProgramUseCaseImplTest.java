@@ -129,6 +129,17 @@ class ChangeCandidateProgramUseCaseImplTest {
 	}
 
 	@Test
+	void aFichaWithSaldoAppliedAndTheRestUnpaidCannotChangeCareer() {
+		when(fichaPaymentPort.findCharge(FICHA_PAYMENT))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(FICHA_PAYMENT, new BigDecimal("200.00"))));
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(CandidateProgramChangeNotAllowedException.class)
+				.hasMessageContaining("saldo a favor");
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any());
+	}
+
+	@Test
 	void paidAndMoreExpensiveLeavesTheDifferenceWhileKeepingThePaidFicha() {
 		paidCandidate();
 		quotaFree();

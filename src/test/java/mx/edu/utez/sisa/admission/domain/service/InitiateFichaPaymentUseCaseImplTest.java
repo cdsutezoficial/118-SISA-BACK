@@ -923,6 +923,57 @@ class InitiateFichaPaymentUseCaseImplTest {
 		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
 	}
 
+	// ── Saldo a favor (F9) ───────────────────────────────────────────────────
+
+	@Test
+	void saldoThatPaysTheWholeFichaOpensNoSession() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, true))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim("SAF-20260925-000001", BigDecimal.ZERO));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isTrue();
+		assertThat(result.sessionId()).isNull();
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
+	}
+
+	@Test
+	void saldoThatFallsShortAsksEvoOnlyForTheRest() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, true))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim(null, new BigDecimal("350.00")));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+						"df66ca1b01"));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isFalse();
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				new BigDecimal("350.00").compareTo(order.amount()) == 0));
+	}
+
+	@Test
+	void aFichaPartlyPaidKeepsItsPriceAndIsNotFrozenAgain() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));
+		when(fichaPaymentPort.quote(CHARGE_ID)).thenReturn(LIVE_QUOTE);
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, false))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim(null, new BigDecimal("350.00")));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+						"df66ca1b01"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		verify(fichaPaymentPort, never()).freeze(any());
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				new BigDecimal("350.00").compareTo(order.amount()) == 0));
+	}
+
 	// ── Diferencia por cambio de carrera ────────────────────────────────────
 
 	private static final UUID DIFFERENCE_ID = UUID.randomUUID();

@@ -368,8 +368,9 @@ public class CandidateController {
 	public ResponseEntity<CheckoutInitiationResponse> initiateCheckout(@PathVariable UUID id,
 			@Valid @RequestBody(required = false) CheckoutInitiationRequest request) {
 		String returnPath = request == null ? null : request.returnPath();
-		return ResponseEntity
-				.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath)));
+		boolean useCredit = request != null && Boolean.TRUE.equals(request.useCredit());
+		return ResponseEntity.ok(CheckoutInitiationResponse
+				.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath, useCredit)));
 	}
 
 	/**

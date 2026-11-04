@@ -136,6 +136,75 @@ class CheckoutSlotClaimerTest {
 		assertThat(attempt.isOpen()).isTrue();
 	}
 
+	// -- saldo a favor (F9) --
+
+	@Test
+	void saldoThatCoversTheFichaPaysItWithoutAnAttempt() {
+		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("800.00"));
+		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, true));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.paidWithCredit()).isTrue();
+		assertThat(claim.receipt()).isEqualTo("SAF-20260925-000001");
+		assertThat(claim.toCollect()).isEqualByComparingTo("0.00");
+		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
+		verify(fichaPaymentPort).applyCredit(CHARGE_ID, "SAF-20260925-000001");
+		verify(checkoutAttemptRepository, never()).save(any());
+	}
+
+	@Test
+	void saldoThatFallsShortLeavesOnlyTheRestForEvo() {
+		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("200.00"));
+		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				new BigDecimal("200.00"), CHECKOUT_AMOUNT, new BigDecimal("200.00"), false));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.paidWithCredit()).isFalse();
+		assertThat(claim.toCollect()).isEqualByComparingTo("350.00");
+		assertThat(candidate.getStatus()).isNotEqualTo(CandidateStatus.PAID);
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		// The price is fixed once part of it was paid: no snapshot, EVO asks for the rest.
+		assertThat(saved.getValue().getAmount()).isEqualByComparingTo("350.00");
+		assertThat(saved.getValue().hasSnapshot()).isFalse();
+	}
+
+	@Test
+	void aFullCareerRefusesBeforeAnySaldoIsSpent() {
+		occupiedByOthers(MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+	}
+
+	@Test
+	void withoutSaldoTheAttemptKeepsItsSnapshot() {
+		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.toCollect()).isEqualByComparingTo(CHECKOUT_AMOUNT);
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		assertThat(saved.getValue().hasSnapshot()).isTrue();
+	}
+
+	@Test
+	void aFichaPartlyPaidOnAnEarlierTryOnlyCollectsTheRest() {
+		when(fichaPaymentPort.findCharge(CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, false);
+
+		assertThat(claim.toCollect()).isEqualByComparingTo("350.00");
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+	}
+
 	@Test
 	void theQuotaIsLockedBeforeItIsCountedAndCountedBeforeTheAttemptIsWritten() {
 		claimer.claim(CANDIDATE_ID, ORDER_ID, QUOTE);

@@ -215,7 +215,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * the bank.
 	 */
 	@Override
-	public InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath) {
+	public InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath, boolean useCredit) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
@@ -239,14 +239,17 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		// what a screen showed: the concept's tariff in force now minus the
 		// discount in force now. finance photographs it on the ficha's charge
 		// (and commits) before anything else happens, and that exact amount is
-		// what EVO is asked for.
-		FichaPaymentPort.FichaQuote price = fichaPaymentPort.freeze(charge.financePaymentId());
+		// what EVO is asked for. A ficha that already received part of its price
+		// (saldo a favor used on an earlier try) keeps the numbers it had.
+		boolean partlyPaid = charge.isPartlyPaid();
+		FichaPaymentPort.FichaQuote price = partlyPaid ? fichaPaymentPort.quote(charge.financePaymentId())
+				: fichaPaymentPort.freeze(charge.financePaymentId());
 
 		// A discount that covers the whole tariff (100 %) settles the ficha with
 		// no gateway: nothing is owed, so opening an EVO session would only ask
 		// for $0. The ficha is closed as exempt, with its $0 receipt linked to
 		// the discount.
-		if (price.exempt()) {
+		if (!partlyPaid && price.exempt()) {
 			checkoutSlotClaimer.settleExempt(candidateId, price);
 			return new InitiateCheckoutResult(candidateId, null, null, null, null, checkoutJsUrl, true);
 		}
@@ -258,7 +261,18 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		// after the claim is what used to leave the "slot held with no order number"
 		// hole: Evo could hold a capturable order while we had nothing to ask about.
 		String orderId = orderIdBuilder.build(candidate.getFolio());
-		checkoutSlotClaimer.claim(candidateId, orderId, price);
+		if (useCredit || partlyPaid) {
+			// Saldo a favor first (F9): it may pay the whole ficha, and then there
+			// is no session to open.
+			CheckoutSlotClaimer.CreditClaim claim = checkoutSlotClaimer.claimUsingCredit(candidateId, orderId, price,
+					useCredit);
+			if (claim.paidWithCredit()) {
+				return new InitiateCheckoutResult(candidateId, null, null, null, null, checkoutJsUrl, false, true);
+			}
+			amount = claim.toCollect();
+		} else {
+			checkoutSlotClaimer.claim(candidateId, orderId, price);
+		}
 
 		return openEvoSession(candidateId, orderId, charge.referenceNumber(), orderDescription(candidate.getFolio()),
 				amount, returnPath);

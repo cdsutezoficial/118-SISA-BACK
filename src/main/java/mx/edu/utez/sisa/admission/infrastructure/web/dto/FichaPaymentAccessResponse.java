@@ -42,7 +42,8 @@ public record FichaPaymentAccessResponse(UUID candidateId, String folio, String 
 		String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
 		LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
 		BigDecimal originalAmount, BigDecimal discountAmount, String discountReason,
-		AccessFichaPaymentUseCase.ProgramChangeDue programChange) {
+		AccessFichaPaymentUseCase.ProgramChangeDue programChange, BigDecimal availableCredit,
+		BigDecimal creditApplied) {
 
 	public static FichaPaymentAccessResponse from(PaymentAccess access) {
 		return new FichaPaymentAccessResponse(access.candidateId(), access.folio(), access.nombre(),
@@ -50,6 +51,6 @@ public record FichaPaymentAccessResponse(UUID candidateId, String folio, String 
 				access.paymentStatus(), access.receiptNumber(), access.paidAt(), access.alreadyPaid(),
 				access.paymentClosesOn(), access.paymentDeadline(), access.candidateStatus(),
 				access.paymentExpired(), access.originalAmount(), access.discountAmount(), access.discountReason(),
-				access.programChange());
+				access.programChange(), access.availableCredit(), access.creditApplied());
 	}
 }

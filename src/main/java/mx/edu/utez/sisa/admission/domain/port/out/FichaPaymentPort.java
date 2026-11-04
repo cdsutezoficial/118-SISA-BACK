@@ -75,6 +75,29 @@ public interface FichaPaymentPort {
 	 */
 	boolean registerOverpayment(UUID financePaymentId, String orderId, BigDecimal amount);
 
+	// ── Saldo a favor (F9) ───────────────────────────────────────────────────
+
+	/** The saldo a favor the person behind this candidate can use today, from any of their fichas. */
+	BigDecimal availableCredit(UUID candidateId);
+
+	/**
+	 * Uses the person's saldo a favor on the charge, oldest first, up to what is
+	 * left to pay, with one {@code CREDIT} abono. Joins the caller's transaction.
+	 *
+	 * @param receiptNumber the receipt of the abono, kept when the saldo settles
+	 *                      the charge on its own
+	 */
+	CreditUse applyCredit(UUID financePaymentId, String receiptNumber);
+
+	/**
+	 * @param applied    the saldo used now
+	 * @param amountDue  what the charge costs
+	 * @param amountPaid what it has received, this saldo included
+	 * @param settled    the charge is paid in full
+	 */
+	record CreditUse(BigDecimal applied, BigDecimal amountDue, BigDecimal amountPaid, boolean settled) {
+	}
+
 	// ── Cambio de carrera ────────────────────────────────────────────────────
 
 	/** Sin pagar: el precio vivo que tendría el mismo cargo en la carrera nueva (no escribe). */
@@ -156,10 +179,24 @@ public interface FichaPaymentPort {
 	 * @param dueAt         the ficha's deadline (end of day, admission zone)
 	 * @param paidAt        when the money (or the exemption) was booked
 	 * @param receiptNumber the receipt of that booking
+	 * @param amountPaid    what the charge has received so far; above zero on an
+	 *                      unpaid ficha means the person used part of their saldo
+	 *                      a favor and the rest is still owed
 	 */
 	record FichaCharge(UUID financePaymentId, String referenceNumber,
 			AdmissionPaymentStatus status, boolean cancelled,
-			Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber) {
+			Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber, BigDecimal amountPaid) {
+
+		public FichaCharge(UUID financePaymentId, String referenceNumber, AdmissionPaymentStatus status,
+				boolean cancelled, Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber) {
+			this(financePaymentId, referenceNumber, status, cancelled, dueAt, createdAt, paidAt, receiptNumber,
+					BigDecimal.ZERO);
+		}
+
+		/** Unpaid, with part of the price already received: its price is fixed and only the rest is collected. */
+		public boolean isPartlyPaid() {
+			return !isPaid() && amountPaid != null && amountPaid.signum() > 0;
+		}
 
 		public boolean isPaid() {
 			return status == AdmissionPaymentStatus.PAID;

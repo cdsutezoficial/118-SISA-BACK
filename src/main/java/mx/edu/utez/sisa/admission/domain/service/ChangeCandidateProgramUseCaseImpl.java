@@ -195,6 +195,12 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 			throw new CandidateProgramChangeNotAllowedException(
 					"La ficha venció sin pago: la carrera ya no se puede cambiar.");
 		}
+		if (charge.isPartlyPaid()) {
+			// The ficha used part of the person's saldo a favor and its price is fixed;
+			// moving it would leave that money on a charge priced for the old career.
+			throw new CandidateProgramChangeNotAllowedException(
+					"La ficha ya tiene saldo a favor aplicado y falta pagar el resto: termina el pago para cambiar la carrera.");
+		}
 		if (checkoutInProgress(candidate, charge)) {
 			throw new CandidateProgramChangeNotAllowedException(
 					"Hay un pago en línea en curso para esta ficha. Espera a que se confirme o se libere para cambiar la carrera.");

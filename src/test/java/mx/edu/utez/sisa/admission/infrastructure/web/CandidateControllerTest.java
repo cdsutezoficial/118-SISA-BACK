@@ -47,6 +47,7 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -146,7 +147,7 @@ class CandidateControllerTest {
 
 	@Test
 	void checkoutReturnsSessionAndSdkUrl() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null)).thenReturn(new InitiateCheckoutResult(ID, ORDER_ID,
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null, false)).thenReturn(new InitiateCheckoutResult(ID, ORDER_ID,
 				"SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
 				"https://evopaymentsmexico.gateway.mastercard.com/static/checkout/checkout.min.js", false));
 
@@ -163,7 +164,7 @@ class CandidateControllerTest {
 
 	@Test
 	void checkoutPassesTheReturnPathThroughToTheUseCase() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID, "/portal/ficha/pago"))
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, "/portal/ficha/pago", false))
 				.thenReturn(new InitiateCheckoutResult(ID, ORDER_ID, "SESSION0001BR", "TESTUTEZ", "OK", "https://x/y.js",
 						false));
 
@@ -171,7 +172,18 @@ class CandidateControllerTest {
 				.content("{\"returnPath\":\"/portal/ficha/pago\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.orderId").value(ORDER_ID));
 
-		verify(initiateFichaPaymentUseCase).initiateCheckout(ID, "/portal/ficha/pago");
+		verify(initiateFichaPaymentUseCase).initiateCheckout(ID, "/portal/ficha/pago", false);
+	}
+
+	@Test
+	void checkoutPassesTheChoiceToUseSaldoAndReportsAFichaItPaid() throws Exception {
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null, true)).thenReturn(
+				new InitiateCheckoutResult(ID, null, null, null, null, "https://x/y.js", false, true));
+
+		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"useCredit\":true}"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.paidWithCredit").value(true))
+				.andExpect(jsonPath("$.sessionId").doesNotExist());
 	}
 
 	/**
@@ -185,12 +197,12 @@ class CandidateControllerTest {
 					.content("{\"returnPath\":\"" + hostile + "\"}"))
 					.andExpect(status().isBadRequest());
 		}
-		verify(initiateFichaPaymentUseCase, never()).initiateCheckout(any(), any());
+		verify(initiateFichaPaymentUseCase, never()).initiateCheckout(any(), any(), anyBoolean());
 	}
 
 	@Test
 	void checkoutReturns404WhenCandidateDoesNotExist() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null))
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null, false))
 				.thenThrow(new CandidateNotFoundException("No existe el candidato: " + ID));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isNotFound())
@@ -199,7 +211,7 @@ class CandidateControllerTest {
 
 	@Test
 	void checkoutReturns409WhenAlreadyPaid() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null))
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null, false))
 				.thenThrow(new CandidateAlreadyPaidException("La ficha del candidato " + ORDER_ID + " ya estaba pagada."));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isConflict())
@@ -208,7 +220,7 @@ class CandidateControllerTest {
 
 	@Test
 	void checkoutReturns502WhenGatewayIsDown() throws Exception {
-		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null)).thenThrow(
+		when(initiateFichaPaymentUseCase.initiateCheckout(ID, null, false)).thenThrow(
 				new EvoPaymentGatewayException("El proveedor de pagos (EVO) no pudo iniciar el pago en línea: SERVER_BUSY"));
 
 		mockMvc.perform(post("/candidates/{id}/payments/checkout", ID)).andExpect(status().isBadGateway())

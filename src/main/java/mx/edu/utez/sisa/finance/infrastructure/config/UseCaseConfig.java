@@ -155,8 +155,9 @@ public class UseCaseConfig {
 	}
 
 	@Bean
-	public CancelDebtUseCase cancelDebtUseCase(PaymentRepository paymentRepository) {
-		return new CancelDebtUseCaseImpl(paymentRepository);
+	public CancelDebtUseCase cancelDebtUseCase(PaymentRepository paymentRepository,
+			PaymentCreditRepository paymentCreditRepository, Clock clock) {
+		return new CancelDebtUseCaseImpl(paymentRepository, paymentCreditRepository, clock);
 	}
 
 	@Bean

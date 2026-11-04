@@ -21,8 +21,14 @@ public interface ApplyCreditToPaymentUseCase {
 	 * @param paymentId     required — the adeudo to settle
 	 * @param channel       required — the surface that applied it
 	 * @param actingUserId  required — who applied it (owner or staff, from JWT)
+	 * @param receiptNumber optional — the receipt of the abono, when the saldo
+	 *                      is how the payer settles (the ficha paid with saldo)
 	 */
-	record ApplyCreditCommand(UUID paymentId, PaymentChannel channel, UUID actingUserId) {
+	record ApplyCreditCommand(UUID paymentId, PaymentChannel channel, UUID actingUserId, String receiptNumber) {
+
+		public ApplyCreditCommand(UUID paymentId, PaymentChannel channel, UUID actingUserId) {
+			this(paymentId, channel, actingUserId, null);
+		}
 	}
 
 	/**

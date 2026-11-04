@@ -120,7 +120,8 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 		}
 
 		PaymentEntry entry = new PaymentEntry(payment.getId(), applied, PaymentEntryMethod.CREDIT, command.channel(),
-				null, null, null, null, null, false, command.actingUserId(), null, Instant.now(clock), null);
+				null, null, null, null, command.receiptNumber(), false, command.actingUserId(), null,
+				Instant.now(clock), null);
 		paymentEntryRepository.save(entry);
 
 		BigDecimal paidAfter = paymentEntryRepository.sumAmountByPaymentId(payment.getId());
