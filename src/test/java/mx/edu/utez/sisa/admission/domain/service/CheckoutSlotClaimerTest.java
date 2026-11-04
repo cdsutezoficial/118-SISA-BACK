@@ -136,6 +136,53 @@ class CheckoutSlotClaimerTest {
 		assertThat(attempt.isOpen()).isTrue();
 	}
 
+	// -- late capture (E4) --
+
+	private static CheckoutAttempt attemptOpenedAgo(long minutes, UUID chargeId) {
+		return FichaTestData.attempt(ORDER_ID, chargeId, CANDIDATE_ID, CHECKOUT_AMOUNT,
+				NOW.minusSeconds(minutes * 60));
+	}
+
+	@Test
+	void aCaptureInsideItsHoldKeepsItsPlaceWithoutCounting() {
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(5, CHARGE_ID), CHECKOUT_AMOUNT))
+				.isTrue();
+
+		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
+	@Test
+	void aLateCaptureWithRoomLeftSettlesAsUsual() {
+		occupiedByOthers(MAX_CANDIDATES - 1);
+
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(90, CHARGE_ID), CHECKOUT_AMOUNT))
+				.isTrue();
+
+		verify(fichaPaymentPort, never()).registerOverpayment(any(), any(), any());
+	}
+
+	@Test
+	void aLateCaptureOnAFullCareerBecomesSaldoAndClosesTheAttempt() {
+		occupiedByOthers(MAX_CANDIDATES);
+		CheckoutAttempt attempt = attemptOpenedAgo(90, CHARGE_ID);
+		when(checkoutAttemptRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(attempt));
+
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attempt, CHECKOUT_AMOUNT)).isFalse();
+
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, CHECKOUT_AMOUNT);
+		assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.CAPTURED);
+		verify(checkoutAttemptRepository).save(attempt);
+	}
+
+	/** A career-change difference is owed by someone whose ficha already holds a place. */
+	@Test
+	void aLateCaptureOfADifferenceDoesNotCompeteForAPlace() {
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(90, UUID.randomUUID()),
+				CHECKOUT_AMOUNT)).isTrue();
+
+		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
 	// -- saldo a favor (F9) --
 
 	@Test

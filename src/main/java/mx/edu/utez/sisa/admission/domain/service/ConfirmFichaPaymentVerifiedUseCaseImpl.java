@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -123,6 +124,15 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 		}
 
 		warnIfUnderpaid(candidate.getFolio(), attempt, status);
+
+		// E4: a capture that outlived its hold no longer holds a place. If the career filled
+		// up meanwhile, the money is the person's saldo a favor, not an admission.
+		if (!checkoutSlotClaimer.placeForLateCapture(candidateId, attempt, status.totalCapturedAmount())) {
+			log.warn("Captura tardía de {} por {} sin cupo en la carrera: queda como saldo a favor (orden {}).",
+					candidate.getFolio(), status.totalCapturedAmount(), orderId);
+			throw new AdmissionPaidWithoutQuotaException("Tu pago llegó cuando ya no quedaban lugares en la carrera. "
+					+ "El monto quedó como saldo a favor a tu nombre; acude a Finanzas para revisarlo.");
+		}
 
 		// The captured attempt's own snapshot is what gets booked: a later
 		// checkout may have re-quoted the ficha with a different discount.

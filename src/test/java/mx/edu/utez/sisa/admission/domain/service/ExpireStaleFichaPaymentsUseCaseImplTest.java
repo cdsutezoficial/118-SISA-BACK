@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
+import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,12 +48,38 @@ class ExpireStaleFichaPaymentsUseCaseImplTest {
 	@Mock
 	private FichaPaymentPort fichaPaymentPort;
 
+	@Mock
+	private CheckoutAttemptRepository checkoutAttemptRepository;
+
 	private ExpireStaleFichaPaymentsUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, CLOCK,
-				DEADLINE_DAYS, fichaPaymentPort);
+				DEADLINE_DAYS, fichaPaymentPort, checkoutAttemptRepository);
+	}
+
+	/**
+	 * E4: the applicant started paying inside the plazo and the bank has not answered.
+	 * The ficha waits; it expires on the first run after the conciliation closed the
+	 * attempt.
+	 */
+	@Test
+	void expireOverdue_skipsAFichaWithAPaymentInFlight() {
+		UUID configId = UUID.randomUUID();
+		closesOn(configId, TODAY.plusDays(30));
+		Candidate inFlight = registeredDaysAgo(configId, DEADLINE_DAYS + 1);
+		when(candidateRepository.findAllByStatus(CandidateStatus.REGISTERED)).thenReturn(List.of(inFlight));
+		when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(any())).thenReturn(List.of(
+				FichaTestData.attempt("TESTUTEZ-ADM-2026-000001", UUID.randomUUID(), UUID.randomUUID(),
+						new java.math.BigDecimal("500.00"), Instant.now(CLOCK))));
+
+		int changed = useCase.expireOverdue();
+
+		assertThat(changed).isZero();
+		assertThat(inFlight.getStatus()).isEqualTo(CandidateStatus.REGISTERED);
+		verify(candidateRepository, never()).save(inFlight);
+		verify(fichaPaymentPort, never()).cancel(any());
 	}
 
 	/**

@@ -262,9 +262,9 @@ public class UseCaseConfig {
 	public ExpireStaleFichaPaymentsUseCase expireStaleFichaPaymentsUseCase(CandidateRepository candidateRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays,
-			FichaPaymentPort fichaPaymentPort) {
+			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository) {
 		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, clock,
-				deadlineDays, fichaPaymentPort);
+				deadlineDays, fichaPaymentPort, checkoutAttemptRepository);
 	}
 
 	@Bean
@@ -314,9 +314,11 @@ public class UseCaseConfig {
 			FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
-			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
-				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock,
+				checkoutHoldMinutes);
 	}
 
 	@Bean

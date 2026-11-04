@@ -266,6 +266,47 @@ public class CheckoutSlotClaimer {
 		});
 	}
 
+	/**
+	 * E4: whether a capture that arrived after its attempt stopped holding a place may
+	 * still settle the ficha. If not, the money is kept as saldo a favor of the person
+	 * and the attempt is closed, both committed here so the caller can refuse the
+	 * confirmation without losing them.
+	 *
+	 * <p>Only the ficha itself competes for a place. A difference left by a career change
+	 * is collected from someone whose ficha already occupies one, and an attempt still
+	 * inside the hold is holding its own.
+	 *
+	 * <p>Checked under the quota lock, like {@link #claim}. The confirmation commits a
+	 * moment later in its own transaction, so two late captures racing for the final place
+	 * could both pass: an accepted risk for a case that needs a payment outliving its hold
+	 * on a full career, and the result would be one place over, never lost money.
+	 *
+	 * @return {@code true} when the capture may settle the ficha as usual
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+	public boolean placeForLateCapture(UUID candidateId, CheckoutAttempt attempt, BigDecimal captured) {
+		Candidate candidate = requireCandidate(candidateId);
+		Instant holdingSince = FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes);
+		if (!attempt.getPaymentId().equals(candidate.getFichaPaymentId())
+				|| !attempt.getCreatedAt().isBefore(holdingSince)) {
+			return true;
+		}
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidateId, holdingSince);
+		if (occupiedByOthers < quota.maxCandidates()) {
+			return true;
+		}
+		fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(), captured);
+		checkoutAttemptRepository.findByOrderId(attempt.getOrderId()).ifPresent(row -> {
+			if (row.isOpen()) {
+				row.close(CheckoutAttemptCloseReason.CAPTURED, Instant.now(clock));
+				checkoutAttemptRepository.save(row);
+			}
+		});
+		return false;
+	}
+
 	/** Stores the hosted-checkout session EVO opened on the attempt. */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void persistCheckoutSession(String orderId, String checkoutSessionId) {

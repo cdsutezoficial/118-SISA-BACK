@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.PaymentInProgressException;
@@ -112,7 +113,7 @@ public class PendingCheckoutGuard {
 	}
 
 	private static boolean authorizedNotCaptured(EvoPaymentsGatewayPort.EvoOrderStatus answer) {
-		return answer.totalAuthorizedAmount() != null && answer.totalAuthorizedAmount().signum() > 0;
+		return OrderSettlementDecider.authorizedNotCaptured(answer);
 	}
 
 	private Optional<EvoPaymentsGatewayPort.EvoOrderStatus> ask(CheckoutAttempt attempt) {
@@ -138,6 +139,9 @@ public class PendingCheckoutGuard {
 				confirmFichaPaymentVerifiedUseCase.confirm(candidate.getId(), attempt.getOrderId());
 			} catch (CandidateAlreadyPaidException ex) {
 				// Settled by the browser a moment ago: paid either way.
+			} catch (AdmissionPaidWithoutQuotaException ex) {
+				// E4: kept as saldo a favor and the attempt closed. Nothing was paid.
+				return false;
 			}
 			return true;
 		}

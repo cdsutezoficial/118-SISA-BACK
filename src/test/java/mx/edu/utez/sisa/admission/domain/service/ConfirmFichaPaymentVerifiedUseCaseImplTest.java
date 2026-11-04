@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
@@ -86,6 +87,8 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	void setUp() {
 		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
 				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
+		// A capture inside its hold, or with room left: the usual case.
+		Mockito.lenient().when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(true);
 	}
 
 	private static Candidate candidate() {
@@ -118,6 +121,23 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	private void givenCandidateAndPayment(FichaPaymentPort.FichaCharge payment) {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment));
+	}
+
+	/**
+	 * E4: the capture outlived its hold and the career filled up. The claimer has already
+	 * kept the money as saldo a favor and closed the attempt; the ficha is not marked paid.
+	 */
+	@Test
+	void aLateCaptureWithoutAPlaceIsRefusedAndNotMarkedPaid() {
+		givenCandidateAndPayment(pendingFichaWithThisAttempt());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(false);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(AdmissionPaidWithoutQuotaException.class);
+
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
+		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
 	}
 
 	@Test

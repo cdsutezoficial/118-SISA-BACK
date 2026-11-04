@@ -1,7 +1,10 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +22,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
@@ -47,6 +51,8 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
 
 	private static final String ORDER_ID = "TESTUTEZ-ADM-2026-000001";
+
+	private static final String SECOND_ORDER_ID = "TESTUTEZ-ADM-2026-000001-2";
 
 	private static final BigDecimal QUOTED = new BigDecimal("500.00");
 
@@ -82,7 +88,105 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
-				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clockAt(OPENED.plus(
+						Duration.ofMinutes(30))), HOLD_MINUTES);
+	}
+
+	private static final int HOLD_MINUTES = 60;
+
+	private static Clock clockAt(Instant now) {
+		return Clock.fixed(now, ZoneOffset.UTC);
+	}
+
+	/** The sweep as it runs {@code elapsed} after the attempts were opened. */
+	private void runningAfter(Duration elapsed) {
+		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase,
+				clockAt(OPENED.plus(elapsed)), HOLD_MINUTES);
+	}
+
+	/** What EVO answers for a session nobody finished: no capture, nothing authorized. */
+	private static EvoPaymentsGatewayPort.EvoOrderStatus tookNothing() {
+		return new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "PENDING", QUOTED, BigDecimal.ZERO,
+				BigDecimal.ZERO, null, null, null, null, null);
+	}
+
+	private static EvoPaymentsGatewayPort.EvoOrderStatus authorizedOnly() {
+		return new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "PENDING", QUOTED, QUOTED, BigDecimal.ZERO,
+				null, null, null, null, null);
+	}
+
+	/** D10: past the hour with nothing taken, the session is closed and the place freed. */
+	@Test
+	void anAbandonedSessionPastTheHourIsClosedAsOrderExpired() {
+		runningAfter(Duration.ofMinutes(61));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.releasedSlots()).isEqualTo(1);
+		assertThat(result.heldAttempts()).isZero();
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.ORDER_EXPIRED);
+	}
+
+	@Test
+	void anAbandonedSessionInsideTheHourIsStillWaitedOn() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.heldAttempts()).isEqualTo(1);
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** E4: an authorization is waited on however old; past three days only an alert is raised. */
+	@Test
+	void anAuthorizationIsNeverClosedEvenAfterThreeDays() {
+		runningAfter(Duration.ofDays(4));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(authorizedOnly());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.heldAttempts()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** An abandoned sibling must not free the place while another attempt is authorized. */
+	@Test
+	void anAbandonedSiblingDoesNotFreeThePlaceWhileAnotherIsAuthorized() {
+		runningAfter(Duration.ofHours(2));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID), openAttempt(SECOND_ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+		when(evoPaymentsGateway.retrieveOrder(SECOND_ORDER_ID)).thenReturn(authorizedOnly());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.releasedSlots()).isZero();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** E4: a late capture that found the career full is an outcome, not tomorrow's error. */
+	@Test
+	void aLateCaptureWithoutAPlaceIsNotCountedAsAFailure() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(captured());
+		when(confirmFichaPaymentVerifiedUseCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.thenThrow(new AdmissionPaidWithoutQuotaException("sin cupo"));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.failedAttempts()).isZero();
+		assertThat(result.settledCaptures()).isZero();
+		assertThat(result.closedRows()).isEqualTo(1);
 	}
 
 	private static UUID chargeOf(UUID candidateId) {
