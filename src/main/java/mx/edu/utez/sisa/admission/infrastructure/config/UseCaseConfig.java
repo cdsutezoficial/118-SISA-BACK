@@ -53,6 +53,7 @@ import mx.edu.utez.sisa.admission.domain.service.FichaDisplayPrice;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateEditFormUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.SettleCheckoutsBeforeCandidateUpdate;
 import mx.edu.utez.sisa.admission.domain.service.UpdateCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
@@ -69,8 +70,10 @@ import mx.edu.utez.sisa.admission.domain.service.OrderIdBuilder;
 import mx.edu.utez.sisa.admission.domain.service.RegisterCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateOutreachChannelUseCaseImpl;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Configuration;
 
 import java.net.URI;
@@ -346,9 +349,10 @@ public class UseCaseConfig {
 	public PendingCheckoutGuard pendingCheckoutGuard(CheckoutAttemptRepository checkoutAttemptRepository,
 			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
 			CheckoutSlotClaimer checkoutSlotClaimer,
-			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
-				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */
@@ -395,13 +399,30 @@ public class UseCaseConfig {
 				candidateProgramChangeRepository, programAdmissionConfigQueryPort);
 	}
 
+	/**
+	 * The transactional save of an edited ficha. Not injected on its own: callers get
+	 * {@link #updateCandidateUseCase}, which settles open checkouts first (E5).
+	 */
 	@Bean
-	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
+	public UpdateCandidateUseCaseImpl transactionalUpdateCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		return new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
 				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
+	}
+
+	/**
+	 * E5: asks the bank about open checkouts before a career change, outside the
+	 * update's transaction, then delegates to the transactional save.
+	 */
+	@Bean
+	@Primary
+	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
+			PendingCheckoutGuard pendingCheckoutGuard,
+			@Qualifier("transactionalUpdateCandidateUseCase") UpdateCandidateUseCase transactionalUpdate) {
+		return new SettleCheckoutsBeforeCandidateUpdate(candidateRepository, pendingCheckoutGuard,
+				transactionalUpdate);
 	}
 
 	@Bean

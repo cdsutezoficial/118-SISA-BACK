@@ -1,7 +1,9 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,6 +49,13 @@ class PendingCheckoutGuardTest {
 
 	private static final BigDecimal AMOUNT = new BigDecimal("1750.00");
 
+	/** Two hours after {@link #oldAttempt()} was opened: it is past the hold. */
+	private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-03T12:00:00Z"), ZoneOffset.UTC);
+
+	private static final int HOLD_MINUTES = 60;
+
+	private static final String YOUNG_ORDER = "TESTUTEZ-ADM-2026-000001-B";
+
 	@Mock
 	private CheckoutAttemptRepository checkoutAttemptRepository;
 
@@ -67,7 +76,7 @@ class PendingCheckoutGuardTest {
 	@BeforeEach
 	void setUp() {
 		guard = new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
-				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, CLOCK, HOLD_MINUTES);
 	}
 
 	@Test
@@ -142,6 +151,84 @@ class PendingCheckoutGuardTest {
 		when(evoPaymentsGateway.retrieveOrder(OLD_ORDER)).thenThrow(new EvoPaymentGatewayException("EVO no respondió"));
 
 		assertThatCode(() -> guard.requireNoPaymentInFlight(candidate())).doesNotThrowAnyException();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	// -- E5: before a career change --
+
+	private static EvoPaymentsGatewayPort.EvoOrderStatus tookNothing(String orderId) {
+		return new EvoPaymentsGatewayPort.EvoOrderStatus(orderId, "PENDING", AMOUNT, BigDecimal.ZERO, BigDecimal.ZERO,
+				null, null, null, null, null);
+	}
+
+	private static CheckoutAttempt youngAttempt() {
+		return FichaTestData.attempt(YOUNG_ORDER, CHARGE_ID, CANDIDATE_ID, AMOUNT, Instant.parse("2026-11-03T11:40:00Z"));
+	}
+
+	private void givenYoungAttempt(EvoPaymentsGatewayPort.EvoOrderStatus answer) {
+		when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(CANDIDATE_ID)).thenReturn(List.of(youngAttempt()));
+		when(evoPaymentsGateway.retrieveOrder(YOUNG_ORDER)).thenReturn(answer);
+	}
+
+	@Test
+	void beforeAChange_aRefusedSessionIsClosedHoweverOld() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "FAILURE", null));
+
+		assertThatCode(() -> guard.settleBeforeProgramChange(candidate())).doesNotThrowAnyException();
+		verify(checkoutSlotClaimer).closeAttempt(OLD_ORDER, CheckoutAttemptCloseReason.REJECTED);
+	}
+
+	@Test
+	void beforeAChange_anAbandonedSessionPastTheHoldIsClosedAsExpired() {
+		givenOldAttempt(tookNothing(OLD_ORDER));
+
+		assertThatCode(() -> guard.settleBeforeProgramChange(candidate())).doesNotThrowAnyException();
+		verify(checkoutSlotClaimer).closeAttempt(OLD_ORDER, CheckoutAttemptCloseReason.ORDER_EXPIRED);
+	}
+
+	/** The E5 example: the old session can still be paid, and would settle the moved charge. */
+	@Test
+	void beforeAChange_aSessionStillInsideTheHoldBlocks() {
+		givenYoungAttempt(tookNothing(YOUNG_ORDER));
+
+		assertThatThrownBy(() -> guard.settleBeforeProgramChange(candidate()))
+				.isInstanceOf(PaymentInProgressException.class);
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	@Test
+	void beforeAChange_anAuthorizationBlocksHoweverOld() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "SUCCESS", AMOUNT, AMOUNT, null, null,
+				null, null, null, null));
+
+		assertThatThrownBy(() -> guard.settleBeforeProgramChange(candidate()))
+				.isInstanceOf(PaymentInProgressException.class);
+	}
+
+	@Test
+	void beforeAChange_aCaptureIsAppliedFirstAndTheChangeGoesAhead() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "SUCCESS", AMOUNT));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)));
+
+		assertThatCode(() -> guard.settleBeforeProgramChange(candidate())).doesNotThrowAnyException();
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, OLD_ORDER);
+	}
+
+	@Test
+	void beforeAChange_anUnreadableSessionInsideTheHoldBlocks() {
+		when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(CANDIDATE_ID)).thenReturn(List.of(youngAttempt()));
+		when(evoPaymentsGateway.retrieveOrder(YOUNG_ORDER)).thenThrow(new EvoPaymentGatewayException("EVO no respondió"));
+
+		assertThatThrownBy(() -> guard.settleBeforeProgramChange(candidate()))
+				.isInstanceOf(PaymentInProgressException.class);
+	}
+
+	@Test
+	void beforeAChange_anUnreadableSessionPastTheHoldIsLeftOpenAndDoesNotBlock() {
+		when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(CANDIDATE_ID)).thenReturn(List.of(oldAttempt()));
+		when(evoPaymentsGateway.retrieveOrder(OLD_ORDER)).thenThrow(new EvoPaymentGatewayException("EVO no respondió"));
+
+		assertThatCode(() -> guard.settleBeforeProgramChange(candidate())).doesNotThrowAnyException();
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
 	}
 

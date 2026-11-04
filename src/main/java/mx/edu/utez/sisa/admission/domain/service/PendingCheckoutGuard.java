@@ -1,5 +1,7 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -67,10 +69,18 @@ public class PendingCheckoutGuard {
 
 	private final ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
+	private final Clock clock;
+
+	/** Minutes a checkout session can still be paid in (same as the quota hold). */
+	private final int checkoutHoldMinutes;
+
 	public PendingCheckoutGuard(CheckoutAttemptRepository checkoutAttemptRepository,
 			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
 			CheckoutSlotClaimer checkoutSlotClaimer,
-			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			int checkoutHoldMinutes) {
+		this.clock = clock;
+		this.checkoutHoldMinutes = checkoutHoldMinutes;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.fichaPaymentPort = fichaPaymentPort;
@@ -109,6 +119,60 @@ public class PendingCheckoutGuard {
 		if (inFlight) {
 			throw new PaymentInProgressException(
 					"Tienes un pago en proceso con el banco. Espera a que se confirme antes de intentar de nuevo.");
+		}
+	}
+
+	/**
+	 * E5: settles every open attempt before a career change, so none can capture on a
+	 * charge that is about to be re-priced for another career.
+	 *
+	 * <p>Stricter than {@link #requireNoPaymentInFlight}, which only has to keep two
+	 * sessions from charging the same ficha. Here a session the applicant may still be
+	 * paying in is enough to stop: the charge it would settle is the one being moved.
+	 * <ul>
+	 * <li><b>captured</b> — applied first, as on the checkout; the change then sees the
+	 * ficha paid;</li>
+	 * <li><b>refused</b> — closed as {@code REJECTED};</li>
+	 * <li><b>nothing taken and past the hold</b> — an abandoned session (D10), closed as
+	 * {@code ORDER_EXPIRED};</li>
+	 * <li><b>authorized, or nothing taken but still inside the hold</b> — in flight:
+	 * {@link PaymentInProgressException} (409);</li>
+	 * <li><b>the bank could not be asked</b> — in flight if still inside the hold;
+	 * past it the row is left open for the reconciliation and the change goes ahead,
+	 * as it did before E5 (the gateway answers an unknown order with an error, so
+	 * blocking on it could block a candidate for good).</li>
+	 * </ul>
+	 *
+	 * <p>Not transactional: called before the update's transaction is opened.
+	 *
+	 * @throws PaymentInProgressException if a session can still capture
+	 */
+	public void settleBeforeProgramChange(Candidate candidate) {
+		Instant holdingSince = FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes);
+		boolean inFlight = false;
+		for (CheckoutAttempt attempt : checkoutAttemptRepository.findOpenAttemptsByCandidateId(candidate.getId())) {
+			boolean insideHold = attempt.getCreatedAt().isAfter(holdingSince);
+			Optional<EvoPaymentsGatewayPort.EvoOrderStatus> answer = ask(attempt);
+			if (answer.isEmpty()) {
+				inFlight |= insideHold;
+				continue;
+			}
+			switch (OrderSettlementDecider.decide(answer.get())) {
+				case CAPTURED -> applyCapture(candidate, attempt, answer.get());
+				case RELEASEABLE -> checkoutSlotClaimer.closeAttempt(attempt.getOrderId(),
+						CheckoutAttemptCloseReason.REJECTED);
+				case HELD_UNKNOWN -> {
+					if (OrderSettlementDecider.tookNothing(answer.get()) && !insideHold) {
+						checkoutSlotClaimer.closeAttempt(attempt.getOrderId(), CheckoutAttemptCloseReason.ORDER_EXPIRED);
+					} else {
+						inFlight = true;
+					}
+				}
+			}
+		}
+		if (inFlight) {
+			throw new PaymentInProgressException("Hay un pago en línea en curso para esta ficha. "
+					+ "Espera a que el banco lo confirme o lo libere para cambiar la carrera.");
 		}
 	}
 
