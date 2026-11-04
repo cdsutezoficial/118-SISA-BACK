@@ -992,6 +992,42 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	@Test
+	void saldoChosenForTheDifferencePaysItWithoutASession() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.plusSeconds(86_400))));
+		when(checkoutSlotClaimer.payDifferenceWithCredit(CANDIDATE_ID, DIFFERENCE_ID)).thenReturn(
+				new FichaPaymentPort.CreditUse(new BigDecimal("330.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1750.00"), true));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isTrue();
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(checkoutSlotClaimer, never()).claimProgramChange(any(), any(), any(), any());
+	}
+
+	@Test
+	void saldoThatDoesNotCoverTheDifferenceLeavesTheRestForEvo() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.plusSeconds(86_400))))
+				.thenReturn(Optional.of(new FichaPaymentPort.ProgramChangeCharge(DIFFERENCE_ID,
+						FichaTestData.REFERENCE + "-C1", new BigDecimal("1750.00"), new BigDecimal("1620.00"),
+						new BigDecimal("130.00"), NOW_AT_NOON.plusSeconds(86_400), false, false, null, null)));
+		when(checkoutSlotClaimer.payDifferenceWithCredit(CANDIDATE_ID, DIFFERENCE_ID)).thenReturn(
+				new FichaPaymentPort.CreditUse(new BigDecimal("200.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1620.00"), false));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0002", "TESTUTEZ", "SUCCESS0002", "v1"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		verify(checkoutSlotClaimer).claimProgramChange(CANDIDATE_ID, ORDER_ID, DIFFERENCE_ID,
+				new BigDecimal("130.00"));
+	}
+
+	@Test
 	void aPendingDifferenceIsChargedForWhatIsLeftWithoutRequoting() {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
 		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))

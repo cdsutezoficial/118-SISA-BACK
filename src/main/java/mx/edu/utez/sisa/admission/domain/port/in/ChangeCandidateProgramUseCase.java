@@ -47,9 +47,10 @@ public interface ChangeCandidateProgramUseCase {
 	/**
 	 * @param previousAmount   sin pagar: lo que debe hoy; pagada: la tarifa con la que se cobró
 	 * @param alreadyPaid      lo que ya pagó (pagada) o 0 (sin pagar)
-	 * @param otherCredit      saldo a favor que ya tenía y se aplica también
+	 * @param otherCredit      saldo a favor que ya tenía; <b>no</b> se descuenta en el
+	 *                         cambio: se avisa, y la persona elige usarlo al pagar
 	 * @param newOriginalAmount tarifa de la carrera nueva
-	 * @param newDiscountAmount descuento que se respeta (solo sin pagar)
+	 * @param newDiscountAmount descuento que se respeta (viaja a la carrera nueva, D6)
 	 * @param newAmount        lo que cuesta la carrera nueva para él
 	 * @param toPay            lo que debe pagar después del cambio
 	 * @param creditLeft       saldo a favor que le queda

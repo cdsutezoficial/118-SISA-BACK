@@ -306,15 +306,17 @@ class ChangeChargeProgramUseCaseImplTest {
 		RebillOutcome preview = useCase.previewRebill(ficha.getId(), "FICHA_LIC", NEW_PROGRAM);
 		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
 
-		// Pagó 1,750, el descuento ya devolvió 250 como saldo: viajan 1,500 + 250.
+		// Pagó 1,750 y el descuento ya devolvió 250 como saldo: viajan 1,500. Los 250
+		// siguen siendo suyos y no se tocan; puede usarlos al pagar la diferencia.
 		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1500.00");
 		assertThat(outcome.otherCredit()).isEqualByComparingTo("250.00");
 		assertThat(outcome.newAmount()).isEqualByComparingTo("1600.00");
-		assertThat(outcome.toPay()).isEqualByComparingTo("0.00");
-		assertThat(outcome.creditLeft()).isEqualByComparingTo("150.00");
-		assertThat(outcome.status()).isEqualTo(PaymentStatus.PAID);
+		assertThat(outcome.tariff()).isEqualByComparingTo("1850.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("100.00");
+		assertThat(outcome.creditLeft()).isEqualByComparingTo("0.00");
+		assertThat(outcome.status()).isEqualTo(PaymentStatus.PARTIAL);
 		assertThat(credits.stream().filter(PaymentCredit::isAvailable).map(PaymentCredit::getAmount)
-				.reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("150.00");
+				.reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("250.00");
 		assertThat(preview).usingRecursiveComparison().ignoringFields("paymentId").isEqualTo(outcome);
 	}
 
@@ -341,10 +343,28 @@ class ChangeChargeProgramUseCaseImplTest {
 
 		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
 
-		// 10 % retroactivo: 175 de saldo, viajan 1,575. Nueva: 1,850 − 185 = 1,665.
+		// 10 % retroactivo: 175 de saldo (intacto), viajan 1,575. Nueva: 1,850 − 185 = 1,665.
 		assertThat(outcome.newAmount()).isEqualByComparingTo("1665.00");
-		assertThat(outcome.toPay()).isEqualByComparingTo("0.00");
-		assertThat(outcome.creditLeft()).isEqualByComparingTo("85.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("90.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("175.00");
+	}
+
+	@Test
+	void saldoThePersonAlreadyHadIsNotSpentByTheChange() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1800.00");
+		credits.add(new PaymentCredit(CANDIDATE_ID, null, UUID.randomUUID(), null, new BigDecimal("500.00"),
+				Instant.parse("2026-10-01T00:00:00Z")));
+		ReflectionTestUtils.setField(credits.get(0), "id", UUID.randomUUID());
+		Payment ficha = paid("1250.00", "1250.00");
+
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1250.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("500.00");
+		assertThat(outcome.creditApplied()).isEqualByComparingTo("1250.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("550.00");
+		assertThat(credits.get(0).isAvailable()).isTrue();
+		assertThat(credits.get(0).getAmount()).isEqualByComparingTo("500.00");
 	}
 
 	@Test

@@ -195,6 +195,31 @@ class CheckoutSlotClaimerTest {
 	}
 
 	@Test
+	void saldoThatPaysTheDifferenceMakesTheNewChargeTheFicha() {
+		UUID difference = UUID.randomUUID();
+		candidate.markPaid();
+		candidate.awaitProgramChangePayment(difference);
+		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("500.00"));
+		when(fichaPaymentPort.applyCredit(eq(difference), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				new BigDecimal("50.00"), new BigDecimal("1800.00"), new BigDecimal("1800.00"), true));
+
+		FichaPaymentPort.CreditUse use = claimer.payDifferenceWithCredit(CANDIDATE_ID, difference);
+
+		assertThat(use.settled()).isTrue();
+		assertThat(candidate.getFichaPaymentId()).isEqualTo(difference);
+		assertThat(candidate.getProgramChangePaymentId()).isNull();
+		verify(fichaPaymentPort).applyCredit(difference, "SAF-20260925-000001-C");
+	}
+
+	@Test
+	void withoutSaldoTheDifferenceIsLeftAsItWas() {
+		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+
+		assertThat(claimer.payDifferenceWithCredit(CANDIDATE_ID, UUID.randomUUID())).isNull();
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+	}
+
+	@Test
 	void aFichaPartlyPaidOnAnEarlierTryOnlyCollectsTheRest() {
 		when(fichaPaymentPort.findCharge(CHARGE_ID))
 				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));

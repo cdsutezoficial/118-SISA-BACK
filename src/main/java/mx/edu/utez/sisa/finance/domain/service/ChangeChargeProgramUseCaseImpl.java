@@ -26,7 +26,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,6 +43,10 @@ import java.util.UUID;
  * saldo. The discount the person has goes with them to the new charge and is
  * re-quoted on the new tariff, whether it was used before paying or arrived
  * after. Preview and rebill run the same numbers.
+ *
+ * <p>Only the money of the charge being left is applied. Saldo a favor the
+ * person already had is reported ({@code otherCredit}) but not touched: the
+ * person decides in the portal whether to use it on the difference.
  */
 public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCase {
 
@@ -148,14 +151,13 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 				.reduce(ZERO, BigDecimal::add);
 		PaymentQuoter.Quotation quotation = quoteOnNewTariff(from, rate);
 		BigDecimal due = quotation.due();
-		BigDecimal pool = alreadyPaid.add(otherCredit);
-		BigDecimal applied = pool.min(due);
+		BigDecimal applied = alreadyPaid.min(due);
 		BigDecimal toPay = due.subtract(applied);
 		PaymentStatus status = quotation.exempt() ? PaymentStatus.EXEMPT
 				: toPay.signum() == 0 ? PaymentStatus.PAID
 						: applied.signum() > 0 ? PaymentStatus.PARTIAL : PaymentStatus.PENDING;
 		return new RebillOutcome(null, rate.id(), due, alreadyPaid, otherCredit, applied, toPay,
-				pool.subtract(applied), status);
+				alreadyPaid.subtract(applied), status, quotation.original());
 	}
 
 	@Override
@@ -178,10 +180,10 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 			from.cancel();
 			paymentRepository.save(from);
 		}
-		if (alreadyPaid.signum() > 0) {
-			paymentCreditRepository.save(new PaymentCredit(from.getCandidateId(), from.getStudentId(), from.getId(),
-					null, alreadyPaid, now));
-		}
+		PaymentCredit carried = alreadyPaid.signum() > 0
+				? paymentCreditRepository.save(new PaymentCredit(from.getCandidateId(), from.getStudentId(),
+						from.getId(), null, alreadyPaid, now))
+				: null;
 
 		Payment charge = new Payment(from.getCandidateId(), from.getStudentId(), concept.code(), from.getPeriodId(),
 				from.getGenerationId(), command.programId(), null, null, null, PaymentStatus.PENDING,
@@ -199,53 +201,39 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 			paymentBenefitRepository.save(discount);
 		}
 
-		BigDecimal applied = applyCredits(charge, command.actingUserId(), now);
+		BigDecimal applied = applyCarried(charge, carried, command.actingUserId(), now);
 		BigDecimal paid = paymentEntryRepository.sumAmountByPaymentId(charge.getId());
 		if (!quotation.exempt()) {
 			charge.settle(paid, settlementDecider.decide(charge.getAmountDue(), paid));
 		}
 		charge = paymentRepository.save(charge);
 
-		BigDecimal pool = alreadyPaid.add(otherCredit);
 		return new RebillOutcome(charge.getId(), rate.id(), charge.getAmountDue(), alreadyPaid, otherCredit, applied,
-				charge.getAmountDue().subtract(paid).max(ZERO), pool.subtract(applied), charge.getStatus());
+				charge.getAmountDue().subtract(paid).max(ZERO), alreadyPaid.subtract(applied), charge.getStatus(),
+				charge.getOriginalAmount());
 	}
 
 	/**
-	 * Consumes the person's available saldo a favor (oldest first, the one just
-	 * created included) against the new charge, with one {@code CREDIT} abono.
+	 * Applies to the new charge only the money the charge being left carried,
+	 * with one {@code CREDIT} abono. Any other saldo a favor the person had is
+	 * left alone: it is theirs to use, and they choose to in the portal when
+	 * paying the difference (F9).
 	 */
-	private BigDecimal applyCredits(Payment charge, UUID actingUserId, Instant now) {
-		BigDecimal remaining = charge.getAmountDue();
-		BigDecimal applied = ZERO;
-		List<PaymentCredit> credits = (charge.getCandidateId() != null
-				? paymentCreditRepository.findAvailableByCandidateId(charge.getCandidateId())
-				: paymentCreditRepository.findAvailableByStudentId(charge.getStudentId())).stream()
-				.sorted(Comparator.comparing(PaymentCredit::getCreatedAt)).toList();
-		for (PaymentCredit listed : credits) {
-			if (remaining.signum() <= 0) {
-				break;
-			}
-			PaymentCredit credit = paymentCreditRepository.findByIdForUpdate(listed.getId()).orElse(null);
-			if (credit == null || !credit.isAvailable()) {
-				continue;
-			}
-			BigDecimal take = remaining.min(credit.getAmount());
-			if (take.compareTo(credit.getAmount()) == 0) {
-				credit.applyTo(charge.getId());
-			} else {
-				credit.reduceAmount(take);
-			}
-			paymentCreditRepository.save(credit);
-			applied = applied.add(take);
-			remaining = remaining.subtract(take);
+	private BigDecimal applyCarried(Payment charge, PaymentCredit carried, UUID actingUserId, Instant now) {
+		if (carried == null || charge.getAmountDue().signum() == 0) {
+			return ZERO;
 		}
-		if (applied.signum() > 0) {
-			paymentEntryRepository.save(new PaymentEntry(charge.getId(), applied, PaymentEntryMethod.CREDIT,
-					PaymentChannel.CASHIER, null, null, null, charge.getReferenceNumber(), null, false, actingUserId,
-					null, now, null));
+		BigDecimal take = charge.getAmountDue().min(carried.getAmount());
+		if (take.compareTo(carried.getAmount()) == 0) {
+			carried.applyTo(charge.getId());
+		} else {
+			carried.reduceAmount(take);
 		}
-		return applied;
+		paymentCreditRepository.save(carried);
+		paymentEntryRepository.save(new PaymentEntry(charge.getId(), take, PaymentEntryMethod.CREDIT,
+				PaymentChannel.CASHIER, null, null, null, charge.getReferenceNumber(), null, false, actingUserId,
+				null, now, null));
+		return take;
 	}
 
 	private PaymentQuoter.Quotation quoteOnNewTariff(Payment from, ConceptRateQueryPort.ActiveRate rate) {

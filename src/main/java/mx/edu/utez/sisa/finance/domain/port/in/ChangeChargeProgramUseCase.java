@@ -55,14 +55,16 @@ public interface ChangeChargeProgramUseCase {
 	 *                      discount that travelled
 	 * @param alreadyPaid   the money the charge being left kept (paid, less any
 	 *                      retroactive saldo it already handed back)
-	 * @param otherCredit   saldo a favor the person already had, also applied
-	 * @param creditApplied how much saldo a favor covers of the new charge
+	 * @param otherCredit   saldo a favor the person already had; <b>not</b>
+	 *                      applied — they may use it in the portal on the difference
+	 * @param creditApplied how much of {@code alreadyPaid} covers the new charge
 	 * @param toPay         what is left to pay of the new charge
-	 * @param creditLeft    saldo a favor left over after covering it
+	 * @param creditLeft    what of {@code alreadyPaid} was left over, as saldo a favor
 	 * @param status        the new charge's status ({@code PAID} when covered)
+	 * @param tariff        the new program's tariff before the discount
 	 */
 	record RebillOutcome(UUID paymentId, UUID rateId, BigDecimal newAmount, BigDecimal alreadyPaid,
 			BigDecimal otherCredit, BigDecimal creditApplied, BigDecimal toPay, BigDecimal creditLeft,
-			PaymentStatus status) {
+			PaymentStatus status, BigDecimal tariff) {
 	}
 }

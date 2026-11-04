@@ -173,6 +173,30 @@ public class CheckoutSlotClaimer {
 		}
 	}
 
+	/**
+	 * Uses the person's saldo a favor on the difference a career change left,
+	 * when they choose to (F9). No quota: a paid candidate already holds a
+	 * place. When it covers the difference the new career's charge becomes the
+	 * ficha, exactly as a captured payment of the difference does.
+	 *
+	 * @return the saldo used and whether the difference is paid; {@code null}
+	 *         when the person has no saldo
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public FichaPaymentPort.CreditUse payDifferenceWithCredit(UUID candidateId, UUID differencePaymentId) {
+		Candidate candidate = requireCandidate(candidateId);
+		if (fichaPaymentPort.availableCredit(candidateId).signum() <= 0) {
+			return null;
+		}
+		FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(differencePaymentId,
+				creditReceipt(candidate.getFolio()) + "-C");
+		if (use.settled()) {
+			candidate.adoptFichaPayment(differencePaymentId);
+			candidateRepository.save(candidate);
+		}
+		return use;
+	}
+
 	/** {@code SAF-{yyyyMMdd}-{folioSeq}}: a ficha paid with saldo a favor. */
 	private String creditReceipt(String folio) {
 		String seq = folio.substring(folio.lastIndexOf('-') + 1);

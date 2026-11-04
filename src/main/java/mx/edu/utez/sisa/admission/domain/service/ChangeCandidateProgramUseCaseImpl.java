@@ -120,7 +120,8 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 				FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes));
 		return new ProgramChangePreview(candidate.getId(), candidate.getAdmissionConfigId(), programName(from),
 				to.id(), to.programName(), Mode.PAID, currentAmount(fromPaymentId), amounts.alreadyPaid(),
-				amounts.otherCredit(), amounts.newAmount(), ZERO, amounts.newAmount(), amounts.toPay(),
+				amounts.otherCredit(), amounts.tariff(), amounts.tariff().subtract(amounts.newAmount()),
+				amounts.newAmount(), amounts.toPay(),
 				amounts.creditLeft(), occupied < to.maxCandidates(),
 				amounts.settled() ? null : differenceDeadline(today), false);
 	}

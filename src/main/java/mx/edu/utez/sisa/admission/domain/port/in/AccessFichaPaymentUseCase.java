@@ -90,8 +90,8 @@ public interface AccessFichaPaymentUseCase {
 	 * portal and the engine start answering differently.
 	 */
 	/**
-	 * @param availableCredit saldo a favor the person can choose to use on this
-	 *                        ficha (F9); zero once it is paid
+	 * @param availableCredit saldo a favor the person has (F9), shown always; they
+	 *                        can choose to use it on the ficha or on a difference
 	 * @param creditApplied   saldo already used on this unpaid ficha: the rest,
 	 *                        {@code amount − creditApplied}, is what is left
 	 */

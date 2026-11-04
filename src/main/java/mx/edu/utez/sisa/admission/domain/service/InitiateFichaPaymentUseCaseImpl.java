@@ -220,7 +220,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
 
 		if (candidate.getProgramChangePaymentId() != null) {
-			return initiateProgramChangeCheckout(candidateId, candidate, returnPath);
+			return initiateProgramChangeCheckout(candidateId, candidate, returnPath, useCredit);
 		}
 
 		FichaPaymentPort.FichaCharge charge = FichaCharges.of(candidate, fichaPaymentPort)
@@ -285,7 +285,7 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 	 * change gave it.
 	 */
 	private InitiateCheckoutResult initiateProgramChangeCheckout(UUID candidateId, Candidate candidate,
-			String returnPath) {
+			String returnPath, boolean useCredit) {
 		FichaPaymentPort.ProgramChangeCharge charge = fichaPaymentPort
 				.findProgramChangeCharge(candidate.getProgramChangePaymentId())
 				.orElseThrow(() -> new CandidateNotFoundException(
@@ -300,6 +300,17 @@ public class InitiateFichaPaymentUseCaseImpl implements InitiateFichaPaymentUseC
 		}
 
 		pendingCheckoutGuard.requireNoPaymentInFlight(candidate);
+		if (useCredit) {
+			// The person chose to use their saldo a favor on the difference (F9).
+			FichaPaymentPort.CreditUse use = checkoutSlotClaimer.payDifferenceWithCredit(candidateId,
+					charge.financePaymentId());
+			if (use != null && use.settled()) {
+				return new InitiateCheckoutResult(candidateId, null, null, null, null, checkoutJsUrl, false, true);
+			}
+			if (use != null) {
+				charge = fichaPaymentPort.findProgramChangeCharge(charge.financePaymentId()).orElse(charge);
+			}
+		}
 		String orderId = orderIdBuilder.build(candidate.getFolio());
 		checkoutSlotClaimer.claimProgramChange(candidateId, orderId, charge.financePaymentId(), charge.toPay());
 		return openEvoSession(candidateId, orderId, charge.referenceNumber(),

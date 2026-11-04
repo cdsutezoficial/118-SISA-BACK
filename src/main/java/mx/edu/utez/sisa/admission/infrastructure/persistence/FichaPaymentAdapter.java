@@ -204,7 +204,8 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 
 	private static ProgramChangeAmounts toAmounts(ChangeChargeProgramUseCase.RebillOutcome outcome) {
 		return new ProgramChangeAmounts(outcome.paymentId(), outcome.newAmount(), outcome.alreadyPaid(),
-				outcome.otherCredit(), outcome.toPay(), outcome.creditLeft());
+				outcome.otherCredit(), outcome.toPay(), outcome.creditLeft(),
+				outcome.tariff() == null ? outcome.newAmount() : outcome.tariff());
 	}
 
 	private static <T> T priced(Supplier<T> call) {

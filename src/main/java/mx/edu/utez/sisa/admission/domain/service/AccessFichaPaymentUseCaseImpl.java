@@ -130,7 +130,7 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 				alreadyPaid ? payment.paidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
 				candidate.getStatus(), paymentExpired, price.originalAmount(), price.discountAmount(),
 				price.discountReason(), programChangeDue(candidate, config),
-				alreadyPaid ? BigDecimal.ZERO : fichaPaymentPort.availableCredit(candidate.getId()),
+				fichaPaymentPort.availableCredit(candidate.getId()),
 				payment.isPartlyPaid() ? payment.amountPaid() : BigDecimal.ZERO);
 	}
 

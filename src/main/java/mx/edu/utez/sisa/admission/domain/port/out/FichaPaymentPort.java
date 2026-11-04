@@ -131,14 +131,22 @@ public interface FichaPaymentPort {
 
 	/**
 	 * @param financePaymentId el cargo nuevo; {@code null} en la vista previa
-	 * @param newAmount        tarifa de la carrera nueva, sin descuento
+	 * @param newAmount        lo que cuesta la carrera nueva: tarifa menos el
+	 *                         descuento que viaja (D6)
 	 * @param alreadyPaid      lo que había recibido el cargo que se deja
-	 * @param otherCredit      saldo a favor que ya tenía y también se aplica
+	 * @param otherCredit      saldo a favor que ya tenía; <b>no</b> se aplica, la
+	 *                         persona elige usarlo al pagar la diferencia
 	 * @param toPay            lo que falta pagar ("debe pagar más")
-	 * @param creditLeft       lo que sobra como saldo a favor
+	 * @param creditLeft       lo que sobra de lo pagado, como saldo a favor
+	 * @param tariff           tarifa de la carrera nueva antes del descuento
 	 */
 	record ProgramChangeAmounts(UUID financePaymentId, BigDecimal newAmount, BigDecimal alreadyPaid,
-			BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft) {
+			BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft, BigDecimal tariff) {
+
+		public ProgramChangeAmounts(UUID financePaymentId, BigDecimal newAmount, BigDecimal alreadyPaid,
+				BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft) {
+			this(financePaymentId, newAmount, alreadyPaid, otherCredit, toPay, creditLeft, newAmount);
+		}
 
 		public boolean settled() {
 			return toPay.signum() == 0;
