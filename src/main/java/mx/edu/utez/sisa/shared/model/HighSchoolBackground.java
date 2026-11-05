@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -39,44 +40,8 @@ public class HighSchoolBackground {
 	@JoinColumn(name = "person_id")
 	private Person person;
 
-	@Column(name = "school_name")
-	private String schoolName;
-
-	@Column(name = "school_city", nullable = false)
-	private String schoolCity;
-
-	@Column(name = "school_type_id")
-	private UUID schoolTypeId;
-
-	@Column(precision = 4, scale = 2)
-	private BigDecimal gpa;
-
-	@Column(name = "studied_in_mexico", nullable = false)
-	private boolean studiedInMexico;
-
-	@Column(name = "school_state_id")
-	private UUID schoolStateId;
-
-	@Column(name = "school_municipality_id")
-	private UUID schoolMunicipalityId;
-
-	@Column
-	private String cct;
-
-	@Column(name = "cct_confirmed")
-	private Boolean cctConfirmed;
-
-	@Column(name = "foreign_country")
-	private String foreignCountry;
-
-	@Column(name = "school_foreign_state")
-	private String schoolForeignState;
-
-	@Column(name = "academic_area")
-	private String academicArea;
-
-	@Column(name = "study_period")
-	private String studyPeriod;
+	@Embedded
+	private HighSchoolData data;
 
 	protected HighSchoolBackground() {
 		// JPA
@@ -85,26 +50,8 @@ public class HighSchoolBackground {
 	public HighSchoolBackground(String schoolName, String schoolCity, UUID schoolTypeId, BigDecimal gpa,
 			boolean studiedInMexico, UUID schoolStateId, UUID schoolMunicipalityId, String cct, Boolean cctConfirmed,
 			String foreignCountry, String schoolForeignState, String academicArea, String studyPeriod) {
-		this.schoolName = schoolName;
-		// school_city is NOT NULL. Domestic applicants never get asked for a city
-		// (CandidatoRegistro.tsx renders the city input only when the high school
-		// was abroad, since a Mexican school's location comes from the state and
-		// municipality catalogs), so the registration wizard sends an empty string
-		// for them. Normalizing here keeps a direct API caller that omits the field
-		// from blowing up at flush time with a DataIntegrityViolationException that
-		// would surface as a 500.
-		this.schoolCity = schoolCity == null ? "" : schoolCity;
-		this.schoolTypeId = schoolTypeId;
-		this.gpa = gpa;
-		this.studiedInMexico = studiedInMexico;
-		this.schoolStateId = schoolStateId;
-		this.schoolMunicipalityId = schoolMunicipalityId;
-		this.cct = cct;
-		this.cctConfirmed = cctConfirmed;
-		this.foreignCountry = foreignCountry;
-		this.schoolForeignState = schoolForeignState;
-		this.academicArea = academicArea;
-		this.studyPeriod = studyPeriod;
+		this.data = new HighSchoolData(schoolName, schoolCity, schoolTypeId, gpa, studiedInMexico, schoolStateId,
+				schoolMunicipalityId, cct, cctConfirmed, foreignCountry, schoolForeignState, academicArea, studyPeriod);
 	}
 
 	public UUID getPersonId() {
@@ -120,107 +67,114 @@ public class HighSchoolBackground {
 	}
 
 	public String getSchoolName() {
-		return schoolName;
+		return data == null ? null : data.getSchoolName();
 	}
 
 	public void setSchoolName(String schoolName) {
-		this.schoolName = schoolName;
+		data().setSchoolName(schoolName);
 	}
 
 	public String getSchoolCity() {
-		return schoolCity;
+		return data == null ? null : data.getSchoolCity();
 	}
 
 	public void setSchoolCity(String schoolCity) {
-		this.schoolCity = schoolCity == null ? "" : schoolCity;
+		data().setSchoolCity(schoolCity);
 	}
 
 	public UUID getSchoolTypeId() {
-		return schoolTypeId;
+		return data == null ? null : data.getSchoolTypeId();
 	}
 
 	public void setSchoolTypeId(UUID schoolTypeId) {
-		this.schoolTypeId = schoolTypeId;
+		data().setSchoolTypeId(schoolTypeId);
 	}
 
 	public BigDecimal getGpa() {
-		return gpa;
+		return data == null ? null : data.getGpa();
 	}
 
 	public void setGpa(BigDecimal gpa) {
-		this.gpa = gpa;
+		data().setGpa(gpa);
 	}
 
 	public boolean isStudiedInMexico() {
-		return studiedInMexico;
+		return data != null && data.isStudiedInMexico();
 	}
 
 	public void setStudiedInMexico(boolean studiedInMexico) {
-		this.studiedInMexico = studiedInMexico;
+		data().setStudiedInMexico(studiedInMexico);
 	}
 
 	public UUID getSchoolStateId() {
-		return schoolStateId;
+		return data == null ? null : data.getSchoolStateId();
 	}
 
 	public void setSchoolStateId(UUID schoolStateId) {
-		this.schoolStateId = schoolStateId;
+		data().setSchoolStateId(schoolStateId);
 	}
 
 	public UUID getSchoolMunicipalityId() {
-		return schoolMunicipalityId;
+		return data == null ? null : data.getSchoolMunicipalityId();
 	}
 
 	public void setSchoolMunicipalityId(UUID schoolMunicipalityId) {
-		this.schoolMunicipalityId = schoolMunicipalityId;
+		data().setSchoolMunicipalityId(schoolMunicipalityId);
 	}
 
 	public String getCct() {
-		return cct;
+		return data == null ? null : data.getCct();
 	}
 
 	public void setCct(String cct) {
-		this.cct = cct;
+		data().setCct(cct);
 	}
 
 	public Boolean getCctConfirmed() {
-		return cctConfirmed;
+		return data == null ? null : data.getCctConfirmed();
 	}
 
 	public void setCctConfirmed(Boolean cctConfirmed) {
-		this.cctConfirmed = cctConfirmed;
+		data().setCctConfirmed(cctConfirmed);
 	}
 
 	public String getForeignCountry() {
-		return foreignCountry;
+		return data == null ? null : data.getForeignCountry();
 	}
 
 	public void setForeignCountry(String foreignCountry) {
-		this.foreignCountry = foreignCountry;
+		data().setForeignCountry(foreignCountry);
 	}
 
 	public String getSchoolForeignState() {
-		return schoolForeignState;
+		return data == null ? null : data.getSchoolForeignState();
 	}
 
 	public void setSchoolForeignState(String schoolForeignState) {
-		this.schoolForeignState = schoolForeignState;
+		data().setSchoolForeignState(schoolForeignState);
 	}
 
 	public String getAcademicArea() {
-		return academicArea;
+		return data == null ? null : data.getAcademicArea();
 	}
 
 	public void setAcademicArea(String academicArea) {
-		this.academicArea = academicArea;
+		data().setAcademicArea(academicArea);
 	}
 
 	public String getStudyPeriod() {
-		return studyPeriod;
+		return data == null ? null : data.getStudyPeriod();
 	}
 
 	public void setStudyPeriod(String studyPeriod) {
-		this.studyPeriod = studyPeriod;
+		data().setStudyPeriod(studyPeriod);
+	}
+
+	private HighSchoolData data() {
+		if (data == null) {
+			data = new HighSchoolData();
+		}
+		return data;
 	}
 
 	@Override
