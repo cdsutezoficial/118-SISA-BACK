@@ -243,6 +243,10 @@ public class SecurityFilterConfig {
 						// Finanzas too (2026-10-22): it grants discounts on a
 						// candidate's charges, and finds the candidate by folio/CURP
 						// here. List only — the detail below stays SE/Director.
+						// Tablero de Admisión: mismos roles que la lista de candidatos,
+						// salvo Finanzas y Caja, que no siguen el proceso.
+						.requestMatchers(HttpMethod.GET, "/admission/dashboard")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers(HttpMethod.GET, "/candidates")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
 						// Staff candidate detail. Two segments deep, so the public

@@ -4,6 +4,24 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-11-05] Tablero de Admisión con datos reales
+
+Rama: `feat/dashboard-admision`.
+
+- `GET /admission/dashboard?periodId=` (nuevo): conteos de un periodo para el tablero de
+  Admisión. Embudo (registradas, pagadas, con examen, habilitadas para inducción, admitidas y
+  vencidas) y, por carrera, registradas, pagadas, admitidas, en proceso, completadas y vencidas.
+  Cada etapa cuenta a quien llegó a ella o la pasó.
+- Sin `periodId` toma el periodo del proceso más reciente: el de una configuración abierta o,
+  si no hay, el de la última que abrió.
+- Mismos roles que la lista de candidatos (Admin, Servicios Escolares, Director) y permiso
+  `CANDIDATES_READ`. El Director solo cuenta las carreras de su división; sin división no ve nada.
+- Va fuera de `/candidates` porque `GET /candidates/*` es público.
+- Pruebas: `GetAdmissionDashboardUseCaseImplTest` y `AdmissionDashboardQueryAdapterIT` (sobre
+  `sisa_it`).
+
+---
+
 ## [2026-10-28] Servicios Escolares edita la ficha del candidato
 
 Rama: `feat/editar-ficha-candidato`. Plan: `118-SISA-CLAUDE/docs/design/pendientes/editar-ficha-candidato/`.
