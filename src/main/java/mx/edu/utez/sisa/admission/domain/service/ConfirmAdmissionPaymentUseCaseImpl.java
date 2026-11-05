@@ -2,16 +2,21 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -60,11 +65,21 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 	private final CandidateNotificationPort notifications;
 
+	/** F1: the place a cash payment takes is checked under the same lock as the checkout's. */
+	private final AdmissionQuotaPort admissionQuotaPort;
+
+	private final Clock clock;
+
+	private final int checkoutHoldMinutes;
 
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications,
+			AdmissionQuotaPort admissionQuotaPort, Clock clock, int checkoutHoldMinutes) {
 		this.notifications = notifications;
+		this.admissionQuotaPort = admissionQuotaPort;
+		this.clock = clock;
+		this.checkoutHoldMinutes = checkoutHoldMinutes;
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -73,28 +88,83 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 	@Override
 	@Transactional
 	public ConfirmPaymentResult confirm(UUID candidateId, String capturedOrderId) {
-		Candidate candidate = candidateRepository.findById(candidateId)
-				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
+		Candidate candidate = requireCandidate(candidateId);
+		FichaPaymentPort.FichaCharge charge = requireOwed(candidate);
 
-		// The difference a career change left to pay, when there is one; the ficha otherwise.
-		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		// The numbers booked are the captured attempt's, when there is one.
+		CheckoutAttempt attempt = capturedOrderId == null ? null
+				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
+		ConfirmPaymentResult result = settle(candidate, charge, chargedBy(attempt), attempt != null, capturedOrderId,
+				null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR);
+		// F3: here, not in the controller, so the reconciliation's confirmations send a
+		// receipt too. Delivered after this transaction commits.
+		notifications.paymentConfirmed(result);
+		return result;
+	}
+
+	/**
+	 * {@code READ_COMMITTED} for the same reason as {@code CheckoutSlotClaimer#claim}: the
+	 * count taken under the lock has to see places committed a moment ago.
+	 */
+	@Override
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, UUID collectorId,
+			String collectorName) {
+		Candidate candidate = requireCandidate(candidateId);
+		FichaPaymentPort.FichaCharge charge = requireOwed(candidate);
+		// A difference does not compete for a place: a paid candidate already holds one.
+		if (candidate.getProgramChangePaymentId() == null) {
+			requirePlace(candidate);
+		}
+		ConfirmPaymentResult result = settle(candidate, charge, null, false, null, collectorId, collectorName);
+		if (expectedAmount == null || result.amount().compareTo(expectedAmount) != 0) {
+			// Rolls the whole booking back: the cashier collects what the ficha owes now.
+			throw new CashAmountChangedException("El monto a cobrar cambió: ahora son $" + result.amount()
+					+ ". Vuelve a consultar la ficha antes de cobrar.");
+		}
+		notifications.paymentConfirmed(result);
+		return result;
+	}
+
+	private Candidate requireCandidate(UUID candidateId) {
+		return candidateRepository.findById(candidateId)
+				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
+	}
+
+	/** The difference a career change left to pay, when there is one; the ficha otherwise. */
+	private FichaPaymentPort.FichaCharge requireOwed(Candidate candidate) {
 		FichaPaymentPort.FichaCharge charge = FichaCharges.collecting(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
-						"El candidato no tiene ficha de pago: " + candidateId));
+						"El candidato no tiene ficha de pago: " + candidate.getId()));
 		if (charge.isPaid()) {
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
+		return charge;
+	}
 
-		// Same transaction: the finance charge and the candidate are settled
-		// together, or neither is. The numbers booked are the captured
-		// attempt's, when there is one; the receipt goes on the abono.
+	/** Same count as the checkout's claim: paid fichas plus open attempts still holding a place. */
+	private void requirePlace(Candidate candidate) {
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidate.getId(), FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes));
+		if (occupiedByOthers >= quota.maxCandidates()) {
+			throw new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó.");
+		}
+	}
+
+	/**
+	 * Same transaction: the finance charge and the candidate are settled together, or
+	 * neither is. The receipt goes on the abono.
+	 */
+	private ConfirmPaymentResult settle(Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			FichaPaymentPort.ChargedAmounts charged, boolean online, String orderId, UUID collectorId,
+			String collectorName) {
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
 		String receipt = generateReceipt(candidate.getFolio()) + (programChange ? "-C" : "");
-		CheckoutAttempt attempt = capturedOrderId == null ? null
-				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
 		FichaPaymentPort.SettledFicha settled = fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(
-				charge.financePaymentId(), chargedBy(attempt), attempt != null, capturedOrderId, receipt,
-				charge.referenceNumber(), null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR));
+				charge.financePaymentId(), charged, online, orderId, receipt, charge.referenceNumber(), collectorId,
+				collectorName));
 
 		// E6: the earlier charge the carried money came from, read before the
 		// difference replaces it as the ficha.
@@ -121,9 +191,6 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, total, before,
 				previousCharge == null ? null : previousCharge.receiptNumber(),
 				previousCharge == null ? null : previousCharge.paidAt(), programChange);
-		// F3: here, not in the controller, so the reconciliation's confirmations send a
-		// receipt too. Delivered after this transaction commits.
-		notifications.paymentConfirmed(result);
 		return result;
 	}
 

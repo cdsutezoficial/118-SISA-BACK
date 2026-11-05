@@ -2,11 +2,14 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,13 +21,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,6 +54,9 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@Mock
 	private CandidateNotificationPort notifications;
 
+	@Mock
+	private AdmissionQuotaPort admissionQuotaPort;
+
 	private ConfirmAdmissionPaymentUseCaseImpl useCase;
 
 	private UUID candidateId;
@@ -56,7 +65,8 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository, notifications);
+				checkoutAttemptRepository, notifications, admissionQuotaPort,
+				Clock.fixed(Instant.parse("2026-11-05T17:00:00Z"), ZoneOffset.UTC), 60);
 		candidateId = UUID.randomUUID();
 		candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
@@ -91,6 +101,73 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		verify(candidateRepository).save(candidateCaptor.capture());
 		assertThat(candidateCaptor.getValue().getStatus()).isEqualTo(CandidateStatus.PAID);
 		assertThat(candidateCaptor.getValue().getPaidAt()).isNotNull();
+	}
+
+	// ── F1: cobro en efectivo ─────────────────────────────────────────────────
+
+	@Test
+	void confirmCash_booksCashWithTheCollectorAndMarksTheCandidatePaid() {
+		stubHappyPath();
+		UUID cashier = UUID.randomUUID();
+		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
+		when(admissionQuotaPort.countOccupiedExcluding(eq(candidate.getAdmissionConfigId()), eq(candidateId), any()))
+				.thenReturn(9L);
+
+		var result = useCase.confirmCash(candidateId, AMOUNT, cashier, "Ana Caja");
+
+		assertThat(result.candidateStatus()).isEqualTo(CandidateStatus.PAID);
+		assertThat(result.receiptNumber()).startsWith("REC-");
+		ArgumentCaptor<FichaPaymentPort.SettleFichaCommand> command = ArgumentCaptor
+				.forClass(FichaPaymentPort.SettleFichaCommand.class);
+		verify(fichaPaymentPort).settle(command.capture());
+		assertThat(command.getValue().online()).isFalse();
+		assertThat(command.getValue().externalOrderId()).isNull();
+		assertThat(command.getValue().collectedById()).isEqualTo(cashier);
+		assertThat(command.getValue().collectedByName()).isEqualTo("Ana Caja");
+		verify(notifications).paymentConfirmed(result);
+	}
+
+	@Test
+	void confirmCash_refusesAFullCareerBeforeBookingAnything() {
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)));
+		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
+		when(admissionQuotaPort.countOccupiedExcluding(eq(candidate.getAdmissionConfigId()), eq(candidateId), any()))
+				.thenReturn(10L);
+
+		assertThatThrownBy(() -> useCase.confirmCash(candidateId, AMOUNT, UUID.randomUUID(), "Caja"))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
+		verify(fichaPaymentPort, never()).settle(any());
+		verify(candidateRepository, never()).save(any());
+	}
+
+	@Test
+	void confirmCash_refusesWhenTheAmountChanged_andSendsNoReceipt() {
+		stubHappyPath();
+		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
+
+		assertThatThrownBy(() -> useCase.confirmCash(candidateId, new BigDecimal("450.00"), UUID.randomUUID(), "Caja"))
+				.isInstanceOf(CashAmountChangedException.class);
+		verify(notifications, never()).paymentConfirmed(any());
+	}
+
+	@Test
+	void confirmCash_ofADifference_doesNotCompeteForAPlace() {
+		UUID difference = UUID.randomUUID();
+		ReflectionTestUtils.setField(candidate, "programChangePaymentId", difference);
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(difference)).thenReturn(Optional.of(FichaTestData.pendingCharge(difference)));
+		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(fichaPaymentPort.settle(any())).thenReturn(new FichaPaymentPort.SettledFicha(AMOUNT,
+				BigDecimal.ZERO.setScale(2), AMOUNT, AMOUNT, null, false));
+
+		var result = useCase.confirmCash(candidateId, AMOUNT, UUID.randomUUID(), "Caja");
+
+		assertThat(result.programChange()).isTrue();
+		verify(admissionQuotaPort, never()).lockQuota(any());
 	}
 
 	@Test

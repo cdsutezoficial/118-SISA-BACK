@@ -5,6 +5,8 @@ import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaExce
 import mx.edu.utez.sisa.admission.shared.exception.AmbiguousFichaPaymentConceptException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
+import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
+import mx.edu.utez.sisa.admission.shared.exception.NothingToCollectException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateProgramChangeNotAllowedException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.DuplicateOutreachChannelNameException;
@@ -111,6 +113,8 @@ public class GlobalExceptionHandler {
 	public static final String CODE_ALREADY_PAID = "ADMISSION_ALREADY_PAID";
 	public static final String CODE_PAYMENT_IN_PROGRESS = "ADMISSION_PAYMENT_IN_PROGRESS";
 	public static final String CODE_PAID_WITHOUT_QUOTA = "ADMISSION_PAID_WITHOUT_QUOTA";
+	public static final String CODE_CASH_AMOUNT_CHANGED = "ADMISSION_CASH_AMOUNT_CHANGED";
+	public static final String CODE_NOTHING_TO_COLLECT = "ADMISSION_NOTHING_TO_COLLECT";
 	public static final String CODE_PROGRAM_CHANGE_NOT_ALLOWED = "ADMISSION_PROGRAM_CHANGE_NOT_ALLOWED";
 	public static final String CODE_FICHA_DATA_INVALID = "ADMISSION_FICHA_DATA_INVALID";
 	public static final String CODE_VERIFICATION_INVALID = "ADMISSION_VERIFICATION_INVALID";
@@ -296,6 +300,18 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handlePaidWithoutQuota(AdmissionPaidWithoutQuotaException ex,
 			HttpServletRequest request) {
 		return build(HttpStatus.CONFLICT, CODE_PAID_WITHOUT_QUOTA, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(CashAmountChangedException.class)
+	public ResponseEntity<ErrorResponse> handleCashAmountChanged(CashAmountChangedException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, CODE_CASH_AMOUNT_CHANGED, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(NothingToCollectException.class)
+	public ResponseEntity<ErrorResponse> handleNothingToCollect(NothingToCollectException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.CONFLICT, CODE_NOTHING_TO_COLLECT, ex.getMessage(), request);
 	}
 
 	@ExceptionHandler(PaymentInProgressException.class)

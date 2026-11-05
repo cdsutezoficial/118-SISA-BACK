@@ -46,6 +46,8 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 					"Coordinación del proceso de estadías dentro de una división."),
 			new RoleSeed(RoleType.PERSONAL_FINANZAS, "Personal de Finanzas",
 					"Administración de catálogos y operaciones del módulo financiero."),
+			new RoleSeed(RoleType.CAJA, "Caja",
+					"Cobro presencial en efectivo de fichas y diferencias."),
 			new RoleSeed(RoleType.DOCENTE, "Docente", "Acceso docente a procesos académicos autorizados."),
 			new RoleSeed(RoleType.ESTUDIANTE, "Estudiante", "Acceso del estudiante a su experiencia escolar."),
 			new RoleSeed(RoleType.EGRESADO, "Egresado", "Acceso del egresado a funcionalidades habilitadas."));
@@ -118,6 +120,8 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("BENEFITS_REPORT", "Consultar reporte de descuentos"),
 			permission("FINANCE_ALERTS_READ", "Consultar alertas de pago"),
 			permission("FINANCE_ALERTS_RESOLVE", "Marcar alertas de pago como revisadas"),
+			permission("PAYMENT_WINDOW_CONFIRM", "Cobrar en efectivo en caja"),
+			permission("CONFIG_STATISTICS_READ", "Consultar estadísticas de configuración académica"),
 			permission("PROGRAM_ADMISSION_CONFIGS_READ", "Consultar configuraciones de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_CREATE", "Crear configuración de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_UPDATE", "Actualizar configuración de admisión por carrera"),
@@ -214,7 +218,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 		permissionsByRole.put(RoleType.ADMIN, allPermissions);
 
 		permissionsByRole.put(RoleType.SERVICIOS_ESCOLARES, orderedSet(
-				"PERSONS_READ", "DIVISIONS_READ", "DIVISIONS_CREATE", "DIVISIONS_UPDATE",
+				"PERSONS_READ", "CONFIG_STATISTICS_READ", "DIVISIONS_READ", "DIVISIONS_CREATE", "DIVISIONS_UPDATE",
 				"DIVISIONS_CHANGE_STATUS", "CARRERAS_READ", "CARRERAS_CREATE", "CARRERAS_UPDATE",
 				"CARRERAS_CHANGE_STATUS", "PLANS_READ", "PLANS_CREATE", "PLANS_UPDATE",
 				"PLANS_CHANGE_STATUS", "PLANS_DELETE", "SUBJECT_CLASSIFICATIONS_READ",
@@ -237,7 +241,11 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 				"PAYMENT_AREAS_CHANGE_STATUS", "PAYMENTS_READ", "PAYMENTS_QUOTE", "PAYMENTS_CREATE",
 				"PAYMENTS_SETTLE", "BENEFITS_READ", "BENEFITS_CREATE", "BENEFITS_UPDATE", "BENEFITS_CANCEL",
 				"BENEFITS_REPORT", "FINANCE_ALERTS_READ", "FINANCE_ALERTS_RESOLVE", "STATES_READ",
-				"MUNICIPALITIES_READ", "CANDIDATES_READ"));
+				"MUNICIPALITIES_READ", "CANDIDATES_READ", "PAYMENT_WINDOW_CONFIRM"));
+
+		// F1: busca al candidato (lista de candidatos) y cobra en efectivo. Nada más:
+		// ni descuentos, ni edición de fichas, ni saldo a favor.
+		permissionsByRole.put(RoleType.CAJA, orderedSet("CANDIDATES_READ", "PAYMENT_WINDOW_CONFIRM"));
 
 		permissionsByRole.put(RoleType.GESTOR_ACADEMICO, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.DIRECTOR_DIVISION, orderedSet("STATES_READ", "MUNICIPALITIES_READ",

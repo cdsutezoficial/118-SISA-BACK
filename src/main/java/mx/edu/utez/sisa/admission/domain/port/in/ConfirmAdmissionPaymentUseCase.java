@@ -29,6 +29,20 @@ public interface ConfirmAdmissionPaymentUseCase {
 	ConfirmPaymentResult confirm(UUID candidateId, String capturedOrderId);
 
 	/**
+	 * F1: the cash desk collected what the ficha owes (or the difference a career change
+	 * left). Booked as {@code CASH} with who collected it and a receipt, and the candidate
+	 * is settled in the same transaction. For a ficha, the place is checked again under the
+	 * quota lock; a full career refuses before anything is written.
+	 *
+	 * @param expectedAmount what the cash desk showed and took; if the ficha now owes a
+	 *                       different amount nothing is booked
+	 * @throws mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException if
+	 *         the amount changed
+	 */
+	ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, UUID collectorId,
+			String collectorName);
+
+	/**
 	 * What was paid, divided by charge (E6).
 	 *
 	 * @param amount          what was paid in this operation only (the abono), never the

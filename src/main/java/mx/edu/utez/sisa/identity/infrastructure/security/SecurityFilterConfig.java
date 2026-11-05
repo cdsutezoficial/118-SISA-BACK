@@ -244,7 +244,11 @@ public class SecurityFilterConfig {
 						// candidate's charges, and finds the candidate by folio/CURP
 						// here. List only — the detail below stays SE/Director.
 						.requestMatchers(HttpMethod.GET, "/candidates")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS", "CAJA")
+						// F1: cobro en efectivo en caja. Ruta propia de personal: no
+						// comparte prefijo con el checkout público (/payments/...).
+						.requestMatchers("/candidates/*/cash-payment")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS", "CAJA")
 						// Staff candidate detail. Two segments deep, so the public
 						// "/candidates/*" matcher above does not reach it either.
 						.requestMatchers(HttpMethod.GET, "/candidates/*/detail", "/candidates/*/account")

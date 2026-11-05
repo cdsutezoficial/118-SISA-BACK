@@ -13,6 +13,8 @@ public enum RoleType {
 	ASISTENTE_ESTADIAS,
 	COORDINACION_ESTADIAS_DIVISION,
 	PERSONAL_FINANZAS,
+	/** F1: cobra en efectivo en ventanilla; no da descuentos ni edita fichas. */
+	CAJA,
 	DOCENTE,
 	ESTUDIANTE,
 	EGRESADO

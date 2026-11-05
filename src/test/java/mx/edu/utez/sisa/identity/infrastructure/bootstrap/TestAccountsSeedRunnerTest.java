@@ -52,7 +52,7 @@ class TestAccountsSeedRunnerTest {
 	}
 
 	@Test
-	void seedsFourSingleRoleAccountsWhenNoneExist() {
+	void seedsFiveSingleRoleAccountsWhenNoneExist() {
 		stubRoles();
 		when(userRoleRepository.existsByRoleId(any())).thenReturn(false);
 		stubPersistedUsers();
@@ -60,11 +60,11 @@ class TestAccountsSeedRunnerTest {
 
 		newRunner().run(mock(ApplicationArguments.class));
 
-		// Four accounts, exactly one role grant each — no multi-role leftovers,
+		// Five accounts (F1 added caja), exactly one role grant each — no multi-role leftovers,
 		// and no fabricated person rows.
-		verify(userRepository, times(4)).save(any(User.class));
-		verify(userRepository, times(4)).save(argThat(user -> user.getPersonId() == null));
-		verify(userRoleRepository, times(4)).save(any(UserRole.class));
+		verify(userRepository, times(5)).save(any(User.class));
+		verify(userRepository, times(5)).save(argThat(user -> user.getPersonId() == null));
+		verify(userRoleRepository, times(5)).save(any(UserRole.class));
 	}
 
 	@Test
@@ -79,9 +79,9 @@ class TestAccountsSeedRunnerTest {
 
 		newRunner().run(mock(ApplicationArguments.class));
 
-		// PERSONAL_FINANZAS already exists → skipped; the other three are seeded.
-		verify(userRepository, times(3)).save(any(User.class));
-		verify(userRoleRepository, times(3)).save(any(UserRole.class));
+		// PERSONAL_FINANZAS already exists → skipped; the other four are seeded.
+		verify(userRepository, times(4)).save(any(User.class));
+		verify(userRoleRepository, times(4)).save(any(UserRole.class));
 	}
 
 	@Test

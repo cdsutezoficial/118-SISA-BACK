@@ -13,7 +13,11 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.CollectCashPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.StaffDirectoryPort;
+import mx.edu.utez.sisa.admission.domain.service.CollectCashPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.FichaPaymentGate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
@@ -237,9 +241,26 @@ public class UseCaseConfig {
 	@Bean
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort candidateNotificationPort) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort candidateNotificationPort,
+			AdmissionQuotaPort admissionQuotaPort, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository, candidateNotificationPort);
+				checkoutAttemptRepository, candidateNotificationPort, admissionQuotaPort, clock, checkoutHoldMinutes);
+	}
+
+	/** F1: cobro en efectivo en caja; mismas ventanas que el pago en línea. */
+	@Bean
+	public CollectCashPaymentUseCase collectCashPaymentUseCase(CandidateRepository candidateRepository,
+			FichaPaymentPort fichaPaymentPort, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			FichaAmountResolver fichaAmountResolver, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
+			PendingCheckoutGuard pendingCheckoutGuard, AdmissionQuotaPort admissionQuotaPort,
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase, StaffDirectoryPort staffDirectoryPort,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+		return new CollectCashPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
+				new FichaPaymentGate(programAdmissionConfigQueryPort, fichaAmountResolver, clock, fichaDeadlineDays),
+				pendingCheckoutGuard, admissionQuotaPort, confirmAdmissionPaymentUseCase, staffDirectoryPort, clock,
+				checkoutHoldMinutes);
 	}
 
 	@Bean

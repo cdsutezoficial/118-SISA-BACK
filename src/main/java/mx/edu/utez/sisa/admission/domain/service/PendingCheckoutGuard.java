@@ -152,6 +152,29 @@ public class PendingCheckoutGuard {
 	 * @throws PaymentInProgressException if a session can still capture
 	 */
 	public void settleBeforeProgramChange(Candidate candidate) {
+		if (settleOpenAttempts(candidate)) {
+			throw new PaymentInProgressException("Hay un pago en línea en curso para esta ficha. "
+					+ "Espera a que el banco lo confirme o lo libere para cambiar la carrera.");
+		}
+	}
+
+	/**
+	 * F1: the same settlement before the cash desk takes money, for the same reason as a
+	 * career change: an online session that can still capture would charge the ficha a
+	 * second time. A capture that already landed is applied, so the caller re-reads the
+	 * ficha and finds it paid instead of collecting again.
+	 *
+	 * @throws PaymentInProgressException if a session can still capture
+	 */
+	public void settleBeforeCashPayment(Candidate candidate) {
+		if (settleOpenAttempts(candidate)) {
+			throw new PaymentInProgressException("El candidato tiene un pago en línea en curso. "
+					+ "No cobres en caja hasta que el banco lo confirme o lo libere.");
+		}
+	}
+
+	/** @return {@code true} when a session may still capture */
+	private boolean settleOpenAttempts(Candidate candidate) {
 		Instant holdingSince = FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes);
 		boolean inFlight = false;
 		for (CheckoutAttempt attempt : checkoutAttemptRepository.findOpenAttemptsByCandidateId(candidate.getId())) {
@@ -174,10 +197,7 @@ public class PendingCheckoutGuard {
 				}
 			}
 		}
-		if (inFlight) {
-			throw new PaymentInProgressException("Hay un pago en línea en curso para esta ficha. "
-					+ "Espera a que el banco lo confirme o lo libere para cambiar la carrera.");
-		}
+		return inFlight;
 	}
 
 	private static boolean authorizedNotCaptured(EvoPaymentsGatewayPort.EvoOrderStatus answer) {
