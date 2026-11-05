@@ -66,6 +66,8 @@ class RegisterCandidateUseCaseImplTest {
 	 */
 	private static final UUID CLOSED_CONFIG_ID = UUID.randomUUID();
 	private static final UUID PROGRAM_ID = UUID.randomUUID();
+	private static final UUID PERIOD_ID = UUID.randomUUID();
+	private static final UUID GENERATION_ID = UUID.randomUUID();
 	private static final UUID CHANNEL_ID = UUID.randomUUID();
 	private static final UUID SCHOOL_TYPE_ID = UUID.randomUUID();
 	private static final BigDecimal CONCEPT_COST = new BigDecimal("1578.00");
@@ -164,7 +166,7 @@ class RegisterCandidateUseCaseImplTest {
 	 */
 	private static AdmissionConfigInfo configIn(UUID configId, Instant opensAt, Instant closesAt, int maxCandidates) {
 		return new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
-				"Ingeniería en Sistemas", null, null, null, opensAt, closesAt, maxCandidates);
+				"Ingeniería en Sistemas", null, null, null, opensAt, closesAt, maxCandidates, PERIOD_ID, GENERATION_ID);
 	}
 
 	/**
@@ -261,6 +263,9 @@ class RegisterCandidateUseCaseImplTest {
 		verify(fichaPaymentPort).raiseFichaDebt(raised.capture());
 		assertThat(raised.getValue().conceptCode()).isEqualTo("FICHA-ING");
 		assertThat(raised.getValue().programId()).isEqualTo(PROGRAM_ID);
+		// F5: the charge carries the process' period and generation (R1).
+		assertThat(raised.getValue().periodId()).isEqualTo(PERIOD_ID);
+		assertThat(raised.getValue().generationId()).isEqualTo(GENERATION_ID);
 		assertThat(raised.getValue().referenceNumber()).isEqualTo(result.payment().referenceNumber());
 		assertThat(raised.getValue().dueAt().atZone(ZONE).toLocalDate())
 				.isEqualTo(result.payment().registrationDeadline());

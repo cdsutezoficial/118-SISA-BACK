@@ -104,7 +104,13 @@ public interface FichaPaymentPort {
 	FichaQuote quoteForProgram(UUID financePaymentId, String conceptCode, UUID programId);
 
 	/** Sin pagar: el mismo cargo pasa a la carrera nueva y conserva su descuento. */
-	void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId);
+	default void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId) {
+		reassignProgram(financePaymentId, conceptCode, programId, null, null);
+	}
+
+	/** F5: también con el periodo y la generación de la carrera nueva ({@code null} conserva el actual). */
+	void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId, UUID periodId,
+			UUID generationId);
 
 	/** Pagada: los números de {@link #rebill} sin escribir nada. */
 	ProgramChangeAmounts previewRebill(UUID fromPaymentId, String conceptCode, UUID programId);
@@ -126,7 +132,12 @@ public interface FichaPaymentPort {
 	 * @param actingUserId  quién hizo el cambio
 	 */
 	record RebillFichaCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt,
-			String reference, UUID actingUserId) {
+			String reference, UUID actingUserId, UUID periodId, UUID generationId) {
+
+		public RebillFichaCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt,
+				String reference, UUID actingUserId) {
+			this(fromPaymentId, conceptCode, programId, dueAt, reference, actingUserId, null, null);
+		}
 	}
 
 	/**
@@ -174,8 +185,12 @@ public interface FichaPaymentPort {
 	 * @param referenceNumber the reference the applicant pays with
 	 */
 	record RaiseFichaDebtCommand(UUID candidateId, String conceptCode, UUID programId, Instant dueAt,
-			String referenceNumber) {
+			String referenceNumber, UUID periodId, UUID generationId) {
 
+		public RaiseFichaDebtCommand(UUID candidateId, String conceptCode, UUID programId, Instant dueAt,
+				String referenceNumber) {
+			this(candidateId, conceptCode, programId, dueAt, referenceNumber, null, null);
+		}
 	}
 
 	/**

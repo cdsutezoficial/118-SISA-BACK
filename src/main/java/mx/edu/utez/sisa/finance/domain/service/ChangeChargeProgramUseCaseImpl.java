@@ -109,7 +109,7 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 
 	@Override
 	@Transactional
-	public void reassign(UUID paymentId, String conceptCode, UUID programId) {
+	public void reassign(UUID paymentId, String conceptCode, UUID programId, UUID periodId, UUID generationId) {
 		Payment payment = paymentRepository.findByIdForUpdate(paymentId)
 				.orElseThrow(() -> new PaymentNotFoundException("Payment not found: " + paymentId));
 		requireRepriceable(payment);
@@ -123,7 +123,7 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 				paymentBenefitRepository.save(benefit);
 			}
 		}
-		payment.reassignProgram(concept.code(), programId);
+		payment.reassignProgram(concept.code(), programId, periodId, generationId);
 		paymentRepository.save(payment);
 	}
 
@@ -185,8 +185,10 @@ public class ChangeChargeProgramUseCaseImpl implements ChangeChargeProgramUseCas
 						from.getId(), null, alreadyPaid, now))
 				: null;
 
-		Payment charge = new Payment(from.getCandidateId(), from.getStudentId(), concept.code(), from.getPeriodId(),
-				from.getGenerationId(), command.programId(), null, null, null, PaymentStatus.PENDING,
+		// F5: the new career's period and generation, when the caller knows them.
+		Payment charge = new Payment(from.getCandidateId(), from.getStudentId(), concept.code(),
+				command.periodId() != null ? command.periodId() : from.getPeriodId(),
+				command.generationId() != null ? command.generationId() : from.getGenerationId(), command.programId(), null, null, null, PaymentStatus.PENDING,
 				from.getOrigin(), command.dueAt(), now);
 		charge.assignReference(command.reference());
 		// The new tariff with the person's discount re-quoted on it (D6). Fixed

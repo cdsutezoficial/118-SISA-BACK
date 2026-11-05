@@ -30,7 +30,12 @@ public interface ChangeChargeProgramUseCase {
 	/** The charge priced as if it already belonged to the new program. */
 	DebtQuote previewReassign(UUID paymentId, String conceptCode, UUID programId);
 
-	void reassign(UUID paymentId, String conceptCode, UUID programId);
+	default void reassign(UUID paymentId, String conceptCode, UUID programId) {
+		reassign(paymentId, conceptCode, programId, null, null);
+	}
+
+	/** F5: with the new career's period and generation; {@code null} keeps the current one. */
+	void reassign(UUID paymentId, String conceptCode, UUID programId, UUID periodId, UUID generationId);
 
 	RebillOutcome previewRebill(UUID fromPaymentId, String conceptCode, UUID programId);
 
@@ -45,7 +50,13 @@ public interface ChangeChargeProgramUseCase {
 	 * @param actingUserId  who made the change
 	 */
 	record RebillCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt, String reference,
-			UUID actingUserId) {
+			UUID actingUserId, UUID periodId, UUID generationId) {
+
+		/** Keeps the period and generation of the charge being left. */
+		public RebillCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt, String reference,
+				UUID actingUserId) {
+			this(fromPaymentId, conceptCode, programId, dueAt, reference, actingUserId, null, null);
+		}
 	}
 
 	/**

@@ -86,7 +86,8 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	@Override
 	public UUID raiseFichaDebt(RaiseFichaDebtCommand command) {
 		return raiseDebtUseCase.raise(new RaiseDebtUseCase.RaiseDebtCommand(command.candidateId(), null,
-				command.conceptCode(), command.programId(), null, null, PaymentOrigin.ADMISSION,
+				command.conceptCode(), command.programId(), command.periodId(), command.generationId(),
+				PaymentOrigin.ADMISSION,
 				command.dueAt(), command.referenceNumber()));
 	}
 
@@ -166,9 +167,10 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	}
 
 	@Override
-	public void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId) {
+	public void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId, UUID periodId,
+			UUID generationId) {
 		priced(() -> {
-			changeChargeProgramUseCase.reassign(financePaymentId, conceptCode, programId);
+			changeChargeProgramUseCase.reassign(financePaymentId, conceptCode, programId, periodId, generationId);
 			return null;
 		});
 	}
@@ -183,7 +185,7 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	public ProgramChangeAmounts rebill(RebillFichaCommand command) {
 		return priced(() -> toAmounts(changeChargeProgramUseCase.rebill(new ChangeChargeProgramUseCase.RebillCommand(
 				command.fromPaymentId(), command.conceptCode(), command.programId(), command.dueAt(),
-				command.reference(), command.actingUserId()))));
+				command.reference(), command.actingUserId(), command.periodId(), command.generationId()))));
 	}
 
 	@Override

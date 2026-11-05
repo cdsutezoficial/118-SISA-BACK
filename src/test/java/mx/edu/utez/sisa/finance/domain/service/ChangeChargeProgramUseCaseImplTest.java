@@ -186,6 +186,35 @@ class ChangeChargeProgramUseCaseImplTest {
 	}
 
 	@Test
+	void reassignMovesTheChargeToTheNewCareersPeriodAndGeneration() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1650.00");
+		Payment ficha = header();
+		UUID period = UUID.randomUUID();
+		UUID generation = UUID.randomUUID();
+
+		useCase.reassign(ficha.getId(), "FICHA_LIC", NEW_PROGRAM, period, generation);
+
+		assertThat(ficha.getPeriodId()).isEqualTo(period);
+		assertThat(ficha.getGenerationId()).isEqualTo(generation);
+	}
+
+	@Test
+	void rebillPutsTheNewChargeInTheNewCareersPeriodAndGeneration() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1750.00");
+		Payment ficha = paid("1420.00", "1420.00");
+		UUID period = UUID.randomUUID();
+		UUID generation = UUID.randomUUID();
+		RebillCommand base = command(ficha.getId());
+
+		RebillOutcome outcome = useCase.rebill(new RebillCommand(base.fromPaymentId(), base.conceptCode(),
+				base.programId(), base.dueAt(), base.reference(), base.actingUserId(), period, generation));
+
+		Payment charge = payments.get(outcome.paymentId());
+		assertThat(charge.getPeriodId()).isEqualTo(period);
+		assertThat(charge.getGenerationId()).isEqualTo(generation);
+	}
+
+	@Test
 	void aPaidChargeCannotBeReassigned() {
 		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1650.00");
 		Payment ficha = paid("1420.00", "1420.00");

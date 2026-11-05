@@ -297,12 +297,26 @@ public class Payment {
 	 * @throws IllegalStateException if the charge is no longer repriceable
 	 */
 	public void reassignProgram(String conceptCode, UUID programId) {
+		reassignProgram(conceptCode, programId, null, null);
+	}
+
+	/**
+	 * F5: also moves the charge to the new career's period and generation (R1). A
+	 * {@code null} keeps the current value.
+	 */
+	public void reassignProgram(String conceptCode, UUID programId, UUID periodId, UUID generationId) {
 		if (!isRepriceable()) {
 			throw new IllegalStateException(
 					"El adeudo " + id + " ya no se puede reasignar (estado " + status + ").");
 		}
 		this.conceptCode = conceptCode;
 		this.programId = programId;
+		if (periodId != null) {
+			this.periodId = periodId;
+		}
+		if (generationId != null) {
+			this.generationId = generationId;
+		}
 		this.originalAmount = null;
 		this.amountDue = null;
 		this.benefitId = null;

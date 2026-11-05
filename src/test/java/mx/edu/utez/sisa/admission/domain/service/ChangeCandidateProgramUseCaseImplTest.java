@@ -60,6 +60,11 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private static final UUID OLD_CONFIG = UUID.randomUUID();
 	private static final UUID NEW_CONFIG = UUID.randomUUID();
 	private static final UUID NEW_PROGRAM = UUID.randomUUID();
+
+	/** F5: the new career's period and generation travel to its charge. */
+	private static final UUID NEW_PERIOD = UUID.randomUUID();
+
+	private static final UUID NEW_GENERATION = UUID.randomUUID();
 	private static final UUID FICHA_PAYMENT = UUID.randomUUID();
 	private static final UUID NEW_PAYMENT = UUID.randomUUID();
 	private static final UUID ACTOR = UUID.randomUUID();
@@ -120,7 +125,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR);
 
-		verify(fichaPaymentPort).reassignProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM);
+		verify(fichaPaymentPort).reassignProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM, NEW_PERIOD, NEW_GENERATION);
 		verify(fichaPaymentPort, never()).rebill(any());
 		verifyNoInteractions(admissionQuotaPort);
 		assertThat(candidate.getAdmissionConfigId()).isEqualTo(NEW_CONFIG);
@@ -140,7 +145,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
 				.isInstanceOf(CandidateProgramChangeNotAllowedException.class)
 				.hasMessageContaining("saldo a favor");
-		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any());
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -159,6 +164,8 @@ class ChangeCandidateProgramUseCaseImplTest {
 		verify(fichaPaymentPort).rebill(command.capture());
 		assertThat(command.getValue().fromPaymentId()).isEqualTo(FICHA_PAYMENT);
 		assertThat(command.getValue().reference()).isEqualTo("REF-ADM-2026-000001-C1");
+		assertThat(command.getValue().periodId()).isEqualTo(NEW_PERIOD);
+		assertThat(command.getValue().generationId()).isEqualTo(NEW_GENERATION);
 		// Mismo plazo de la ficha (10 días) contado desde el cambio.
 		assertThat(command.getValue().dueAt().atZone(CLOCK.getZone()).toLocalDate())
 				.isEqualTo(LocalDate.of(2026, 11, 7));
@@ -250,7 +257,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
 				.isInstanceOf(CandidateProgramChangeNotAllowedException.class);
-		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any());
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
 		assertThat(useCase.blockedReason(CANDIDATE_ID)).hasValueSatisfying(r -> assertThat(r).contains("en curso"));
 	}
 
@@ -358,6 +365,6 @@ class ChangeCandidateProgramUseCaseImplTest {
 			int max) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN,
 				programId, name, null, null, null, Instant.parse("2026-09-01T00:00:00Z"),
-				Instant.parse("2026-12-15T05:00:00Z"), max);
+				Instant.parse("2026-12-15T05:00:00Z"), max, NEW_PERIOD, NEW_GENERATION);
 	}
 }

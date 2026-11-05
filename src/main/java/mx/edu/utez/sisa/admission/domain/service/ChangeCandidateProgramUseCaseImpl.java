@@ -146,7 +146,8 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 
 		if (!charge.isPaid()) {
 			BigDecimal previous = currentAmount(charge.financePaymentId());
-			fichaPaymentPort.reassignProgram(charge.financePaymentId(), concept.code(), to.programId());
+			fichaPaymentPort.reassignProgram(charge.financePaymentId(), concept.code(), to.programId(),
+					to.periodId(), to.targetGenerationId());
 			candidate.changeAdmissionConfig(to.id());
 			candidateRepository.save(candidate);
 			BigDecimal newAmount = currentAmount(charge.financePaymentId());
@@ -171,7 +172,8 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 				.toInstant();
 		FichaPaymentPort.ProgramChangeAmounts amounts = fichaPaymentPort.rebill(
 				new FichaPaymentPort.RebillFichaCommand(fromPaymentId, concept.code(), to.programId(), dueAt,
-						charge.referenceNumber() + "-C" + (changes + 1), actingUserId));
+						charge.referenceNumber() + "-C" + (changes + 1), actingUserId, to.periodId(),
+						to.targetGenerationId()));
 		if (amounts.settled()) {
 			candidate.adoptFichaPayment(amounts.financePaymentId());
 		} else {

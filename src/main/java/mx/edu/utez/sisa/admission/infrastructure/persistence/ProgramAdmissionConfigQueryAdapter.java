@@ -68,7 +68,7 @@ public class ProgramAdmissionConfigQueryAdapter implements ProgramAdmissionConfi
 					: periodJpaRepository.findById(config.getPeriodId()).map(p -> p.getName()).orElse(null);
 			return new AdmissionConfigInfo(config.getId(), config.getStatus(), config.getProgramId(), programName,
 					divisionName, modality, periodName, config.getOpensAt(), config.getClosesAt(),
-					config.getMaxCandidates());
+					config.getMaxCandidates(), config.getPeriodId(), config.getTargetGenerationId());
 		});
 	}
 
