@@ -116,6 +116,8 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("BENEFITS_UPDATE", "Actualizar descuentos"),
 			permission("BENEFITS_CANCEL", "Cancelar descuentos"),
 			permission("BENEFITS_REPORT", "Consultar reporte de descuentos"),
+			permission("FINANCE_ALERTS_READ", "Consultar alertas de pago"),
+			permission("FINANCE_ALERTS_RESOLVE", "Marcar alertas de pago como revisadas"),
 			permission("PROGRAM_ADMISSION_CONFIGS_READ", "Consultar configuraciones de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_CREATE", "Crear configuración de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_UPDATE", "Actualizar configuración de admisión por carrera"),
@@ -234,7 +236,8 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 				"PAYMENT_RATES_CREATE", "PAYMENT_AREAS_READ", "PAYMENT_AREAS_CREATE", "PAYMENT_AREAS_UPDATE",
 				"PAYMENT_AREAS_CHANGE_STATUS", "PAYMENTS_READ", "PAYMENTS_QUOTE", "PAYMENTS_CREATE",
 				"PAYMENTS_SETTLE", "BENEFITS_READ", "BENEFITS_CREATE", "BENEFITS_UPDATE", "BENEFITS_CANCEL",
-				"BENEFITS_REPORT", "STATES_READ", "MUNICIPALITIES_READ", "CANDIDATES_READ"));
+				"BENEFITS_REPORT", "FINANCE_ALERTS_READ", "FINANCE_ALERTS_RESOLVE", "STATES_READ",
+				"MUNICIPALITIES_READ", "CANDIDATES_READ"));
 
 		permissionsByRole.put(RoleType.GESTOR_ACADEMICO, orderedSet("STATES_READ", "MUNICIPALITIES_READ"));
 		permissionsByRole.put(RoleType.DIRECTOR_DIVISION, orderedSet("STATES_READ", "MUNICIPALITIES_READ",

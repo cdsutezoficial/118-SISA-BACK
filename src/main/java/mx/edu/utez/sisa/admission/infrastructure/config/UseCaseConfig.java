@@ -54,6 +54,7 @@ import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateEditFormUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.domain.service.SettleCheckoutsBeforeCandidateUpdate;
 import mx.edu.utez.sisa.admission.domain.service.UpdateCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
@@ -319,10 +320,11 @@ public class UseCaseConfig {
 			EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			FinanceAlertPort financeAlertPort) {
 		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
 				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock,
-				checkoutHoldMinutes);
+				checkoutHoldMinutes, financeAlertPort);
 	}
 
 	@Bean
@@ -351,9 +353,11 @@ public class UseCaseConfig {
 			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			FinanceAlertPort financeAlertPort) {
 		return new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
-				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes);
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes,
+				financeAlertPort);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */

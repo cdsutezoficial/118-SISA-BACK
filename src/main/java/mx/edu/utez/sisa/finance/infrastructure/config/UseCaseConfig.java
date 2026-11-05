@@ -58,6 +58,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
+import mx.edu.utez.sisa.finance.domain.port.out.FinanceAlertNotifier;
+import mx.edu.utez.sisa.finance.domain.port.out.FinanceAlertRepository;
+import mx.edu.utez.sisa.finance.domain.service.FinanceAlertService;
 
 /**
  * Composition root wiring {@code finance}'s interactors as Spring beans
@@ -246,6 +249,13 @@ public class UseCaseConfig {
 	@Bean
 	public ListCreditsUseCase listCreditsUseCase(PaymentCreditRepository paymentCreditRepository) {
 		return new ListCreditsUseCaseImpl(paymentCreditRepository);
+	}
+
+	/** Raising and reviewing Finanzas alerts (E4); one bean behind both ports. */
+	@Bean
+	public FinanceAlertService financeAlertService(FinanceAlertRepository financeAlertRepository,
+			FinanceAlertNotifier financeAlertNotifier, Clock clock) {
+		return new FinanceAlertService(financeAlertRepository, financeAlertNotifier, clock);
 	}
 
 	@Bean

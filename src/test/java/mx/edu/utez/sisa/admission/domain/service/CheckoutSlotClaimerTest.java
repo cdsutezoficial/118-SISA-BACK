@@ -91,6 +91,9 @@ class CheckoutSlotClaimerTest {
 	@Mock
 	private CandidateNotificationPort notifications;
 
+	@Mock
+	private mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort;
+
 	private CheckoutSlotClaimer claimer;
 
 	private Candidate candidate;
@@ -98,7 +101,7 @@ class CheckoutSlotClaimerTest {
 	@BeforeEach
 	void setUp() {
 		claimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository, checkoutAttemptRepository,
-				fichaPaymentPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES, notifications);
+				fichaPaymentPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES, notifications, financeAlertPort);
 		candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 		candidate.linkFichaPayment(CHARGE_ID);
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
@@ -174,6 +177,11 @@ class CheckoutSlotClaimerTest {
 		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attempt, CHECKOUT_AMOUNT)).isFalse();
 
 		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, CHECKOUT_AMOUNT);
+		verify(financeAlertPort).raise(org.mockito.ArgumentMatchers.eq(
+				mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.Kind.PAID_WITHOUT_QUOTA),
+				org.mockito.ArgumentMatchers.eq(CANDIDATE_ID), org.mockito.ArgumentMatchers.eq(CHARGE_ID),
+				org.mockito.ArgumentMatchers.eq(ORDER_ID), org.mockito.ArgumentMatchers.eq(CHECKOUT_AMOUNT),
+				any());
 		assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.CAPTURED);
 		verify(checkoutAttemptRepository).save(attempt);
 	}

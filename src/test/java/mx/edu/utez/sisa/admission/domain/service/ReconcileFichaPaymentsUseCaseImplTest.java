@@ -83,13 +83,16 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	@Mock
 	private ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
+	@Mock
+	private mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort;
+
 	private ReconcileFichaPaymentsUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
 				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clockAt(OPENED.plus(
-						Duration.ofMinutes(30))), HOLD_MINUTES);
+						Duration.ofMinutes(30))), HOLD_MINUTES, financeAlertPort);
 	}
 
 	private static final int HOLD_MINUTES = 60;
@@ -102,7 +105,7 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	private void runningAfter(Duration elapsed) {
 		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
 				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase,
-				clockAt(OPENED.plus(elapsed)), HOLD_MINUTES);
+				clockAt(OPENED.plus(elapsed)), HOLD_MINUTES, financeAlertPort);
 	}
 
 	/** What EVO answers for a session nobody finished: no capture, nothing authorized. */
@@ -156,6 +159,21 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		assertThat(result.heldAttempts()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isZero();
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+		verify(financeAlertPort).raise(eq(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.Kind.AUTHORIZED_NOT_CAPTURED),
+				eq(CANDIDATE_ID), eq(CHARGE_ID), eq(ORDER_ID), eq(QUOTED), anyString());
+	}
+
+	/** An authorization younger than three days is waited on without an alert. */
+	@Test
+	void aRecentAuthorizationRaisesNoAlert() {
+		runningAfter(Duration.ofDays(1));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(authorizedOnly());
+
+		useCase.reconcile();
+
+		verify(financeAlertPort, never()).raise(any(), any(), any(), any(), any(), any());
 	}
 
 	/** An abandoned sibling must not free the place while another attempt is authorized. */

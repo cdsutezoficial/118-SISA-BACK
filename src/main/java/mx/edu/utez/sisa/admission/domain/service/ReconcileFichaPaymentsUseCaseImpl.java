@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
@@ -94,6 +95,8 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 
 	private final Clock clock;
 
+	private final FinanceAlertPort financeAlertPort;
+
 	/**
 	 * D10: an attempt the bank has nothing for (no capture, no authorization) and older
 	 * than this is an abandoned session. Same value as the checkout hold, so the place
@@ -105,7 +108,8 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
-			int abandonAfterMinutes) {
+			int abandonAfterMinutes, FinanceAlertPort financeAlertPort) {
+		this.financeAlertPort = financeAlertPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -369,6 +373,10 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 				answer.totalCapturedAmount())) {
 			log.warn("Excedente de la ficha {}: la orden {} capturó {} sin liquidar nada; queda como saldo a favor",
 					candidateId, attempt.getOrderId(), answer.totalCapturedAmount());
+			financeAlertPort.raise(FinanceAlertPort.Kind.OVERPAYMENT, candidateId, attempt.getPaymentId(),
+					attempt.getOrderId(), answer.totalCapturedAmount(),
+					"El banco cobró un pago que no liquidó ningún cargo (segundo cobro o cargo cancelado). "
+							+ "Quedó como saldo a favor de la persona.");
 		}
 	}
 
@@ -404,6 +412,10 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 			log.error("ALERTA FINANZAS: la orden {} de la ficha {} tiene {} autorizado sin cobrar desde {}. "
 					+ "Revisar a mano con el banco.", attempt.getOrderId(), candidateId,
 					answer.totalAuthorizedAmount(), attempt.getCreatedAt());
+			financeAlertPort.raise(FinanceAlertPort.Kind.AUTHORIZED_NOT_CAPTURED, candidateId, attempt.getPaymentId(),
+					attempt.getOrderId(), answer.totalAuthorizedAmount(),
+					"El banco autorizó el monto y no lo ha cobrado desde " + attempt.getCreatedAt()
+							+ ". Revisar con el banco si se cobra o se libera.");
 		}
 	}
 

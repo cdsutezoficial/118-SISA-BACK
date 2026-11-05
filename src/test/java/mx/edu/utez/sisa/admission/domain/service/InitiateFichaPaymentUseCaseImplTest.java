@@ -775,7 +775,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer(OrderIdBuilder orderIdBuilder) {
 		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository,
 				checkoutAttemptRepository, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), 15,
-				org.mockito.Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort.class));
+				org.mockito.Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort.class),
+				org.mockito.Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.class));
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer,

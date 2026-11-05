@@ -159,6 +159,9 @@ public final class PermissionRegistry {
 			e("POST", "/finance/benefits", "BENEFITS_CREATE"),
 			e("PUT", "/finance/benefits/**", "BENEFITS_UPDATE"),
 			e("PATCH", "/finance/benefits/*/cancel", "BENEFITS_CANCEL"),
+			// finance — alertas de pago para revisión manual (E4).
+			e("GET", "/finance/alerts", "FINANCE_ALERTS_READ"),
+			e("PATCH", "/finance/alerts/*/resolve", "FINANCE_ALERTS_RESOLVE"),
 			e("GET", "/finance/credits", "PAYMENTS_READ"),
 			e("GET", "/finance/credits/overpayments", "PAYMENTS_READ"),
 			e("GET", "/finance/discounts/report", "BENEFITS_REPORT"),

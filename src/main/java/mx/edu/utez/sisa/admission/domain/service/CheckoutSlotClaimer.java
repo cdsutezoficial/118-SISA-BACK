@@ -13,6 +13,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
@@ -50,6 +51,7 @@ public class CheckoutSlotClaimer {
 	private final FichaPaymentPort fichaPaymentPort;
 	private final Clock clock;
 	private final CandidateNotificationPort notifications;
+	private final FinanceAlertPort financeAlertPort;
 
 	/** Minutes an open checkout attempt holds a quota place. */
 	private final int checkoutHoldMinutes;
@@ -57,8 +59,9 @@ public class CheckoutSlotClaimer {
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
 			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort, Clock clock,
 			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
-			CandidateNotificationPort notifications) {
+			CandidateNotificationPort notifications, FinanceAlertPort financeAlertPort) {
 		this.notifications = notifications;
+		this.financeAlertPort = financeAlertPort;
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -323,6 +326,9 @@ public class CheckoutSlotClaimer {
 			return true;
 		}
 		fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(), captured);
+		financeAlertPort.raise(FinanceAlertPort.Kind.PAID_WITHOUT_QUOTA, candidateId, attempt.getPaymentId(),
+				attempt.getOrderId(), captured, "El banco cobró después de que venció el apartado del lugar y la "
+						+ "carrera ya estaba llena. El monto quedó como saldo a favor; revisar con la persona.");
 		checkoutAttemptRepository.findByOrderId(attempt.getOrderId()).ifPresent(row -> {
 			if (row.isOpen()) {
 				row.close(CheckoutAttemptCloseReason.CAPTURED, Instant.now(clock));
