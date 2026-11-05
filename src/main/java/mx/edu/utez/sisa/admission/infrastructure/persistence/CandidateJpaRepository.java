@@ -42,12 +42,23 @@ public interface CandidateJpaRepository extends JpaRepository<Candidate, UUID> {
 	 */
 	List<Candidate> findAllByStatus(CandidateStatus status);
 
-	/**
-	 * Derived query backing the CURP re-registration lock: registration reads a
-	 * person's fichas and blocks only when one of them is still alive (a
-	 * {@code PAID} ficha, or a {@code REGISTERED} one inside its payment window).
-	 */
-	List<Candidate> findAllByPersonId(UUID personId);
+	@Query("""
+			SELECT c FROM Candidate c
+			WHERE c.curp = :curp
+			  AND EXISTS (
+			      SELECT cfg.id FROM ProgramAdmissionConfig cfg
+			      WHERE cfg.id = c.admissionConfigId AND cfg.periodId = :periodId)
+			""")
+	List<Candidate> findAllByCurpAndPeriodId(@Param("curp") String curp, @Param("periodId") UUID periodId);
+
+	@Query("""
+			SELECT COUNT(c) > 0 FROM Candidate c
+			WHERE c.curp = :curp
+			  AND c.validPeriodId = :periodId
+			  AND (:excludedCandidateId IS NULL OR c.id <> :excludedCandidateId)
+			""")
+	boolean existsAnotherValidInPeriod(@Param("curp") String curp, @Param("periodId") UUID periodId,
+			@Param("excludedCandidateId") UUID excludedCandidateId);
 
 	/**
 	 * Paginated candidate search backing {@code ListCandidatesUseCase}. Every
@@ -86,13 +97,10 @@ public interface CandidateJpaRepository extends JpaRepository<Candidate, UUID> {
 			        AND p.id = (SELECT cfg.programId FROM ProgramAdmissionConfig cfg
 			                    WHERE cfg.id = c.admissionConfigId)))
 			  AND (:search IS NULL OR LOWER(c.folio) LIKE LOWER(CONCAT('%', :search, '%'))
-			       OR EXISTS (
-			           SELECT pe.id FROM Person pe
-			           WHERE pe.id = c.personId
-			             AND (LOWER(pe.curp) LIKE LOWER(CONCAT('%', :search, '%'))
-			               OR LOWER(pe.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
-			               OR LOWER(pe.lastName1) LIKE LOWER(CONCAT('%', :search, '%'))
-			               OR LOWER(pe.lastName2) LIKE LOWER(CONCAT('%', :search, '%')))))
+			       OR LOWER(c.curp) LIKE LOWER(CONCAT('%', :search, '%'))
+			       OR LOWER(c.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+			       OR LOWER(c.lastName1) LIKE LOWER(CONCAT('%', :search, '%'))
+			       OR LOWER(c.lastName2) LIKE LOWER(CONCAT('%', :search, '%')))
 			""")
 	Page<Candidate> search(@Param("status") CandidateStatus status, @Param("programId") UUID programId,
 			@Param("periodId") UUID periodId, @Param("divisionId") UUID divisionId, @Param("search") String search,

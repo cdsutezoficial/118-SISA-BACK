@@ -51,8 +51,13 @@ public class CandidateRepositoryAdapter implements CandidateRepository {
 	}
 
 	@Override
-	public List<Candidate> findAllByPersonId(UUID personId) {
-		return jpaRepository.findAllByPersonId(personId);
+	public List<Candidate> findAllByCurpAndPeriodId(String curp, UUID periodId) {
+		return jpaRepository.findAllByCurpAndPeriodId(curp, periodId);
+	}
+
+	@Override
+	public boolean existsAnotherValidInPeriod(String curp, UUID periodId, UUID excludedCandidateId) {
+		return jpaRepository.existsAnotherValidInPeriod(curp, periodId, excludedCandidateId);
 	}
 
 	@Override
