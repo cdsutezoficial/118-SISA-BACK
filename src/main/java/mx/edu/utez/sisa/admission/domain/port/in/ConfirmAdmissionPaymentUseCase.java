@@ -39,8 +39,15 @@ public interface ConfirmAdmissionPaymentUseCase {
 	 * @throws mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException if
 	 *         the amount changed
 	 */
-	ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, UUID collectorId,
-			String collectorName);
+	/**
+	 * Cash at the cashier's window. With {@code useCredit} the person's saldo a
+	 * favor is used first and only the rest is cash; when the saldo covers it all
+	 * no cash is taken.
+	 *
+	 * @param expectedAmount the cash part the cashier saw (zero when the saldo covers it)
+	 */
+	ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, boolean useCredit,
+			UUID collectorId, String collectorName);
 
 	/**
 	 * What was paid, divided by charge (E6).

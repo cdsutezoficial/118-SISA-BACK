@@ -17,8 +17,13 @@ public interface CollectCashPaymentUseCase {
 
 	CashPaymentPreview preview(UUID candidateId);
 
+	/**
+	 * @param expectedAmount the cash the cashier is about to receive: what is left
+	 *                       once the saldo a favor is used, zero when it covers it all
+	 * @param useCredit      use the person's saldo a favor first
+	 */
 	ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult collect(UUID candidateId, BigDecimal expectedAmount,
-			UUID collectorId);
+			boolean useCredit, UUID collectorId);
 
 	/**
 	 * @param programChange the money is the difference a career change left, not the ficha
@@ -29,6 +34,13 @@ public interface CollectCashPaymentUseCase {
 	 * @param dueAt         the last day it can be paid, when it has one
 	 */
 	record CashPaymentPreview(UUID candidateId, String folio, String referenceNumber, boolean programChange,
-			BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt) {
+			BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt, BigDecimal availableCredit) {
+
+		/** Without the saldo a favor. */
+		public CashPaymentPreview(UUID candidateId, String folio, String referenceNumber, boolean programChange,
+				BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt) {
+			this(candidateId, folio, referenceNumber, programChange, total, alreadyPaid, toCollect, dueAt,
+					BigDecimal.ZERO);
+		}
 	}
 }

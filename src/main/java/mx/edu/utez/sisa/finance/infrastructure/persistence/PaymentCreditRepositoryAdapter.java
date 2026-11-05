@@ -1,5 +1,8 @@
 package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import mx.edu.utez.sisa.finance.domain.model.CreditStatus;
 import mx.edu.utez.sisa.finance.domain.model.PaymentCredit;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
@@ -17,6 +20,9 @@ import java.util.UUID;
 public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 
 	private final PaymentCreditJpaRepository jpaRepository;
+
+	@PersistenceContext
+	private EntityManager entityManager;
 
 	private final FinanceCandidateJpaRepository candidateJpaRepository;
 
@@ -36,9 +42,13 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findById(id);
 	}
 
+	/** Same as {@code PaymentRepositoryAdapter#findByIdForUpdate}: re-read under the lock. */
 	@Override
 	public Optional<PaymentCredit> findByIdForUpdate(UUID id) {
-		return jpaRepository.findByIdForUpdate(id);
+		return jpaRepository.findByIdForUpdate(id).map(credit -> {
+			entityManager.refresh(credit, LockModeType.PESSIMISTIC_WRITE);
+			return credit;
+		});
 	}
 
 	/**

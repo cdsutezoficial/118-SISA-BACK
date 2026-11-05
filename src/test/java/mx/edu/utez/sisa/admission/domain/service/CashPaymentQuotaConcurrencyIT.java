@@ -142,7 +142,7 @@ class CashPaymentQuotaConcurrencyIT {
 					ready.countDown();
 					go.await(10, TimeUnit.SECONDS);
 					try {
-						confirmAdmissionPaymentUseCase.confirmCash(candidateId, AMOUNT, UUID.randomUUID(), "Caja");
+						confirmAdmissionPaymentUseCase.confirmCash(candidateId, AMOUNT, false, UUID.randomUUID(), "Caja");
 						return null;
 					} catch (RuntimeException e) {
 						return e;

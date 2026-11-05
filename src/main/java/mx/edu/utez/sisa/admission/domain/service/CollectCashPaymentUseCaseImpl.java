@@ -77,14 +77,19 @@ public class CollectCashPaymentUseCaseImpl implements CollectCashPaymentUseCase 
 
 	@Override
 	public CashPaymentPreview preview(UUID candidateId) {
-		return due(settledCandidate(candidateId));
+		CashPaymentPreview due = due(settledCandidate(candidateId));
+		// The saldo a favor the cashier can use first; it is applied, if chosen, when collecting.
+		BigDecimal credit = fichaPaymentPort.availableCredit(candidateId);
+		return new CashPaymentPreview(due.candidateId(), due.folio(), due.referenceNumber(), due.programChange(),
+				due.total(), due.alreadyPaid(), due.toCollect(), due.dueAt(),
+				credit == null ? BigDecimal.ZERO : credit.max(BigDecimal.ZERO));
 	}
 
 	@Override
 	public ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult collect(UUID candidateId, BigDecimal expectedAmount,
-			UUID collectorId) {
+			boolean useCredit, UUID collectorId) {
 		due(settledCandidate(candidateId));
-		return confirmAdmissionPaymentUseCase.confirmCash(candidateId, expectedAmount, collectorId,
+		return confirmAdmissionPaymentUseCase.confirmCash(candidateId, expectedAmount, useCredit, collectorId,
 				staffDirectory.displayName(collectorId));
 	}
 

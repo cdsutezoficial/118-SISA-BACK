@@ -38,6 +38,11 @@ Rama: `fix/correcciones-pagos-ficha`. Plan: `118-SISA-CLAUDE/docs/design/pendien
 - **E5:** el cambio de carrera consulta al banco por intentos abiertos antes de mover el cargo.
 - **E6/F3:** comprobante dividido por cargo; correos después del commit desde todos los caminos de pago.
 
+- **E1, dos pagos casi simultáneos:** la confirmación bloquea el cargo (`SELECT … FOR UPDATE` con
+  `refresh`, en `READ_COMMITTED`) y vuelve a leerlo. Si otra orden ya lo pagó, la captura queda como
+  saldo a favor + alerta `OVERPAYMENT` y responde 409 `ADMISSION_PAID_TWICE`, en vez de un segundo abono.
+  IT `PaymentLockReadsCurrentRowIT`.
+
 ### Saldo a favor (F9)
 - `payment_credit.person_id`: el saldo es de la persona y lo ve cualquier ficha suya.
 - La persona elige usarlo al pagar la ficha o la diferencia; retención del checkout de 60 minutos.
@@ -46,6 +51,10 @@ Rama: `fix/correcciones-pagos-ficha`. Plan: `118-SISA-CLAUDE/docs/design/pendien
 - Rol `CAJA` (cuenta `caja@utez.edu.mx`) y permiso `PAYMENT_WINDOW_CONFIRM`.
 - `GET/POST /candidates/{id}/cash-payment`: vista previa y cobro en efectivo con candado de cupo y
   monto esperado (409 `ADMISSION_CASH_AMOUNT_CHANGED`).
+- **Caja usa el saldo a favor:** la vista previa trae `availableCredit`; el `POST` acepta
+  `useCredit`. Se aplica primero el saldo (abono `CREDIT` por caja, a nombre de quien cobra) y en
+  efectivo solo lo que falta; `expectedAmount` es esa parte (0 si el saldo cubre todo, recibo `SAF-`).
+  Todo en la misma transacción.
 - `PermissionRegistryCoverageTest`: toda ruta de personal necesita permiso fino o excepción documentada.
 
 ### Trazabilidad (F4, F5, F6)
@@ -57,7 +66,7 @@ Rama: `fix/correcciones-pagos-ficha`. Plan: `118-SISA-CLAUDE/docs/design/pendien
   tarifa y el PDF muestra la diferencia pendiente.
 
 ### Pruebas
-- 2191 unitarias. ITs nuevas sobre `sisa_it`: `AuditEntryRepositoryAdapterIT`, `CashPaymentQuotaConcurrencyIT`.
+- 2205 unitarias. ITs nuevas sobre `sisa_it`: `AuditEntryRepositoryAdapterIT`, `CashPaymentQuotaConcurrencyIT`.
 
 ---
 

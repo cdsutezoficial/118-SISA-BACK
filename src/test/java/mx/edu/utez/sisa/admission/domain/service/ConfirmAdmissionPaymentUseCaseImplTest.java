@@ -121,7 +121,7 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		when(admissionQuotaPort.countOccupiedExcluding(eq(candidate.getAdmissionConfigId()), eq(candidateId), any()))
 				.thenReturn(9L);
 
-		var result = useCase.confirmCash(candidateId, AMOUNT, cashier, "Ana Caja");
+		var result = useCase.confirmCash(candidateId, AMOUNT, false, cashier, "Ana Caja");
 
 		assertThat(result.candidateStatus()).isEqualTo(CandidateStatus.PAID);
 		assertThat(result.receiptNumber()).startsWith("REC-");
@@ -144,7 +144,7 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		when(admissionQuotaPort.countOccupiedExcluding(eq(candidate.getAdmissionConfigId()), eq(candidateId), any()))
 				.thenReturn(10L);
 
-		assertThatThrownBy(() -> useCase.confirmCash(candidateId, AMOUNT, UUID.randomUUID(), "Caja"))
+		assertThatThrownBy(() -> useCase.confirmCash(candidateId, AMOUNT, false, UUID.randomUUID(), "Caja"))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
 		verify(fichaPaymentPort, never()).settle(any());
 		verify(candidateRepository, never()).save(any());
@@ -156,7 +156,7 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
 				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
 
-		assertThatThrownBy(() -> useCase.confirmCash(candidateId, new BigDecimal("450.00"), UUID.randomUUID(), "Caja"))
+		assertThatThrownBy(() -> useCase.confirmCash(candidateId, new BigDecimal("450.00"), false, UUID.randomUUID(), "Caja"))
 				.isInstanceOf(CashAmountChangedException.class);
 		verify(notifications, never()).paymentConfirmed(any());
 	}
@@ -171,10 +171,85 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 		when(fichaPaymentPort.settle(any())).thenReturn(new FichaPaymentPort.SettledFicha(AMOUNT,
 				BigDecimal.ZERO.setScale(2), AMOUNT, AMOUNT, null, false));
 
-		var result = useCase.confirmCash(candidateId, AMOUNT, UUID.randomUUID(), "Caja");
+		var result = useCase.confirmCash(candidateId, AMOUNT, false, UUID.randomUUID(), "Caja");
 
 		assertThat(result.programChange()).isTrue();
 		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
+	// ── Caja con saldo a favor ────────────────────────────────────────────────
+
+	@Test
+	void confirmCash_withSaldo_usesItFirstAndTakesOnlyTheRestInCash() {
+		stubHappyPath();
+		UUID cashier = UUID.randomUUID();
+		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
+		when(fichaPaymentPort.availableCredit(candidateId)).thenReturn(new BigDecimal("200.00"));
+		when(fichaPaymentPort.applyCreditAtCashier(eq(CHARGE_ID), any(), eq(cashier)))
+				.thenReturn(new FichaPaymentPort.CreditUse(new BigDecimal("200.00"), AMOUNT, new BigDecimal("200.00"),
+						false));
+		// After the saldo, the charge has 200 of its 500.
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)),
+				Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));
+
+		var result = useCase.confirmCash(candidateId, new BigDecimal("300.00"), true, cashier, "Ana Caja");
+
+		assertThat(result.amount()).isEqualByComparingTo("300.00");
+		assertThat(result.previouslyPaid()).isEqualByComparingTo("200.00");
+		assertThat(result.candidateStatus()).isEqualTo(CandidateStatus.PAID);
+		verify(fichaPaymentPort).settle(any());
+		verify(notifications).paymentConfirmed(result);
+	}
+
+	@Test
+	void confirmCash_whenTheSaldoCoversIt_takesNoCash() {
+		UUID difference = UUID.randomUUID();
+		ReflectionTestUtils.setField(candidate, "programChangePaymentId", difference);
+		UUID cashier = UUID.randomUUID();
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(difference)).thenReturn(Optional.of(FichaTestData.pendingCharge(difference)));
+		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(fichaPaymentPort.availableCredit(candidateId)).thenReturn(new BigDecimal("600.00"));
+		when(fichaPaymentPort.applyCreditAtCashier(eq(difference), any(), eq(cashier)))
+				.thenReturn(new FichaPaymentPort.CreditUse(new BigDecimal("475.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1750.00"), true));
+
+		var result = useCase.confirmCash(candidateId, BigDecimal.ZERO, true, cashier, "Ana Caja");
+
+		assertThat(result.amount()).isEqualByComparingTo("475.00");
+		assertThat(result.receiptNumber()).startsWith("SAF-").endsWith("-C");
+		assertThat(result.programChange()).isTrue();
+		assertThat(candidate.getFichaPaymentId()).isEqualTo(difference);
+		verify(fichaPaymentPort, never()).settle(any());
+		verify(notifications).paymentConfirmed(result);
+	}
+
+	@Test
+	void confirmCash_whenTheSaldoCoversItButTheCashierExpectedCash_refuses() {
+		UUID difference = UUID.randomUUID();
+		ReflectionTestUtils.setField(candidate, "programChangePaymentId", difference);
+		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(difference)).thenReturn(Optional.of(FichaTestData.pendingCharge(difference)));
+		when(fichaPaymentPort.availableCredit(candidateId)).thenReturn(new BigDecimal("600.00"));
+		when(fichaPaymentPort.applyCreditAtCashier(eq(difference), any(), any()))
+				.thenReturn(new FichaPaymentPort.CreditUse(new BigDecimal("475.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1750.00"), true));
+
+		assertThatThrownBy(() -> useCase.confirmCash(candidateId, new BigDecimal("475.00"), true, UUID.randomUUID(),
+				"Caja")).isInstanceOf(CashAmountChangedException.class);
+		verify(notifications, never()).paymentConfirmed(any());
+	}
+
+	@Test
+	void confirmCash_withoutChoosingSaldo_doesNotTouchIt() {
+		stubHappyPath();
+		when(admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId()))
+				.thenReturn(new AdmissionQuotaPort.QuotaState(10));
+
+		useCase.confirmCash(candidateId, AMOUNT, false, UUID.randomUUID(), "Caja");
+
+		verify(fichaPaymentPort, never()).applyCreditAtCashier(any(), any(), any());
 	}
 
 	@Test

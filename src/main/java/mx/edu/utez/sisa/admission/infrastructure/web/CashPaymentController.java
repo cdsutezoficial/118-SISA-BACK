@@ -44,6 +44,6 @@ public class CashPaymentController {
 	public ResponseEntity<PaymentConfirmationResponse> collect(@PathVariable UUID id,
 			@Valid @RequestBody CashPaymentRequest request, Authentication authentication) {
 		return ResponseEntity.ok(PaymentConfirmationResponse.from(collectCashPaymentUseCase.collect(id,
-				request.expectedAmount(), UUID.fromString(authentication.getName()))));
+				request.expectedAmount(), request.usesCredit(), UUID.fromString(authentication.getName()))));
 	}
 }

@@ -115,23 +115,67 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 	 */
 	@Override
 	@Transactional(isolation = Isolation.READ_COMMITTED)
-	public ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, UUID collectorId,
-			String collectorName) {
+	public ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, boolean useCredit,
+			UUID collectorId, String collectorName) {
 		Candidate candidate = requireCandidate(candidateId);
 		FichaPaymentPort.FichaCharge charge = requireOwed(candidate);
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
 		// A difference does not compete for a place: a paid candidate already holds one.
-		if (candidate.getProgramChangePaymentId() == null) {
+		if (!programChange) {
 			requirePlace(candidate);
 			requireNoOtherValidCandidateInPeriod(candidate);
 		}
-		ConfirmPaymentResult result = settle(candidate, charge, null, false, null, collectorId, collectorName);
-		if (expectedAmount == null || result.amount().compareTo(expectedAmount) != 0) {
-			// Rolls the whole booking back: the cashier collects what the ficha owes now.
-			throw new CashAmountChangedException("El monto a cobrar cambió: ahora son $" + result.amount()
-					+ ". Vuelve a consultar la ficha antes de cobrar.");
+
+		// The saldo a favor goes first; the cash is only what it leaves.
+		if (useCredit && fichaPaymentPort.availableCredit(candidateId).signum() > 0) {
+			String creditReceipt = generateReceipt(candidate.getFolio()).replace("REC-", "SAF-")
+					+ (programChange ? "-C" : "");
+			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCreditAtCashier(charge.financePaymentId(),
+					creditReceipt, collectorId);
+			if (use.settled()) {
+				requireCash(expectedAmount, BigDecimal.ZERO);
+				ConfirmPaymentResult result = paidWithCredit(candidate, charge, use, creditReceipt);
+				notifications.paymentConfirmed(result);
+				return result;
+			}
+			// Partly paid now: the cash settles the rest of the same charge.
+			charge = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
 		}
+
+		ConfirmPaymentResult result = settle(candidate, charge, null, false, null, collectorId, collectorName);
+		requireCash(expectedAmount, result.amount());
 		notifications.paymentConfirmed(result);
 		return result;
+	}
+
+	/** Rolls the whole booking back when the cash is not what the cashier saw. */
+	private static void requireCash(BigDecimal expectedAmount, BigDecimal cash) {
+		if (expectedAmount == null || cash.compareTo(expectedAmount) != 0) {
+			throw new CashAmountChangedException("El monto a cobrar cambió: ahora son $" + cash
+					+ ". Vuelve a consultar la ficha antes de cobrar.");
+		}
+	}
+
+	/** The saldo a favor paid the whole charge: no cash, the charge is settled as it stands. */
+	private ConfirmPaymentResult paidWithCredit(Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			FichaPaymentPort.CreditUse use, String receipt) {
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		FichaPaymentPort.FichaCharge previousCharge = programChange && candidate.getFichaPaymentId() != null
+				? fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null)
+				: null;
+		if (programChange) {
+			candidate.adoptFichaPayment(charge.financePaymentId());
+		} else {
+			candidate.markPaid(periodIdOf(candidate));
+		}
+		candidateRepository.save(candidate);
+		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
+		BigDecimal before = use.amountPaid().subtract(use.applied()).max(BigDecimal.ZERO);
+		return new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
+				charge.referenceNumber(), use.applied(), paid.paidAt() != null ? paid.paidAt() : Instant.now(clock),
+				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, use.amountPaid(), before,
+				previousCharge == null ? null : previousCharge.receiptNumber(),
+				previousCharge == null ? null : previousCharge.paidAt(), programChange);
 	}
 
 	private Candidate requireCandidate(UUID candidateId) {

@@ -48,6 +48,12 @@ public interface FichaPaymentPort {
 	/** The ficha's header as finance holds it; empty when the charge does not exist. */
 	Optional<FichaCharge> findCharge(UUID financePaymentId);
 
+	/**
+	 * {@link #findCharge}, locking the charge until the caller's transaction ends:
+	 * two confirmations of the same charge run one after the other.
+	 */
+	Optional<FichaCharge> lockCharge(UUID financePaymentId);
+
 	/** The charge priced live; nothing is written. */
 	FichaQuote quote(UUID financePaymentId);
 
@@ -88,6 +94,9 @@ public interface FichaPaymentPort {
 	 *                      the charge on its own
 	 */
 	CreditUse applyCredit(UUID financePaymentId, String receiptNumber);
+
+	/** The same, used at the cashier's window by staff: the abono is booked to that cashier. */
+	CreditUse applyCreditAtCashier(UUID financePaymentId, String receiptNumber, UUID collectorId);
 
 	/**
 	 * @param applied    the saldo used now

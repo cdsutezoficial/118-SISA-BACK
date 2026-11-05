@@ -31,6 +31,15 @@ public class GetChargeStatusUseCaseImpl implements GetChargeStatusUseCase {
 		return paymentRepository.findById(paymentId).map(this::toStatus);
 	}
 
+	@Override
+	@Transactional
+	public Optional<ChargeStatus> findForUpdate(UUID paymentId) {
+		if (paymentId == null) {
+			return Optional.empty();
+		}
+		return paymentRepository.findByIdForUpdate(paymentId).map(this::toStatus);
+	}
+
 	private ChargeStatus toStatus(Payment payment) {
 		List<PaymentEntry> entries = paymentEntryRepository.findByPaymentIdOrderByPaidAtAsc(payment.getId());
 		PaymentEntry last = entries.isEmpty() ? null : entries.get(entries.size() - 1);

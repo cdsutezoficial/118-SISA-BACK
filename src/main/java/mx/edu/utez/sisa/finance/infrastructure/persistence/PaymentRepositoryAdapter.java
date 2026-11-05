@@ -1,5 +1,8 @@
 package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
 import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentRepository;
@@ -22,6 +25,9 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 
 	private final PaymentJpaRepository jpaRepository;
 
+	@PersistenceContext
+	private EntityManager entityManager;
+
 	public PaymentRepositoryAdapter(PaymentJpaRepository jpaRepository) {
 		this.jpaRepository = jpaRepository;
 	}
@@ -36,9 +42,19 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 		return jpaRepository.findById(id);
 	}
 
+	/**
+	 * The {@code SELECT ... FOR UPDATE} waits for whoever holds the row, but if this
+	 * transaction already read the row, Hibernate hands back that earlier copy from
+	 * the persistence context, not the row as the lock found it. Two confirmations of
+	 * one charge 0.26 s apart both saw it unpaid that way and both booked an abono.
+	 * The refresh re-reads it under the same lock, so the caller sees the last commit.
+	 */
 	@Override
 	public Optional<Payment> findByIdForUpdate(UUID id) {
-		return jpaRepository.findByIdForUpdate(id);
+		return jpaRepository.findByIdForUpdate(id).map(payment -> {
+			entityManager.refresh(payment, LockModeType.PESSIMISTIC_WRITE);
+			return payment;
+		});
 	}
 
 	@Override

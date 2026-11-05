@@ -285,6 +285,17 @@ class CheckoutSlotClaimerConcurrencyIT {
 			return port;
 		}
 
+		/** No mail and no alert in a race about the quota. */
+		@Bean
+		mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort candidateNotificationPort() {
+			return Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort.class);
+		}
+
+		@Bean
+		mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort() {
+			return Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.class);
+		}
+
 		/** Every ficha here is pending; the race is about the quota, not the charge. */
 		@Bean
 		FichaPaymentPort fichaPaymentPort() {

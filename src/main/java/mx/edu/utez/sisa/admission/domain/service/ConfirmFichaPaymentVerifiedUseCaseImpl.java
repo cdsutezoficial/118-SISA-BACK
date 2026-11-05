@@ -7,15 +7,18 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaidTwiceException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -72,10 +75,14 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 
 	private final CheckoutSlotClaimer checkoutSlotClaimer;
 
+	private final FinanceAlertPort financeAlertPort;
+
 	public ConfirmFichaPaymentVerifiedUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
-			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer,
+			FinanceAlertPort financeAlertPort) {
+		this.financeAlertPort = financeAlertPort;
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
@@ -84,8 +91,17 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 	}
 
+	/**
+	 * <p>E1, two orders of one ficha captured seconds apart: the charge is locked
+	 * before anything is decided, so the second confirmation waits for the first and
+	 * then finds the ficha paid. {@code READ_COMMITTED} so that what it reads after
+	 * the wait (the abonos the first one booked) is the committed state, not the
+	 * snapshot it started with. Its own capture then becomes saldo a favor and
+	 * {@link FichaPaidTwiceException} says so; that booking must survive the
+	 * exception, hence {@code noRollbackFor}.
+	 */
 	@Override
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED, noRollbackFor = FichaPaidTwiceException.class)
 	public ConfirmPaymentResult confirm(UUID candidateId, String orderId) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
@@ -94,7 +110,9 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 				.orElseThrow(() -> new CandidateNotFoundException(
 						"El candidato no tiene ficha de pago: " + candidateId));
 
+		charge = fichaPaymentPort.lockCharge(charge.financePaymentId()).orElse(charge);
 		if (charge.isPaid()) {
+			creditCaptureOnPaidFicha(candidateId, candidate, charge, orderId);
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
@@ -163,6 +181,47 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 	 * career change that is the difference, and a capture on the old ficha's charge must
 	 * not settle it.
 	 */
+	/**
+	 * The ficha is paid, and this order is one of its attempts that the bank captured
+	 * too: the money is the person's saldo a favor, booked now instead of waiting for
+	 * the nightly reconciliation. Finance skips the order that paid the charge, so
+	 * re-confirming the order that paid is still just "already paid".
+	 *
+	 * @throws FichaPaidTwiceException when this order's capture was booked as saldo
+	 */
+	private void creditCaptureOnPaidFicha(UUID candidateId, Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			String orderId) {
+		if (orderId == null || orderId.isBlank()) {
+			return;
+		}
+		CheckoutAttempt attempt = checkoutAttemptRepository.findByOrderId(orderId)
+				.filter(a -> candidateId.equals(a.getCandidateId()) && a.isOpen()
+						&& charge.financePaymentId().equals(a.getPaymentId()))
+				.orElse(null);
+		if (attempt == null) {
+			return;
+		}
+		EvoPaymentsGatewayPort.EvoOrderStatus status = evoPaymentsGateway.retrieveOrder(orderId);
+		if (OrderSettlementDecider.decide(status) != OrderSettlementDecider.Verdict.CAPTURED) {
+			return;
+		}
+		boolean booked = fichaPaymentPort.registerOverpayment(charge.financePaymentId(), orderId,
+				status.totalCapturedAmount());
+		checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.CAPTURED);
+		if (!booked) {
+			return;
+		}
+		log.warn("La ficha {} ya estaba pagada y la orden {} cobró {}: queda como saldo a favor.",
+				candidate.getFolio(), orderId, status.totalCapturedAmount());
+		financeAlertPort.raise(FinanceAlertPort.Kind.OVERPAYMENT, candidateId, charge.financePaymentId(),
+				orderId, status.totalCapturedAmount(),
+				"Se cobraron dos pagos de la misma ficha casi al mismo tiempo. El segundo quedó como saldo a favor "
+						+ "de la persona; revisar si lo quiere usar o pedir la devolución.");
+		throw new FichaPaidTwiceException("Tu ficha ya estaba pagada con otro pago. Este cobro de $"
+				+ status.totalCapturedAmount() + " quedó como saldo a favor a tu nombre; acude a Finanzas si "
+				+ "quieres la devolución.");
+	}
+
 	private CheckoutAttempt requireOwnOpenAttempt(UUID candidateId, Candidate candidate, String orderId) {
 		CheckoutAttempt attempt = checkoutAttemptRepository.findByOrderId(orderId)
 				.orElseThrow(() -> new InvalidPaymentVerificationException(

@@ -11,7 +11,9 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaidTwiceException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -81,12 +84,16 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	@Mock
 	private CheckoutSlotClaimer checkoutSlotClaimer;
 
+	@Mock
+	private FinanceAlertPort financeAlertPort;
+
 	private ConfirmFichaPaymentVerifiedUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
+				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer,
+				financeAlertPort);
 		// A capture inside its hold, or with room left: the usual case.
 		Mockito.lenient().when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(true);
 	}
@@ -138,6 +145,45 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
+	}
+
+	/**
+	 * E1, two orders captured 0.26 s apart: the second waits on the charge's lock and
+	 * finds it paid by the first. Its capture becomes saldo a favor, with an alert,
+	 * instead of a second abono with the same receipt.
+	 */
+	@Test
+	void aSecondOrderCapturedOnAPaidFichaBecomesSaldoAFavor() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.lockCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.paidCharge(CHARGE_ID)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(true);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(FichaPaidTwiceException.class).hasMessageContaining("saldo a favor");
+
+		verify(financeAlertPort).raise(eq(FinanceAlertPort.Kind.OVERPAYMENT), eq(CANDIDATE_ID), eq(CHARGE_ID),
+				eq(ORDER_ID), eq(QUOTED), any());
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
+	}
+
+	/** Re-confirming the order that paid: finance skips it, so it is just "already paid". */
+	@Test
+	void reConfirmingTheOrderThatPaidIsOnlyAlreadyPaid() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.lockCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.paidCharge(CHARGE_ID)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(false);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isExactlyInstanceOf(CandidateAlreadyPaidException.class);
+
+		verify(financeAlertPort, never()).raise(any(), any(), any(), any(), any(), any());
 	}
 
 	@Test

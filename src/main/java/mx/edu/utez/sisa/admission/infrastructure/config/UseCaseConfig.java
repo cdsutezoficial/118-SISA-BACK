@@ -276,9 +276,11 @@ public class UseCaseConfig {
 			FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway,
 			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
-			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer,
+			FinanceAlertPort financeAlertPort) {
 		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
+				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer,
+				financeAlertPort);
 	}
 
 	/**

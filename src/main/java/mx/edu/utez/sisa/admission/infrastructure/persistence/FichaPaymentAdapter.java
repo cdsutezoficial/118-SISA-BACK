@@ -96,6 +96,11 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 		return getChargeStatusUseCase.find(financePaymentId).map(FichaPaymentAdapter::toCharge);
 	}
 
+	@Override
+	public Optional<FichaCharge> lockCharge(UUID financePaymentId) {
+		return getChargeStatusUseCase.findForUpdate(financePaymentId).map(FichaPaymentAdapter::toCharge);
+	}
+
 	private static FichaCharge toCharge(GetChargeStatusUseCase.ChargeStatus charge) {
 		boolean paid = charge.status() == PaymentStatus.PAID || charge.status() == PaymentStatus.EXEMPT;
 		return new FichaCharge(charge.paymentId(), charge.referenceNumber(),
@@ -151,8 +156,18 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 
 	@Override
 	public CreditUse applyCredit(UUID financePaymentId, String receiptNumber) {
+		return applyCredit(financePaymentId, PaymentChannel.PORTAL, null, receiptNumber);
+	}
+
+	@Override
+	public CreditUse applyCreditAtCashier(UUID financePaymentId, String receiptNumber, UUID collectorId) {
+		return applyCredit(financePaymentId, PaymentChannel.CASHIER, collectorId, receiptNumber);
+	}
+
+	private CreditUse applyCredit(UUID financePaymentId, PaymentChannel channel, UUID actingUserId,
+			String receiptNumber) {
 		ApplyCreditToPaymentUseCase.CreditApplicationResult result = applyCreditToPaymentUseCase.applyCredit(
-				new ApplyCreditToPaymentUseCase.ApplyCreditCommand(financePaymentId, PaymentChannel.PORTAL, null,
+				new ApplyCreditToPaymentUseCase.ApplyCreditCommand(financePaymentId, channel, actingUserId,
 						receiptNumber));
 		CreatePaymentUseCase.PaymentResult payment = result.payment();
 		return new CreditUse(result.creditApplied(), payment.amountDue(), payment.amountPaid(),

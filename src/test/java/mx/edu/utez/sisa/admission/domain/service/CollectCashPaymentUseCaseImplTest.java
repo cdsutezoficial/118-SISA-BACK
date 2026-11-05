@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -118,6 +119,28 @@ class CollectCashPaymentUseCaseImplTest {
 	}
 
 	@Test
+	void preview_showsTheSaldoAFavorTheCashierCanUse() {
+		stubOwedFicha(PRICE, 9);
+		when(fichaPaymentPort.availableCredit(candidateId)).thenReturn(new BigDecimal("225.00"));
+
+		var preview = useCase.preview(candidateId);
+
+		assertThat(preview.availableCredit()).isEqualByComparingTo("225.00");
+		assertThat(preview.toCollect()).isEqualByComparingTo(PRICE);
+	}
+
+	@Test
+	void collect_passesTheSaldoChoiceOn() {
+		stubOwedFicha(PRICE, 9);
+		UUID cashier = UUID.randomUUID();
+		when(staffDirectory.displayName(cashier)).thenReturn("Ana Caja");
+
+		useCase.collect(candidateId, BigDecimal.ZERO, true, cashier);
+
+		verify(confirmAdmissionPaymentUseCase).confirmCash(candidateId, BigDecimal.ZERO, true, cashier, "Ana Caja");
+	}
+
+	@Test
 	void preview_refusesAFullCareer() {
 		stubOwedFicha(PRICE, 10);
 
@@ -133,9 +156,9 @@ class CollectCashPaymentUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.preview(candidateId))
 				.isInstanceOf(CandidateAlreadyExistsException.class).hasMessageContaining("No recibas el pago");
-		assertThatThrownBy(() -> useCase.collect(candidateId, PRICE, UUID.randomUUID()))
+		assertThatThrownBy(() -> useCase.collect(candidateId, PRICE, false, UUID.randomUUID()))
 				.isInstanceOf(CandidateAlreadyExistsException.class);
-		verify(confirmAdmissionPaymentUseCase, never()).confirmCash(any(), any(), any(), any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirmCash(any(), any(), anyBoolean(), any(), any());
 	}
 
 	@Test
@@ -192,17 +215,17 @@ class CollectCashPaymentUseCaseImplTest {
 		UUID cashier = UUID.randomUUID();
 		when(staffDirectory.displayName(cashier)).thenReturn("Ana Caja");
 
-		useCase.collect(candidateId, PRICE, cashier);
+		useCase.collect(candidateId, PRICE, false, cashier);
 
-		verify(confirmAdmissionPaymentUseCase).confirmCash(candidateId, PRICE, cashier, "Ana Caja");
+		verify(confirmAdmissionPaymentUseCase).confirmCash(candidateId, PRICE, false, cashier, "Ana Caja");
 	}
 
 	@Test
 	void collect_bookNothingWhenACheckFails() {
 		stubOwedFicha(PRICE, 10);
 
-		assertThatThrownBy(() -> useCase.collect(candidateId, PRICE, UUID.randomUUID()))
+		assertThatThrownBy(() -> useCase.collect(candidateId, PRICE, false, UUID.randomUUID()))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
-		verify(confirmAdmissionPaymentUseCase, never()).confirmCash(any(), any(), any(), any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirmCash(any(), any(), anyBoolean(), any(), any());
 	}
 }
