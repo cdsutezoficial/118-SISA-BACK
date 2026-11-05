@@ -37,7 +37,10 @@ import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionDashboardQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
+import mx.edu.utez.sisa.admission.domain.port.in.GetAdmissionDashboardUseCase;
+import mx.edu.utez.sisa.admission.domain.service.GetAdmissionDashboardUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -165,6 +168,12 @@ public class UseCaseConfig {
 	public ChangeHighSchoolTypeStatusUseCase changeHighSchoolTypeStatusUseCase(
 			HighSchoolTypeRepository highSchoolTypeRepository) {
 		return new ChangeHighSchoolTypeStatusUseCaseImpl(highSchoolTypeRepository);
+	}
+
+	@Bean
+	public GetAdmissionDashboardUseCase getAdmissionDashboardUseCase(AdmissionDashboardQueryPort queryPort,
+			CallerDivisionScopePort callerDivisionScopePort) {
+		return new GetAdmissionDashboardUseCaseImpl(queryPort, callerDivisionScopePort);
 	}
 
 	@Bean

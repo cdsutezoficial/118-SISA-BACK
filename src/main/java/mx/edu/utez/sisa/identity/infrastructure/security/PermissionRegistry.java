@@ -129,6 +129,7 @@ public final class PermissionRegistry {
 			e("PATCH", "/program-admission-configs/**", "PROGRAM_ADMISSION_CONFIGS_CHANGE_STATUS"),
 			// admission — candidates (exact path: /candidates/{id} stays public)
 			e("GET", "/candidates", "CANDIDATES_READ"),
+			e("GET", "/admission/dashboard", "CANDIDATES_READ"),
 			e("GET", "/candidates/*/detail", "CANDIDATES_READ"),
 			e("GET", "/candidates/*/account", "CANDIDATES_READ"),
 			// Edición de la ficha por Servicios Escolares (Fase 7 · T2).

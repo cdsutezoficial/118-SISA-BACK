@@ -26,6 +26,11 @@ class PermissionRegistryTest {
 	}
 
 	@Test
+	void admissionDashboardMapsToCandidatesRead() {
+		assertThat(PermissionRegistry.resolve("GET", "/admission/dashboard")).contains("CANDIDATES_READ");
+	}
+
+	@Test
 	void candidateDetailStaysUnregisteredBecauseItIsPublic() {
 		assertThat(PermissionRegistry.resolve("GET", "/candidates/2f1c0e2e-0000-0000-0000-000000000000")).isEmpty();
 	}
