@@ -1,5 +1,6 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateProgramChange;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
@@ -17,6 +18,8 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +28,15 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
 
 public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgramUseCase {
 
 	private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+
+	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private final CandidateRepository candidateRepository;
 
@@ -102,8 +108,9 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		if (to.id().equals(candidate.getAdmissionConfigId())) {
 			throw new InvalidCandidateFichaDataException("El candidato ya está en esa carrera.");
 		}
-		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConcept(to.programId(),
-				LocalDate.now(clock));
+		requireOnSale(to);
+		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConceptForProgramChange(
+				to.programId(), LocalDate.now(clock));
 		LocalDate today = LocalDate.now(clock);
 
 		if (!charge.isPaid()) {
@@ -139,8 +146,9 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		}
 		FichaPaymentPort.FichaCharge charge = requireAllowed(candidate);
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo to = requireConfig(admissionConfigId);
-		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConcept(to.programId(),
-				LocalDate.now(clock));
+		requireOnSale(to);
+		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConceptForProgramChange(
+				to.programId(), LocalDate.now(clock));
 		UUID fromConfigId = candidate.getAdmissionConfigId();
 		Instant now = Instant.now(clock);
 
@@ -267,6 +275,30 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		return programAdmissionConfigQueryPort.findById(admissionConfigId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + admissionConfigId));
+	}
+
+	/**
+	 * Solo se cambia a una carrera con la venta de fichas abierta (F6): el selector
+	 * del front ya las filtra, pero la regla vive aquí para que no dependa de él.
+	 * Mismos límites inclusivos que el registro.
+	 */
+	private void requireOnSale(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo to) {
+		if (to.status() != ProgramAdmissionConfigStatus.OPEN) {
+			throw new ProgramAdmissionConfigNotOpenException("La venta de fichas de esa carrera no está abierta.");
+		}
+		Instant now = Instant.now(clock);
+		if (to.opensAt() != null && now.isBefore(to.opensAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException(
+					"La venta de fichas de esa carrera abre el " + formatDate(to.opensAt()) + ".");
+		}
+		if (to.closesAt() != null && now.isAfter(to.closesAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException(
+					"La venta de fichas de esa carrera cerró el " + formatDate(to.closesAt()) + ".");
+		}
+	}
+
+	private String formatDate(Instant instant) {
+		return DATE_FORMAT.format(instant.atZone(clock.getZone()).toLocalDate());
 	}
 
 	private static String programName(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {

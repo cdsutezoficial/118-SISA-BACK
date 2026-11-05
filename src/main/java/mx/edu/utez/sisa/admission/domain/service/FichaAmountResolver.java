@@ -92,6 +92,38 @@ public class FichaAmountResolver {
 	}
 
 	/**
+	 * The concept that prices a <em>career change</em> (F6): the same strict
+	 * "exactly one ACTIVE concept with a rate for the program" rule as
+	 * {@link #resolveConcept}, but the concept's availability window does not
+	 * block it. A candidate moved to a career whose admission concept is already
+	 * out of term is priced with that concept's last rate; paying it out of term
+	 * is a separate step (the payment link, F2), so the change itself never
+	 * depends on the concept still being for sale.
+	 *
+	 * @throws FichaPaymentConceptNotFoundException if none, or none priced
+	 * @throws AmbiguousFichaPaymentConceptException if more than one
+	 */
+	public PaymentConceptQueryPort.FichaConcept resolveConceptForProgramChange(UUID programId, LocalDate onDate) {
+		List<PaymentConceptQueryPort.FichaConcept> concepts = paymentConceptQueryPort
+				.findActiveEnrollmentForProgram(programId, onDate);
+		if (concepts.isEmpty()) {
+			concepts = paymentConceptQueryPort.findActiveEnrollmentForProgram(programId);
+		}
+		if (concepts.isEmpty()) {
+			throw new FichaPaymentConceptNotFoundException(
+					"Esta carrera no tiene un concepto de inscripción activo. Contacta a la universidad.");
+		}
+		if (concepts.size() > 1) {
+			throw new AmbiguousFichaPaymentConceptException(
+					"Esta carrera tiene más de un concepto de inscripción activo. Contacta a la universidad.");
+		}
+		PaymentConceptQueryPort.FichaConcept concept = concepts.get(0);
+		paymentConceptQueryPort.findActiveRateAmountFor(concept.id(), programId, onDate)
+				.orElseThrow(() -> describeMissingRate(concept.name()));
+		return concept;
+	}
+
+	/**
 	 * The concept exists and may be sold, but nothing in its rate history prices
 	 * this program on this date.
 	 *

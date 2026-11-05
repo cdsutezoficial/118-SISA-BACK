@@ -274,4 +274,38 @@ class FichaAmountResolverTest {
 		assertThatThrownBy(() -> resolver.requirePayableOn(PROGRAM_ID, ON_DATE))
 				.isInstanceOf(AmbiguousFichaPaymentConceptException.class);
 	}
+
+	@Test
+	void aCareerChangeTakesAConceptAlreadyOutOfTermWithItsLastRate() {
+		// F6: the change is not blocked by the concept's window; paying out of
+		// term goes through the payment link instead.
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of());
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
+				.thenReturn(List.of(concept(null, LocalDate.of(2026, 9, 20))));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.of(new BigDecimal("1578.00")));
+
+		assertThat(resolver.resolveConceptForProgramChange(PROGRAM_ID, ON_DATE).id()).isEqualTo(CONCEPT_ID);
+	}
+
+	@Test
+	void aCareerChangeStillNeedsExactlyOnePricedConcept() {
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID, ON_DATE)).thenReturn(List.of());
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID)).thenReturn(List.of());
+		assertThatThrownBy(() -> resolver.resolveConceptForProgramChange(PROGRAM_ID, ON_DATE))
+				.isInstanceOf(FichaPaymentConceptNotFoundException.class);
+
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
+				.thenReturn(List.of(concept(null, null), concept(null, null)));
+		assertThatThrownBy(() -> resolver.resolveConceptForProgramChange(PROGRAM_ID, ON_DATE))
+				.isInstanceOf(AmbiguousFichaPaymentConceptException.class);
+
+		when(paymentConceptQueryPort.findActiveEnrollmentForProgram(PROGRAM_ID))
+				.thenReturn(List.of(concept(null, LocalDate.of(2026, 9, 20))));
+		when(paymentConceptQueryPort.findActiveRateAmountFor(CONCEPT_ID, PROGRAM_ID, ON_DATE))
+				.thenReturn(Optional.empty());
+		assertThatThrownBy(() -> resolver.resolveConceptForProgramChange(PROGRAM_ID, ON_DATE))
+				.isInstanceOf(FichaPaymentConceptNotFoundException.class)
+				.hasMessageContaining("no tiene una tarifa configurada");
+	}
 }

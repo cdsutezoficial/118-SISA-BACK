@@ -16,6 +16,8 @@ import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateProgramChangeNotAllowedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -112,7 +114,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 				UUID.randomUUID(), "Ingeniería", 40)));
 		lenient().when(programAdmissionConfigQueryPort.findById(NEW_CONFIG))
 				.thenReturn(Optional.of(config(NEW_CONFIG, NEW_PROGRAM, "Licenciatura", 40)));
-		lenient().when(fichaAmountResolver.resolveConcept(eq(NEW_PROGRAM), any())).thenReturn(
+		lenient().when(fichaAmountResolver.resolveConceptForProgramChange(eq(NEW_PROGRAM), any())).thenReturn(
 				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), "FICHA_LIC", "Ficha", null, null));
 		lenient().when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(CANDIDATE_ID)).thenReturn(List.of());
 	}
@@ -302,21 +304,39 @@ class ChangeCandidateProgramUseCaseImplTest {
 	}
 
 	@Test
-	void unpaidPreviewWarnsWhenTheNewCareerWindowAlreadyClosed() {
+	void aCareerWhoseSalesAlreadyClosedIsRefused() {
 		charge(false);
-		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(
-				NEW_CONFIG, ProgramAdmissionConfigStatus.OPEN, NEW_PROGRAM, "Licenciatura", null, null, null,
-				Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-10-20T05:00:00Z"), 40)));
-		when(fichaPaymentPort.quote(FICHA_PAYMENT)).thenReturn(quote("1120.00", "0.00"));
-		when(fichaPaymentPort.quoteForProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM))
-				.thenReturn(quote("1650.00", "825.00"));
+		newConfig(ProgramAdmissionConfigStatus.OPEN, "2026-09-01T00:00:00Z", "2026-10-20T05:00:00Z");
 
-		ProgramChangePreview preview = useCase.preview(CANDIDATE_ID, NEW_CONFIG);
+		assertThatThrownBy(() -> useCase.preview(CANDIDATE_ID, NEW_CONFIG))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class).hasMessageContaining("cerró el 19/10/2026");
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class);
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
+	}
 
-		assertThat(preview.mode()).isEqualTo(Mode.UNPAID);
-		assertThat(preview.newAmount()).isEqualByComparingTo("825.00");
-		assertThat(preview.toPay()).isEqualByComparingTo("825.00");
-		assertThat(preview.paymentWindowClosed()).isTrue();
+	@Test
+	void aCareerWhoseSalesHaveNotOpenedIsRefused() {
+		charge(false);
+		newConfig(ProgramAdmissionConfigStatus.OPEN, "2026-11-10T06:00:00Z", "2026-12-15T05:00:00Z");
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class).hasMessageContaining("abre el 10/11/2026");
+	}
+
+	@Test
+	void aCareerWhoseConfigIsNotOpenIsRefused() {
+		charge(false);
+		newConfig(ProgramAdmissionConfigStatus.CLOSED, "2026-09-01T00:00:00Z", "2026-12-15T05:00:00Z");
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigNotOpenException.class);
+	}
+
+	private void newConfig(ProgramAdmissionConfigStatus status, String opensAt, String closesAt) {
+		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(
+				new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(NEW_CONFIG, status, NEW_PROGRAM,
+						"Licenciatura", null, null, null, Instant.parse(opensAt), Instant.parse(closesAt), 40)));
 	}
 
 	@Test
