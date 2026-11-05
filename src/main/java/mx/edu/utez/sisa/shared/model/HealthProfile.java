@@ -1,9 +1,8 @@
 package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapsId;
@@ -32,21 +31,8 @@ public class HealthProfile {
 	@JoinColumn(name = "person_id")
 	private Person person;
 
-	@Column(name = "has_preexisting_condition", nullable = false)
-	private boolean hasPreexistingCondition;
-
-	@Column(name = "condition_description")
-	private String conditionDescription;
-
-	@Column(name = "has_disability", nullable = false)
-	private boolean hasDisability;
-
-	@Column(name = "disability_description")
-	private String disabilityDescription;
-
-	@Enumerated(EnumType.STRING)
-	@Column(name = "blood_type")
-	private BloodType bloodType;
+	@Embedded
+	private HealthData data;
 
 	protected HealthProfile() {
 		// JPA
@@ -54,11 +40,8 @@ public class HealthProfile {
 
 	public HealthProfile(boolean hasPreexistingCondition, String conditionDescription, boolean hasDisability,
 			String disabilityDescription, BloodType bloodType) {
-		this.hasPreexistingCondition = hasPreexistingCondition;
-		this.conditionDescription = conditionDescription;
-		this.hasDisability = hasDisability;
-		this.disabilityDescription = disabilityDescription;
-		this.bloodType = bloodType;
+		this.data = new HealthData(hasPreexistingCondition, conditionDescription, hasDisability,
+				disabilityDescription, bloodType);
 	}
 
 	public UUID getPersonId() {
@@ -74,43 +57,50 @@ public class HealthProfile {
 	}
 
 	public boolean isHasPreexistingCondition() {
-		return hasPreexistingCondition;
+		return data != null && data.isHasPreexistingCondition();
 	}
 
 	public void setHasPreexistingCondition(boolean hasPreexistingCondition) {
-		this.hasPreexistingCondition = hasPreexistingCondition;
+		data().setHasPreexistingCondition(hasPreexistingCondition);
 	}
 
 	public String getConditionDescription() {
-		return conditionDescription;
+		return data == null ? null : data.getConditionDescription();
 	}
 
 	public void setConditionDescription(String conditionDescription) {
-		this.conditionDescription = conditionDescription;
+		data().setConditionDescription(conditionDescription);
 	}
 
 	public boolean isHasDisability() {
-		return hasDisability;
+		return data != null && data.isHasDisability();
 	}
 
 	public void setHasDisability(boolean hasDisability) {
-		this.hasDisability = hasDisability;
+		data().setHasDisability(hasDisability);
 	}
 
 	public String getDisabilityDescription() {
-		return disabilityDescription;
+		return data == null ? null : data.getDisabilityDescription();
 	}
 
 	public void setDisabilityDescription(String disabilityDescription) {
-		this.disabilityDescription = disabilityDescription;
+		data().setDisabilityDescription(disabilityDescription);
 	}
 
 	public BloodType getBloodType() {
-		return bloodType;
+		return data == null ? null : data.getBloodType();
 	}
 
 	public void setBloodType(BloodType bloodType) {
-		this.bloodType = bloodType;
+		data().setBloodType(bloodType);
+	}
+
+	private HealthData data() {
+		if (data == null) {
+			data = new HealthData();
+		}
+		return data;
 	}
 
 	@Override

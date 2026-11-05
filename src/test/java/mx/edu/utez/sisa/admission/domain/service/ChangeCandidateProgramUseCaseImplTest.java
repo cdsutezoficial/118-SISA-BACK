@@ -93,9 +93,10 @@ class ChangeCandidateProgramUseCaseImplTest {
 		useCase = new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
 				programChangeRepository, CLOCK, 10, 15);
-		candidate = new Candidate(UUID.randomUUID(), OLD_CONFIG, "ADM-2026-000001", true, true, null);
+		candidate = new Candidate(OLD_CONFIG, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		ReflectionTestUtils.setField(candidate, "registeredAt", Instant.parse("2026-10-25T18:00:00Z"));
+		candidate.setCurp("PEGJ900101HMSRRN09");
 		candidate.linkFichaPayment(FICHA_PAYMENT);
 
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
@@ -276,7 +277,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 	void unpaidPreviewWarnsWhenTheNewCareerWindowAlreadyClosed() {
 		charge(false);
 		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(
-				NEW_CONFIG, ProgramAdmissionConfigStatus.OPEN, NEW_PROGRAM, "Licenciatura", null, null, null,
+				NEW_CONFIG, ProgramAdmissionConfigStatus.OPEN, NEW_PROGRAM, "Licenciatura", null, null, UUID.randomUUID(), null,
 				Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-10-20T05:00:00Z"), 40)));
 		when(fichaPaymentPort.quote(FICHA_PAYMENT)).thenReturn(quote("1120.00", "0.00"));
 		when(fichaPaymentPort.quoteForProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM))
@@ -335,7 +336,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config(UUID id, UUID programId, String name,
 			int max) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN,
-				programId, name, null, null, null, Instant.parse("2026-09-01T00:00:00Z"),
+				programId, name, null, null, UUID.randomUUID(), null, Instant.parse("2026-09-01T00:00:00Z"),
 				Instant.parse("2026-12-15T05:00:00Z"), max);
 	}
 }

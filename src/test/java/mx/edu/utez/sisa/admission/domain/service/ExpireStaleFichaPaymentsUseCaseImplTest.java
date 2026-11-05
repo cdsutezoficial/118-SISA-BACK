@@ -66,12 +66,13 @@ class ExpireStaleFichaPaymentsUseCaseImplTest {
 
 	private static AdmissionConfigInfo config(UUID id, LocalDate closesOn) {
 		return new AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN, UUID.randomUUID(), "Ing. en TIC",
-				null, ProgramModality.PRESENCIAL, "2027-I", TODAY.minusDays(60).atStartOfDay(ZONE).toInstant(),
+				null, ProgramModality.PRESENCIAL, UUID.randomUUID(), "2027-I",
+				TODAY.minusDays(60).atStartOfDay(ZONE).toInstant(),
 				closesOn.atStartOfDay(ZONE).toInstant(), 120);
 	}
 
 	private static Candidate registeredDaysAgo(UUID configId, long days) {
-		Candidate candidate = new Candidate(UUID.randomUUID(), configId, "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(configId, "ADM-2026-000001", true, true, null);
 		Instant registeredAt = TODAY.minusDays(days).atStartOfDay(ZONE).toInstant();
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
 		return candidate;

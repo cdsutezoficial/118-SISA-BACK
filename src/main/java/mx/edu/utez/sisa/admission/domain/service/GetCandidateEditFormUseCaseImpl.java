@@ -11,17 +11,15 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
-import mx.edu.utez.sisa.shared.model.Address;
-import mx.edu.utez.sisa.shared.model.DiversityProfile;
-import mx.edu.utez.sisa.shared.model.EmploymentInfo;
-import mx.edu.utez.sisa.shared.model.HealthProfile;
-import mx.edu.utez.sisa.shared.model.HighSchoolBackground;
-import mx.edu.utez.sisa.shared.model.Person;
+import mx.edu.utez.sisa.admission.domain.model.CandidateAddress;
+import mx.edu.utez.sisa.admission.domain.model.CandidateDiversityProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateEmploymentInfo;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHealthProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHighSchoolBackground;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -37,8 +35,6 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 
 	private final CandidateRepository candidateRepository;
 
-	private final CandidatePersonRepository candidatePersonRepository;
-
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final FichaPaymentPort fichaPaymentPort;
@@ -46,11 +42,9 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
 	public GetCandidateEditFormUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaPaymentPort fichaPaymentPort,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
@@ -61,9 +55,6 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 	public CandidateEditForm get(UUID candidateId) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
-		Person person = candidatePersonRepository.findById(candidate.getPersonId())
-				.orElseThrow(() -> new CandidateNotFoundException(
-						"No existe la persona del candidato: " + candidateId));
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(candidate.getAdmissionConfigId()).orElse(null);
 
@@ -72,7 +63,7 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 		return new CandidateEditForm(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
 				candidate.isLlaveMxVerified(), config == null ? null : config.programName(),
 				config == null ? null : config.modality(), blockedReason == null, blockedReason,
-				toCommand(candidate, person), pendingProgramChange(candidate));
+				toCommand(candidate), pendingProgramChange(candidate));
 	}
 
 	private FichaPaymentPort.ProgramChangeCharge pendingProgramChange(Candidate candidate) {
@@ -80,17 +71,17 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 				: fichaPaymentPort.findProgramChangeCharge(candidate.getProgramChangePaymentId()).orElse(null);
 	}
 
-	private static RegisterCandidateCommand toCommand(Candidate candidate, Person person) {
-		return new RegisterCandidateCommand(datosGenerales(person), domicilio(person.getAddress()),
-				new Contacto(person.getPersonalEmail(), person.getHomePhone(), person.getMobilePhone()),
-				informacionComplementaria(person.getHealthProfile(), person.getDiversityProfile()),
-				ingresos(person), antecedentes(person.getHighSchoolBackground()),
+	private static RegisterCandidateCommand toCommand(Candidate candidate) {
+		return new RegisterCandidateCommand(datosGenerales(candidate), domicilio(candidate.getAddress()),
+				new Contacto(candidate.getPersonalEmail(), candidate.getHomePhone(), candidate.getMobilePhone()),
+				informacionComplementaria(candidate.getHealthProfile(), candidate.getDiversityProfile()),
+				ingresos(candidate), antecedentes(candidate.getHighSchoolBackground()),
 				new SeleccionCarrera(candidate.getAdmissionConfigId(), candidate.getOutreachChannelId(),
 						candidate.isFirstChoice()),
 				candidate.isLlaveMxVerified());
 	}
 
-	private static DatosGenerales datosGenerales(Person p) {
+	private static DatosGenerales datosGenerales(Candidate p) {
 		// Registros anteriores a birth_country guardaban el PAÍS en
 		// birth_foreign_state y no guardaban el estado: se leen así.
 		boolean legacy = p.getBirthCountry() == null;
@@ -102,7 +93,7 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 				Boolean.TRUE.equals(p.getHasChildren()));
 	}
 
-	private static Domicilio domicilio(Address a) {
+	private static Domicilio domicilio(CandidateAddress a) {
 		if (a == null) {
 			return null;
 		}
@@ -110,7 +101,8 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 				a.getLocality(), a.getPostalCode(), a.getStateId(), a.getMunicipalityId());
 	}
 
-	private static InformacionComplementaria informacionComplementaria(HealthProfile h, DiversityProfile d) {
+	private static InformacionComplementaria informacionComplementaria(CandidateHealthProfile h,
+			CandidateDiversityProfile d) {
 		return new InformacionComplementaria(h != null && h.isHasPreexistingCondition(),
 				h == null ? null : h.getConditionDescription(), h != null && h.isHasDisability(),
 				h == null ? null : h.getDisabilityDescription(), d != null && d.isParentsSpeakIndigenousLanguage(),
@@ -120,8 +112,8 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 				d != null && d.isAfrodescendant(), d != null && d.isSelfIdentifiesAfrodescendant());
 	}
 
-	private static Ingresos ingresos(Person p) {
-		EmploymentInfo e = p.getEmploymentInfo();
+	private static Ingresos ingresos(Candidate p) {
+		CandidateEmploymentInfo e = p.getEmploymentInfo();
 		return new Ingresos(p.getMonthlyFamilyIncome(), e != null && e.isEmployed(),
 				e == null ? null : e.getEmploymentType(), e == null ? null : e.getWorkPhone(),
 				e == null ? null : e.getMonthlyIncome(), e == null ? null : e.getCompanyName(),
@@ -129,7 +121,7 @@ public class GetCandidateEditFormUseCaseImpl implements GetCandidateEditFormUseC
 				e == null ? null : e.getWorkEndTime());
 	}
 
-	private static AntecedentesEscolares antecedentes(HighSchoolBackground s) {
+	private static AntecedentesEscolares antecedentes(CandidateHighSchoolBackground s) {
 		if (s == null) {
 			return null;
 		}

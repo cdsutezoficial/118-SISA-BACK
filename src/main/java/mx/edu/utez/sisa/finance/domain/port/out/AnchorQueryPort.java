@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * Read-only out-port that navigates a payment anchor
- * ({@code candidateId}/{@code studentId}) to the {@code Person} behind it.
+ * ({@code candidateId}/{@code studentId}) to the payer identity shown in reports.
  *
  * <p>Since the 2026-10-21 reanchor a {@code Payment} no longer stores a
  * {@code personId}: it knows who is paying directly. Reporting (estado de
@@ -16,9 +16,9 @@ import java.util.UUID;
 public interface AnchorQueryPort {
 
 	/**
-	 * The person behind an aspirante, or empty when no such candidate exists.
+	 * The payer behind an aspirante, or empty when no such candidate exists.
 	 */
-	Optional<PersonQueryPort.PersonView> findPersonByCandidateId(UUID candidateId);
+	Optional<PersonQueryPort.PersonView> findPayerByCandidateId(UUID candidateId);
 
 	/**
 	 * The person behind a student, or empty when no such student exists.

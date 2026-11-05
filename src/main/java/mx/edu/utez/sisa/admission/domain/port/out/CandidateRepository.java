@@ -8,10 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persistence out-port for the {@link Candidate} aggregate root. The
- * applicant's {@code Person} is persisted through a separate port
- * ({@code CandidatePersonRepository}) since {@code Person} is a shared-kernel
- * aggregate whose lifecycle reaches across bounded contexts.
+ * Persistence out-port for the {@link Candidate} aggregate root.
  */
 public interface CandidateRepository {
 
@@ -48,13 +45,9 @@ public interface CandidateRepository {
 	 */
 	List<Candidate> findAllByStatus(CandidateStatus status);
 
-	/**
-	 * Every ficha ever registered for a person, whatever its status. Backs the
-	 * CURP re-registration lock (§1.10): the lock is on the <em>ficha</em>, not
-	 * on the person, so registration reads the person's fichas and decides on
-	 * their statuses instead of refusing on the person's mere existence.
-	 */
-	List<Candidate> findAllByPersonId(UUID personId);
+	List<Candidate> findAllByCurpAndPeriodId(String curp, UUID periodId);
+
+	boolean existsAnotherValidInPeriod(String curp, UUID periodId, UUID excludedCandidateId);
 
 	/**
 	 * Filterable, paginated query backing {@code ListCandidatesUseCase}.

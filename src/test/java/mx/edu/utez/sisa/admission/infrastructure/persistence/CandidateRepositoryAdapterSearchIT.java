@@ -10,7 +10,6 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchCriteria;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchPage;
 import mx.edu.utez.sisa.shared.model.AcademicLevel;
-import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,9 +58,6 @@ class CandidateRepositoryAdapterSearchIT {
 	private CandidateJpaRepository candidateJpaRepository;
 
 	@Autowired
-	private CandidatePersonJpaRepository personJpaRepository;
-
-	@Autowired
 	private mx.edu.utez.sisa.academic_config.infrastructure.persistence.AcademicDivisionJpaRepository divisionRepository;
 
 	@Autowired
@@ -105,25 +101,26 @@ class CandidateRepositoryAdapterSearchIT {
 		return new ProgramSeeds(program.getId(), config.getId());
 	}
 
-	private UUID newPerson(String curp, String firstName, String lastName1, String lastName2) {
-		return personJpaRepository.save(new Person(curp, firstName, lastName1, lastName2, null)).getId();
-	}
-
 	/** {@code Person.curp} is {@code length = 18, unique}; this is exactly 18 and unique per call. */
 	private String nextCurp() {
 		return String.format("CURP%014d", seq.incrementAndGet());
 	}
 
-	private Candidate newCandidate(UUID personId, UUID configId, String folio) {
-		return candidateJpaRepository.save(new Candidate(personId, configId, folio, true, true, null));
+	private Candidate newCandidate(UUID configId, String folio, String curp, String firstName, String lastName1,
+			String lastName2) {
+		Candidate candidate = new Candidate(configId, folio, true, true, null);
+		candidate.setCurp(curp);
+		candidate.setFirstName(firstName);
+		candidate.setLastName1(lastName1);
+		candidate.setLastName2(lastName2);
+		return candidateJpaRepository.save(candidate);
 	}
 
 	/** Creates its own person + config so folios/CURPs never collide between tests. */
 	private Candidate newCandidate(String folio) {
 		int n = seq.incrementAndGet();
-		UUID personId = newPerson(nextCurp(), "Nombre" + n, "Apellido" + n, null);
 		UUID configId = newConfig(newDivision(), newPeriod()).configId();
-		return newCandidate(personId, configId, folio);
+		return newCandidate(configId, folio, nextCurp(), "Nombre" + n, "Apellido" + n, null);
 	}
 
 	private record ProgramSeeds(UUID programId, UUID configId) {
@@ -155,8 +152,8 @@ class CandidateRepositoryAdapterSearchIT {
 	void programFilterMatchesOnlyThatProgram() {
 		ProgramSeeds targeted = newConfig(newDivision(), newPeriod());
 		UUID otherConfig = newConfig(newDivision(), newPeriod()).configId();
-		newCandidate(newPerson(nextCurp(), "Ana", "Uno", null), targeted.configId(), "ADM-2026-000001");
-		newCandidate(newPerson(nextCurp(), "Beto", "Dos", null), otherConfig, "ADM-2026-000002");
+		newCandidate(targeted.configId(), "ADM-2026-000001", nextCurp(), "Ana", "Uno", null);
+		newCandidate(otherConfig, "ADM-2026-000002", nextCurp(), "Beto", "Dos", null);
 
 		assertThat(search(null, targeted.programId(), null, null, null).totalElements()).isEqualTo(1L);
 		assertThat(search(null, UUID.randomUUID(), null, null, null).totalElements()).isZero();
@@ -168,8 +165,8 @@ class CandidateRepositoryAdapterSearchIT {
 		UUID periodB = newPeriod();
 		UUID configA = newConfig(newDivision(), periodA).configId();
 		UUID configB = newConfig(newDivision(), periodB).configId();
-		newCandidate(newPerson(nextCurp(), "Ana", "Uno", null), configA, "ADM-2026-000001");
-		newCandidate(newPerson(nextCurp(), "Beto", "Dos", null), configB, "ADM-2026-000002");
+		newCandidate(configA, "ADM-2026-000001", nextCurp(), "Ana", "Uno", null);
+		newCandidate(configB, "ADM-2026-000002", nextCurp(), "Beto", "Dos", null);
 
 		assertThat(search(null, null, periodA, null, null).totalElements()).isEqualTo(1L);
 		assertThat(search(null, null, periodB, null, null).totalElements()).isEqualTo(1L);
@@ -181,8 +178,8 @@ class CandidateRepositoryAdapterSearchIT {
 		UUID divisionB = newDivision();
 		UUID configA = newConfig(divisionA, newPeriod()).configId();
 		UUID configB = newConfig(divisionB, newPeriod()).configId();
-		newCandidate(newPerson(nextCurp(), "Ana", "Uno", null), configA, "ADM-2026-000001");
-		newCandidate(newPerson(nextCurp(), "Beto", "Dos", null), configB, "ADM-2026-000002");
+		newCandidate(configA, "ADM-2026-000001", nextCurp(), "Ana", "Uno", null);
+		newCandidate(configB, "ADM-2026-000002", nextCurp(), "Beto", "Dos", null);
 
 		assertThat(search(null, null, null, divisionA, null).totalElements()).isEqualTo(1L);
 		assertThat(search(null, null, null, divisionB, null).totalElements()).isEqualTo(1L);
@@ -202,8 +199,8 @@ class CandidateRepositoryAdapterSearchIT {
 
 	@Test
 	void searchMatchesCurpAndEitherSurname() {
-		UUID personId = newPerson("GOCD050101HDFRNS04", "Ana", "Torres", "Ramos");
-		newCandidate(personId, newConfig(newDivision(), newPeriod()).configId(), "ADM-2026-000001");
+		newCandidate(newConfig(newDivision(), newPeriod()).configId(), "ADM-2026-000001",
+				"GOCD050101HDFRNS04", "Ana", "Torres", "Ramos");
 
 		assertThat(search(null, null, null, null, "gocd05").content()).hasSize(1);
 		assertThat(search(null, null, null, null, "torres").content()).hasSize(1);

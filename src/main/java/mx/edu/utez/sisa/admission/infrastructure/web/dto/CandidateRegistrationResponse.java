@@ -16,7 +16,7 @@ import java.util.UUID;
  * Projection of {@code RegisterCandidateUseCase.CandidateRegistrationResult},
  * same shape.
  */
-public record CandidateRegistrationResponse(UUID id, UUID personId, UUID admissionConfigId, String folio,
+public record CandidateRegistrationResponse(UUID id, UUID admissionConfigId, String folio,
 		CandidateStatus status, boolean llaveMxVerified, Instant registeredAt, boolean isFirstChoice,
 		UUID outreachChannelId, boolean isEnabledForInduction, PaymentResponse payment) {
 
@@ -40,7 +40,7 @@ public record CandidateRegistrationResponse(UUID id, UUID personId, UUID admissi
 	public static CandidateRegistrationResponse from(
 			RegisterCandidateUseCase.CandidateRegistrationResult result) {
 		RegisterCandidateUseCase.FichaPayment payment = result.payment();
-		return new CandidateRegistrationResponse(result.id(), result.personId(), result.admissionConfigId(),
+		return new CandidateRegistrationResponse(result.id(), result.admissionConfigId(),
 				result.folio(), result.status(), result.llaveMxVerified(), result.registeredAt(),
 				result.isFirstChoice(), result.outreachChannelId(), result.isEnabledForInduction(),
 				new PaymentResponse(payment.referenceNumber(), payment.amount(), payment.registrationDeadline(),

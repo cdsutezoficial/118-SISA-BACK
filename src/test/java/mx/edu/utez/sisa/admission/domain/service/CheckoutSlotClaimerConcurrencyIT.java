@@ -250,8 +250,7 @@ class CheckoutSlotClaimerConcurrencyIT {
 
 	private UUID saveCandidateWithPendingFicha(UUID admissionConfigId) {
 		Candidate candidate = candidateJpaRepository
-				.save(new Candidate(UUID.randomUUID(), admissionConfigId, "FOLIO-" + UUID.randomUUID(), false, true,
-						null));
+				.save(new Candidate(admissionConfigId, "FOLIO-" + UUID.randomUUID(), false, true, null));
 				Payment charge = paymentJpaRepository.save(new Payment(candidate.getId(), null, "FICHA-ING", null,
 						null, null, null, null, null, PaymentStatus.PENDING, PaymentOrigin.ADMISSION,
 						TODAY.plusDays(5).atStartOfDay(ZONE).toInstant(), NOW));

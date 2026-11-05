@@ -30,7 +30,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetFichaAmountUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.InitiateFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
@@ -159,11 +158,10 @@ public class UseCaseConfig {
 
 	@Bean
 	public ListCandidatesUseCase listCandidatesUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			CallerDivisionScopePort callerDivisionScopePort) {
-		return new ListCandidatesUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, callerDivisionScopePort);
+		return new ListCandidatesUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				callerDivisionScopePort);
 	}
 
 	/**
@@ -194,13 +192,12 @@ public class UseCaseConfig {
 	 */
 	@Bean
 	public RegisterCandidateUseCase registerCandidateUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
 			Clock clock, @Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
-		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
+		return new RegisterCandidateUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				fichaAmountResolver, fichaPaymentPort,
 				outreachChannelRepository, highSchoolTypeRepository, LocalDate.now(), clock, fichaDeadlineDays);
 	}
 
@@ -231,9 +228,10 @@ public class UseCaseConfig {
 	@Bean
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository) {
+			CheckoutAttemptRepository checkoutAttemptRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository);
+				checkoutAttemptRepository, programAdmissionConfigQueryPort);
 	}
 
 	@Bean
@@ -366,11 +364,10 @@ public class UseCaseConfig {
 
 	@Bean
 	public GetCandidateEditFormUseCase getCandidateEditFormUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaPaymentPort fichaPaymentPort,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
-		return new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
+		return new GetCandidateEditFormUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				fichaPaymentPort, changeCandidateProgramUseCase);
 	}
 
 	@Bean
@@ -384,24 +381,23 @@ public class UseCaseConfig {
 
 	@Bean
 	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
+			OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
-		return new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
+		return new UpdateCandidateUseCaseImpl(candidateRepository, outreachChannelRepository,
+				highSchoolTypeRepository, changeCandidateProgramUseCase);
 	}
 
 	@Bean
 	public GetCandidateFichaUseCase getCandidateFichaUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			FichaPaymentPort fichaPaymentPort,
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
 			FichaAmountResolver fichaAmountResolver, FichaDisplayPrice fichaDisplayPrice, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
-		return new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository,
-				fichaPaymentPort, checkoutAttemptRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
+		return new GetCandidateFichaUseCaseImpl(candidateRepository, fichaPaymentPort, checkoutAttemptRepository,
+				programAdmissionConfigQueryPort, placeNameLookupPort,
 				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, fichaDisplayPrice, clock,
 				fichaDeadlineDays);
 	}
@@ -415,13 +411,12 @@ public class UseCaseConfig {
 	 */
 	@Bean
 	public AccessFichaPaymentUseCase accessFichaPaymentUseCase(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			FichaAmountResolver fichaAmountResolver, FichaDisplayPrice fichaDisplayPrice, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays) {
-		return new AccessFichaPaymentUseCaseImpl(candidateRepository, candidatePersonRepository,
-				fichaPaymentPort, programAdmissionConfigQueryPort, fichaAmountResolver, fichaDisplayPrice,
+		return new AccessFichaPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
+				programAdmissionConfigQueryPort, fichaAmountResolver, fichaDisplayPrice,
 				clock, fichaDeadlineDays);
 	}
 }

@@ -5,7 +5,6 @@ import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -20,7 +19,6 @@ import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundExcept
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -92,8 +90,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 
 	private final CandidateRepository candidateRepository;
 
-	private final CandidatePersonRepository candidatePersonRepository;
-
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final FichaAmountResolver fichaAmountResolver;
@@ -124,13 +120,11 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	private final int fichaDeadlineDays;
 
 	public RegisterCandidateUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort, OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository, LocalDate registrationDate, Clock clock,
 			int fichaDeadlineDays) {
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
 		this.fichaPaymentPort = fichaPaymentPort;
@@ -146,11 +140,10 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	public CandidateRegistrationResult register(RegisterCandidateCommand command) {
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = validate(command);
 
-		Person savedPerson = candidatePersonRepository.save(CandidatePersonMapper.newPerson(command));
-
-		Candidate candidate = new Candidate(savedPerson.getId(), command.seleccionCarrera().admissionConfigId(),
-				generateFolio(), command.llaveMxVerified(), command.seleccionCarrera().isFirstChoice(),
+		Candidate candidate = new Candidate(command.seleccionCarrera().admissionConfigId(), generateFolio(),
+				command.llaveMxVerified(), command.seleccionCarrera().isFirstChoice(),
 				command.seleccionCarrera().outreachChannelId());
+		CandidateFichaMapper.apply(candidate, command);
 		Candidate savedCandidate = candidateRepository.save(candidate);
 
 		// The ficha is a charge of the program's catalog ADMISSION concept (its
@@ -210,8 +203,6 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	}
 
 	private ProgramAdmissionConfigQueryPort.AdmissionConfigInfo validate(RegisterCandidateCommand command) {
-		validateCurpHasNoLiveFicha(command.datosGenerales().curp());
-
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config = programAdmissionConfigQueryPort
 				.findById(command.seleccionCarrera().admissionConfigId())
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
@@ -222,6 +213,7 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		}
 
 		validateSalesWindow(config);
+		validateCurpHasNoLiveFicha(command.datosGenerales().curp(), config.periodId());
 
 		if (command.seleccionCarrera().outreachChannelId() != null
 				&& outreachChannelRepository.findById(command.seleccionCarrera().outreachChannelId()).isEmpty()) {
@@ -260,13 +252,9 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 * intended change, and the reason the old {@code findByCurp().isPresent()}
 	 * guard is gone.
 	 */
-	private void validateCurpHasNoLiveFicha(String curp) {
-		Optional<Person> person = candidatePersonRepository.findByCurp(curp);
-		if (person.isEmpty()) {
-			return;
-		}
+	private void validateCurpHasNoLiveFicha(String curp, UUID periodId) {
 		LocalDate today = LocalDate.now(clock);
-		for (Candidate previous : candidateRepository.findAllByPersonId(person.get().getId())) {
+		for (Candidate previous : candidateRepository.findAllByCurpAndPeriodId(curp, periodId)) {
 			if (previous.getStatus() == CandidateStatus.PAYMENT_EXPIRED) {
 				continue;
 			}
@@ -274,8 +262,8 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 				continue;
 			}
 			throw new CandidateAlreadyExistsException(previous.getStatus() == CandidateStatus.REGISTERED
-					? "Este CURP ya tiene una ficha vigente. Podrás registrarte de nuevo si esa ficha vence sin pago."
-					: "Este CURP ya tiene una ficha en el proceso de admisión. No es posible registrar una nueva.");
+					? "Este CURP ya tiene una ficha vigente en este proceso de admisión. Podrás registrarte de nuevo si esa ficha vence sin pago."
+					: "Este CURP ya tiene una ficha en este proceso de admisión. No es posible registrar una nueva.");
 		}
 	}
 
@@ -404,8 +392,8 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 	 */
 	private CandidateRegistrationResult toResult(Candidate candidate, String reference, LocalDate deadline,
 			ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config, BigDecimal amount) {
-		return new CandidateRegistrationResult(candidate.getId(), candidate.getPersonId(),
-				candidate.getAdmissionConfigId(), candidate.getFolio(), candidate.getStatus(),
+		return new CandidateRegistrationResult(candidate.getId(), candidate.getAdmissionConfigId(),
+				candidate.getFolio(), candidate.getStatus(),
 				candidate.isLlaveMxVerified(), candidate.getRegisteredAt(), candidate.isFirstChoice(),
 				candidate.getOutreachChannelId(), candidate.isEnabledForInduction(),
 				new FichaPayment(reference, amount, deadline, AdmissionPaymentStatus.PENDING,

@@ -40,16 +40,11 @@ public interface ListCandidatesUseCase {
 
 	/**
 	 * One row. {@code fullName}, {@code curp} and {@code programName} are nullable
-	 * because a candidate's {@code Person} or its config's program can, in
-	 * principle, be missing; the row is still listed so the anomaly is visible
-	 * rather than silently hidden.
-	 *
-	 * <p>{@code personId} is exposed so staff flows that act on the shared person
-	 * rather than the candidate (granting a discount, Fase 2) can do it from the
-	 * list row instead of re-resolving the candidate. It is the candidate's own FK;
-	 * no extra query.
+	 * because a candidate or its config's program can, in principle, be missing;
+	 * the row is still listed so the anomaly is visible rather than silently
+	 * hidden.
 	 */
-	record CandidateListItem(UUID id, UUID personId, String folio, String fullName, String curp, UUID programId,
+	record CandidateListItem(UUID id, String folio, String fullName, String curp, UUID programId,
 			String programName, CandidateStatus status, Instant registeredAt) {
 	}
 }

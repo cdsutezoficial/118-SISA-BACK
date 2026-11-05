@@ -20,7 +20,7 @@ import java.util.UUID;
  * descuento Y = Z" the applicant sees. {@code amount} is the total owed (live
  * while the ficha is open, the charged amount once paid).
  */
-public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, String folio, String fullName,
+public record CandidateStaffDetailResponse(UUID candidateId, String folio, String fullName,
 		CandidateStatus candidateStatus, Instant registeredAt, String programName, String divisionName, String curp,
 		String email, String homePhone, String mobilePhone, String outreachChannelName,
 		PaymentResponse admissionPayment, PaymentResponse inductionPayment, FichaData.DatosGenerales datosGenerales,
@@ -47,7 +47,7 @@ public record CandidateStaffDetailResponse(UUID candidateId, UUID personId, Stri
 	}
 
 	public static CandidateStaffDetailResponse from(FichaData ficha) {
-		return new CandidateStaffDetailResponse(ficha.candidateId(), ficha.personId(), ficha.folio(), fullName(ficha),
+		return new CandidateStaffDetailResponse(ficha.candidateId(), ficha.folio(), fullName(ficha),
 				ficha.candidateStatus(), ficha.registeredAt(), ficha.programName(), ficha.divisionName(), ficha.curp(),
 				ficha.email(), ficha.homePhone(), ficha.mobilePhone(),
 				ficha.seleccionCarrera() == null ? null : ficha.seleccionCarrera().outreachChannelName(),

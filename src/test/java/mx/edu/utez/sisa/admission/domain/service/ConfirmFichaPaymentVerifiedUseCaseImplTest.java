@@ -89,7 +89,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	}
 
 	private static Candidate candidate() {
-		Candidate candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(UUID.randomUUID(), "ADM-2026-000001", true, true, null);
 		candidate.linkFichaPayment(CHARGE_ID);
 		return candidate;
 	}
