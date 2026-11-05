@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -30,14 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * meaning real values rather than wildcards, because {@code null} is a rung of the
  * pricing ladder in its own right, not "any program".
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * {@code ddl-auto=create-drop} means whatever database {@code DB_URL} names is
- * dropped and rebuilt from the entities. Point {@code DB_URL} at a throwaway
- * database when running this locally.
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(PaymentRateRepositoryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class PaymentRateRepositoryAdapterIT {
 
 	private static final LocalDateTime EARLY = LocalDateTime.of(2025, 1, 1, 8, 0);

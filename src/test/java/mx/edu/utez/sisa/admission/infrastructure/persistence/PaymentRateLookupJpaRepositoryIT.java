@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,20 +44,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * now literally that: an INACTIVE row sitting next to the ACTIVE one that
  * replaced it.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * {@code ddl-auto=create-drop} means whatever database {@code DB_URL} names is
- * dropped and rebuilt from the entities, and the data in it is not recovered
- * from a dump. Point {@code DB_URL} at a throwaway database when running this
- * locally — pointing it at the development database destroys the admission
- * catalogs, which nothing re-seeds:
- *
- * <pre>
- * mvn verify -Dit.test=PaymentRateLookupJpaRepositoryIT \
- *     -DDB_URL='jdbc:mysql://localhost:3306/sisa_it?createDatabaseIfNotExist=true&amp;serverTimezone=UTC'
- * </pre>
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class PaymentRateLookupJpaRepositoryIT {
 
 	private static final LocalDateTime CREATED_AT = LocalDateTime.of(2026, 1, 1, 8, 0);

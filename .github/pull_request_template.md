@@ -15,15 +15,15 @@
 
 ## Base de datos
 - [ ] No cambia el esquema
-- [ ] Cambia el esquema → tabla/columna afectada y si es `NOT NULL`:
+- [ ] Cambia el esquema → incluye la migración `db/migration/V…__….sql` (no edita ninguna ya aplicada)
+- [ ] Solo agrega (tabla, columna nullable o con `DEFAULT`, índice). Si borra o renombra, va en un segundo PR — ver `docs/guias/migraciones.md`
 
 ## API
 - [ ] No cambia endpoints ni respuestas
 - [ ] Endpoint nuevo o contrato modificado (DTO, `code` de error) → listar y avisar a quien hace el front:
 
 ## Verificación
-- [ ] `./mvnw test` en verde
-- [ ] Las pruebas de integración (`*IT`) corrieron contra una base local desechable, **nunca contra QA**
+- [ ] `./mvnw verify` en verde contra `sisa_it` local (el candado impide correr contra otra base)
 - [ ] Probado a mano:
 
 ## Cierre

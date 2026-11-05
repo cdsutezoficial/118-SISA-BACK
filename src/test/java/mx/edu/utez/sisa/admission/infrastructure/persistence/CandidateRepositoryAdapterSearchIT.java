@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -37,18 +36,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and the row that comes back must be identified by that same value, or the
  * "Programa Solicitado" filter would match rows it then cannot re-find.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * {@code ddl-auto=create-drop} drops and rebuilds whatever database
- * {@code DB_URL} names. Point it at a throwaway database:
- *
- * <pre>
- * mvn verify -Dit.test=CandidateRepositoryAdapterSearchIT \
- *     -DDB_URL='jdbc:mysql://localhost:3306/sisa_it?createDatabaseIfNotExist=true&amp;serverTimezone=UTC'
- * </pre>
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(CandidateRepositoryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class CandidateRepositoryAdapterSearchIT {
 
 	@Autowired
