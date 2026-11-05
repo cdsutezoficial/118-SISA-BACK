@@ -56,7 +56,38 @@ public interface GetCandidateFichaUseCase {
 			DatosGenerales datosGenerales, Domicilio domicilio,
 			InformacionComplementaria informacionComplementaria, Ingresos ingresos, SeleccionCarrera seleccionCarrera,
 			AntecedentesEscolares antecedentesEscolares, PaymentData inductionPayment, BigDecimal originalAmount,
-			BigDecimal discountAmount, String discountReason, String conceptName) {
+			BigDecimal discountAmount, String discountReason, String conceptName, PendingDifference pendingDifference) {
+
+		/** Without a pending career-change difference. */
+		public FichaData(UUID candidateId, UUID personId, String folio, CandidateStatus candidateStatus,
+				Instant registeredAt, UUID admissionConfigId, String programName, String divisionName, String curp,
+				String firstName, String lastName1, String lastName2, String email, String homePhone,
+				String mobilePhone, String referenceNumber, BigDecimal amount, LocalDate registrationDeadline,
+				LocalDate paymentClosesOn, LocalDate paymentDeadline, AdmissionPaymentStatus paymentStatus,
+				String receiptNumber, Instant paidAt, String orderId, DatosGenerales datosGenerales,
+				Domicilio domicilio, InformacionComplementaria informacionComplementaria, Ingresos ingresos,
+				SeleccionCarrera seleccionCarrera, AntecedentesEscolares antecedentesEscolares,
+				PaymentData inductionPayment, BigDecimal originalAmount, BigDecimal discountAmount,
+				String discountReason, String conceptName) {
+			this(candidateId, personId, folio, candidateStatus, registeredAt, admissionConfigId, programName,
+					divisionName, curp, firstName, lastName1, lastName2, email, homePhone, mobilePhone,
+					referenceNumber, amount, registrationDeadline, paymentClosesOn, paymentDeadline, paymentStatus,
+					receiptNumber, paidAt, orderId, datosGenerales, domicilio, informacionComplementaria, ingresos,
+					seleccionCarrera, antecedentesEscolares, inductionPayment, originalAmount, discountAmount,
+					discountReason, conceptName, null);
+		}
+
+		/**
+		 * F6: the difference a career change left to pay. While it is pending the ficha
+		 * shows the new career's price, not the one of the ficha paid before.
+		 *
+		 * @param total       what the new career costs (its discount already applied)
+		 * @param alreadyPaid what the earlier ficha carried over, plus any saldo used
+		 * @param toPay       what is left
+		 */
+		public record PendingDifference(BigDecimal total, BigDecimal alreadyPaid, BigDecimal toPay,
+				String referenceNumber, Instant dueAt) {
+		}
 
 		public record PaymentData(AdmissionPaymentConcept concept, BigDecimal amount, String referenceNumber,
 				AdmissionPaymentStatus paymentStatus, String receiptNumber, Instant paidAt, String orderId) {

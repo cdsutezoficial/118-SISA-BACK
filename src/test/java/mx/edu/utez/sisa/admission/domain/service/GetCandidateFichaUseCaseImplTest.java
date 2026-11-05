@@ -176,6 +176,30 @@ class GetCandidateFichaUseCaseImplTest {
 		assertThat(ficha.paymentDeadline()).isEqualTo(PAYMENT_DEADLINE);
 	}
 
+	/** F6: a pending career-change difference travels to the ficha (and its PDF). */
+	@Test
+	void get_withAPendingDifferenceCarriesWhatIsLeftToPay() {
+		UUID difference = UUID.randomUUID();
+		ReflectionTestUtils.setField(candidateRepository.findById(candidateId).orElseThrow(), "programChangePaymentId",
+				difference);
+		when(fichaPaymentPort.findProgramChangeCharge(difference)).thenReturn(Optional.of(
+				new FichaPaymentPort.ProgramChangeCharge(difference, "REF-C1", new BigDecimal("1850.00"),
+						new BigDecimal("1750.00"), new BigDecimal("100.00"), REGISTERED_AT, false, false, null, null)));
+
+		var pending = useCase.get(candidateId).pendingDifference();
+
+		assertThat(pending).isNotNull();
+		assertThat(pending.total()).isEqualByComparingTo("1850.00");
+		assertThat(pending.alreadyPaid()).isEqualByComparingTo("1750.00");
+		assertThat(pending.toPay()).isEqualByComparingTo("100.00");
+		assertThat(pending.referenceNumber()).isEqualTo("REF-C1");
+	}
+
+	@Test
+	void get_withoutADifferenceHasNoPendingDifference() {
+		assertThat(useCase.get(candidateId).pendingDifference()).isNull();
+	}
+
 	/** The amount is the catalog's live price, not the number frozen at registration. */
 	@Test
 	void get_pricesTheFichaLiveFromTheCatalog() {
