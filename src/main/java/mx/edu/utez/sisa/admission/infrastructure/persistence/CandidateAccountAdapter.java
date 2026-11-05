@@ -8,6 +8,8 @@ import mx.edu.utez.sisa.finance.domain.port.in.ListCreditsUseCase;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,8 +27,12 @@ public class CandidateAccountAdapter implements CandidateAccountPort {
 
 	private final AcademicProgramNameLookupJpaRepository programJpaRepository;
 
+	private final PaymentReferenceLookupJpaRepository paymentReferenceJpaRepository;
+
 	public CandidateAccountAdapter(GetAccountStatementUseCase getAccountStatementUseCase,
-			ListCreditsUseCase listCreditsUseCase, AcademicProgramNameLookupJpaRepository programJpaRepository) {
+			ListCreditsUseCase listCreditsUseCase, AcademicProgramNameLookupJpaRepository programJpaRepository,
+			PaymentReferenceLookupJpaRepository paymentReferenceJpaRepository) {
+		this.paymentReferenceJpaRepository = paymentReferenceJpaRepository;
 		this.getAccountStatementUseCase = getAccountStatementUseCase;
 		this.listCreditsUseCase = listCreditsUseCase;
 		this.programJpaRepository = programJpaRepository;
@@ -41,9 +47,22 @@ public class CandidateAccountAdapter implements CandidateAccountPort {
 
 	@Override
 	public List<Credit> findCredits(UUID candidateId) {
-		return listCreditsUseCase.listByCandidate(candidateId).stream()
+		var credits = listCreditsUseCase.listByCandidate(candidateId);
+		Set<UUID> paymentIds = new HashSet<>();
+		credits.forEach(credit -> {
+			paymentIds.add(credit.originPaymentId());
+			paymentIds.add(credit.appliedToPaymentId());
+		});
+		paymentIds.remove(null);
+		Map<UUID, String> references = new HashMap<>();
+		if (!paymentIds.isEmpty()) {
+			paymentReferenceJpaRepository.findAllById(paymentIds)
+					.forEach(payment -> references.put(payment.getId(), payment.getReferenceNumber()));
+		}
+		return credits.stream()
 				.map(credit -> new Credit(credit.amount(), credit.status().name(), credit.originPaymentId(),
-						credit.appliedToPaymentId(), credit.createdAt()))
+						credit.appliedToPaymentId(), credit.createdAt(), references.get(credit.originPaymentId()),
+						references.get(credit.appliedToPaymentId())))
 				.toList();
 	}
 

@@ -31,7 +31,17 @@ public interface CandidateAccountPort {
 	}
 
 	/** {@code status}: {@code AVAILABLE}, {@code APPLIED} o {@code REFUNDED}. */
+	/**
+	 * @param originReference     referencia del cargo que lo generó, aunque sea de
+	 *                            otra ficha de la misma persona (F9)
+	 * @param appliedToReference  referencia del cargo donde se usó
+	 */
 	record Credit(BigDecimal amount, String status, UUID originPaymentId, UUID appliedToPaymentId,
-			Instant createdAt) {
+			Instant createdAt, String originReference, String appliedToReference) {
+
+		public Credit(BigDecimal amount, String status, UUID originPaymentId, UUID appliedToPaymentId,
+				Instant createdAt) {
+			this(amount, status, originPaymentId, appliedToPaymentId, createdAt, null, null);
+		}
 	}
 }
