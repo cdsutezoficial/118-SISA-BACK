@@ -47,7 +47,7 @@ public class GetAccountStatementUseCaseImpl implements GetAccountStatementUseCas
 
 	@Override
 	public AccountStatement getAccountStatement(UUID candidateId, UUID studentId) {
-		PersonView person = (candidateId != null ? anchorQueryPort.findPersonByCandidateId(candidateId)
+		PersonView person = (candidateId != null ? anchorQueryPort.findPayerByCandidateId(candidateId)
 				: anchorQueryPort.findPersonByStudentId(studentId))
 				.orElseThrow(() -> new PersonNotFoundException(
 						"Person not found for anchor: " + (candidateId != null ? candidateId : studentId)));
