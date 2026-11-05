@@ -4,8 +4,10 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,13 +58,15 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
+	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository) {
+			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
+		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 	}
 
 	@Override
@@ -95,7 +99,11 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 			// Paid in full: the new career's charge is the ficha from now on.
 			candidate.adoptFichaPayment(charge.financePaymentId());
 		} else {
-			candidate.markPaid();
+			UUID periodId = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
+					.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
+					.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+							"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
+			candidate.markPaid(periodId);
 		}
 		candidateRepository.save(candidate);
 

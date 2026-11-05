@@ -74,7 +74,7 @@ public interface RegisterCandidateUseCase {
 	record SeleccionCarrera(UUID admissionConfigId, UUID outreachChannelId, boolean isFirstChoice) {
 	}
 
-	record CandidateRegistrationResult(UUID id, UUID personId, UUID admissionConfigId, String folio,
+	record CandidateRegistrationResult(UUID id, UUID admissionConfigId, String folio,
 			CandidateStatus status, boolean llaveMxVerified, Instant registeredAt, boolean isFirstChoice,
 			UUID outreachChannelId, boolean isEnabledForInduction, FichaPayment payment) {
 	}

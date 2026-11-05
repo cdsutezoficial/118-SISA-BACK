@@ -3,19 +3,14 @@ package mx.edu.utez.sisa.admission.domain.service;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchCriteria;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchPage;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.ProgramRef;
-import mx.edu.utez.sisa.shared.model.Person;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Candidate list for the "Candidatos" screen. Two rules shape it:
@@ -35,18 +30,14 @@ public class ListCandidatesUseCaseImpl implements ListCandidatesUseCase {
 
 	private final CandidateRepository candidateRepository;
 
-	private final CandidatePersonRepository candidatePersonRepository;
-
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private final CallerDivisionScopePort callerDivisionScopePort;
 
 	public ListCandidatesUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
 			CallerDivisionScopePort callerDivisionScopePort) {
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.callerDivisionScopePort = callerDivisionScopePort;
 	}
@@ -67,24 +58,13 @@ public class ListCandidatesUseCaseImpl implements ListCandidatesUseCase {
 				query.periodId(), divisionId, normalizeSearch(query.search()), page, size);
 		CandidateSearchPage result = candidateRepository.search(criteria);
 
-		Map<UUID, Person> personsById = loadPersons(result.content());
 		Map<UUID, ProgramRef> programRefsByConfigId = loadProgramRefs(result.content());
 
 		List<CandidateListItem> items = result.content().stream()
-				.map(candidate -> toItem(candidate, personsById.get(candidate.getPersonId()),
-						programRefsByConfigId.get(candidate.getAdmissionConfigId())))
+				.map(candidate -> toItem(candidate, programRefsByConfigId.get(candidate.getAdmissionConfigId())))
 				.toList();
 
 		return new ListCandidatesResult(items, result.totalElements(), result.totalPages(), page, size);
-	}
-
-	private Map<UUID, Person> loadPersons(List<Candidate> candidates) {
-		List<UUID> personIds = candidates.stream().map(Candidate::getPersonId).distinct().toList();
-		if (personIds.isEmpty()) {
-			return Map.of();
-		}
-		return candidatePersonRepository.findByIds(personIds).stream()
-				.collect(Collectors.toMap(Person::getId, Function.identity()));
 	}
 
 	private Map<UUID, ProgramRef> loadProgramRefs(List<Candidate> candidates) {
@@ -92,9 +72,9 @@ public class ListCandidatesUseCaseImpl implements ListCandidatesUseCase {
 		return programAdmissionConfigQueryPort.findProgramRefsByConfigIds(configIds);
 	}
 
-	private static CandidateListItem toItem(Candidate candidate, Person person, ProgramRef programRef) {
-		return new CandidateListItem(candidate.getId(), candidate.getPersonId(), candidate.getFolio(), fullName(person),
-				person == null ? null : person.getCurp(), programRef == null ? null : programRef.programId(),
+	private static CandidateListItem toItem(Candidate candidate, ProgramRef programRef) {
+		return new CandidateListItem(candidate.getId(), candidate.getFolio(), fullName(candidate),
+				candidate.getCurp(), programRef == null ? null : programRef.programId(),
 				programRef == null ? null : programRef.programName(), candidate.getStatus(),
 				candidate.getRegisteredAt());
 	}
@@ -104,11 +84,9 @@ public class ListCandidatesUseCaseImpl implements ListCandidatesUseCase {
 	 * space, so the joined parts are trimmed; mirrors
 	 * {@code AccessFichaPaymentUseCaseImpl#fullName}.
 	 */
-	private static String fullName(Person person) {
-		if (person == null) {
-			return null;
-		}
-		String name = (join(person.getFirstName()) + join(person.getLastName1()) + join(person.getLastName2())).trim();
+	private static String fullName(Candidate candidate) {
+		String name = (join(candidate.getFirstName()) + join(candidate.getLastName1()) + join(candidate.getLastName2()))
+				.trim();
 		return name.isEmpty() ? null : name;
 	}
 
