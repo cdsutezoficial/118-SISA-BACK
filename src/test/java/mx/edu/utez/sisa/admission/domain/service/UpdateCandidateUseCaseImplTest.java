@@ -14,6 +14,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
@@ -40,12 +41,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -89,6 +92,9 @@ class UpdateCandidateUseCaseImplTest {
 	@Mock
 	private ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
+	@Mock
+	private CandidateAuditPort candidateAuditPort;
+
 	private UpdateCandidateUseCaseImpl useCase;
 
 	private GetCandidateEditFormUseCaseImpl getEditForm;
@@ -100,7 +106,7 @@ class UpdateCandidateUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
+				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase, candidateAuditPort);
 		getEditForm = new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
 				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
 
@@ -140,6 +146,35 @@ class UpdateCandidateUseCaseImplTest {
 		assertThat(candidate.isLlaveMxVerified()).isTrue();
 		verify(candidatePersonRepository).save(person);
 		verify(candidateRepository).save(candidate);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void leavesWhoChangedWhatWithBeforeAndAfter() {
+		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN10")).thenReturn(Optional.empty());
+
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan Carlos", CONFIG_ID, NEW_CHANNEL_ID),
+				ACTOR_ID);
+
+		org.mockito.ArgumentCaptor<List<CandidateAuditPort.Change>> changes = org.mockito.ArgumentCaptor
+				.forClass(List.class);
+		verify(candidateAuditPort).fichaEdited(eq(CANDIDATE_ID), eq(ACTOR_ID), changes.capture());
+		assertThat(changes.getValue()).contains(
+				new CandidateAuditPort.Change("curp", "PEGJ900101HMSRRN09", "PEGJ900101HMSRRN10"),
+				new CandidateAuditPort.Change("firstName", "Juan", "Juan Carlos"),
+				new CandidateAuditPort.Change("address.street", "Calle Juan", "Calle Juan Carlos"),
+				new CandidateAuditPort.Change("outreachChannelId", CHANNEL_ID.toString(), NEW_CHANNEL_ID.toString()));
+		assertThat(changes.getValue()).extracting(CandidateAuditPort.Change::field)
+				.doesNotContain("lastName1", "admissionConfigId");
+	}
+
+	@Test
+	void savingTheSameDataLeavesAnEmptyTrail() {
+		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN09")).thenReturn(Optional.of(person));
+
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
+
+		verify(candidateAuditPort).fichaEdited(CANDIDATE_ID, ACTOR_ID, List.of());
 	}
 
 	@Test

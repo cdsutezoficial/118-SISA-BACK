@@ -15,6 +15,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.CollectCashPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
 import mx.edu.utez.sisa.admission.domain.port.out.StaffDirectoryPort;
 import mx.edu.utez.sisa.admission.domain.service.CollectCashPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.FichaPaymentGate;
@@ -435,9 +436,10 @@ public class UseCaseConfig {
 	public UpdateCandidateUseCaseImpl transactionalUpdateCandidateUseCase(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository,
-			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase, CandidateAuditPort candidateAuditPort) {
 		return new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
+				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase,
+				candidateAuditPort);
 	}
 
 	/**

@@ -122,6 +122,7 @@ public class IdentityAuthorizationCatalogSeedRunner implements ApplicationRunner
 			permission("FINANCE_ALERTS_RESOLVE", "Marcar alertas de pago como revisadas"),
 			permission("PAYMENT_WINDOW_CONFIRM", "Cobrar en efectivo en caja"),
 			permission("CONFIG_STATISTICS_READ", "Consultar estadísticas de configuración académica"),
+			permission("AUDIT_LOG_READ", "Consultar el log de auditoría"),
 			permission("PROGRAM_ADMISSION_CONFIGS_READ", "Consultar configuraciones de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_CREATE", "Crear configuración de admisión por carrera"),
 			permission("PROGRAM_ADMISSION_CONFIGS_UPDATE", "Actualizar configuración de admisión por carrera"),

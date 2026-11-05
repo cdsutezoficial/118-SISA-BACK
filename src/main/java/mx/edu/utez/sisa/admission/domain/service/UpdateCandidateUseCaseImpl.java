@@ -4,6 +4,7 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
@@ -16,6 +17,7 @@ import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,10 +33,13 @@ public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 
 	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
+	private final CandidateAuditPort candidateAuditPort;
+
 	public UpdateCandidateUseCaseImpl(CandidateRepository candidateRepository,
 			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
 			HighSchoolTypeRepository highSchoolTypeRepository,
-			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase, CandidateAuditPort candidateAuditPort) {
+		this.candidateAuditPort = candidateAuditPort;
 		this.candidateRepository = candidateRepository;
 		this.candidatePersonRepository = candidatePersonRepository;
 		this.outreachChannelRepository = outreachChannelRepository;
@@ -57,6 +62,7 @@ public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 						"No existe la persona del candidato: " + candidateId));
 
 		validate(candidate, person, command);
+		Map<String, String> before = CandidateFichaSnapshot.of(person, candidate);
 
 		CandidatePersonMapper.apply(person, command);
 		candidatePersonRepository.save(person);
@@ -67,6 +73,12 @@ public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 
 		changeCandidateProgramUseCase.change(candidateId, command.seleccionCarrera().admissionConfigId(),
 				actingUserId);
+
+		// F4: quién cambió qué. Va en la misma transacción, después del cambio de
+		// carrera, para que la carrera nueva también quede en el rastro.
+		Candidate after = candidateRepository.findById(candidateId).orElse(candidate);
+		candidateAuditPort.fichaEdited(candidateId, actingUserId,
+				CandidateFichaSnapshot.diff(before, CandidateFichaSnapshot.of(person, after)));
 	}
 
 	private void validate(Candidate candidate, Person person, RegisterCandidateCommand command) {

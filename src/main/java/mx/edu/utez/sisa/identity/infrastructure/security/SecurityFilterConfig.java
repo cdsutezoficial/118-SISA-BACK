@@ -348,6 +348,8 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.GET, "/groups", "/groups/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						// Log de auditoría: solo ADMIN (RN-AUD-004).
+						.requestMatchers(HttpMethod.GET, "/audit-log").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/config-academica/statistics")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/groups").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")

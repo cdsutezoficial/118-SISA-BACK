@@ -92,6 +92,8 @@ public final class PermissionRegistry {
 			e("GET", "/groups/**", "GROUPS_READ"),
 			// Tablero de configuración académica: solo conteos (F7).
 			e("GET", "/config-academica/statistics", "CONFIG_STATISTICS_READ"),
+			// audit — consulta del log (RF-AUD-003); ningún rol lo trae, ADMIN pasa por encima.
+			e("GET", "/audit-log", "AUDIT_LOG_READ"),
 			e("POST", "/groups", "GROUPS_CREATE"),
 			// El bulk comparte clave con el alta individual: son la misma operación
 			// de escritura sobre la misma tabla, sólo que en lote. Hace falta su
