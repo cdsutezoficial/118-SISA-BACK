@@ -48,7 +48,7 @@ class CandidateStaffDetailResponseTest {
 
 	private static FichaData ficha(BigDecimal originalAmount, BigDecimal discountAmount, BigDecimal amount,
 			String discountReason, String conceptName) {
-		return new FichaData(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", CandidateStatus.REGISTERED,
+		return new FichaData(UUID.randomUUID(), "ADM-2026-000001", CandidateStatus.REGISTERED,
 				Instant.parse("2026-10-20T16:00:00Z"), UUID.randomUUID(), "Desarrollo de Software", "DATIC",
 				"PELJ000101HMSRRN09", "Juan", "Pérez", "López", "juan@example.com", null, "7771234567",
 				"REF-ADM-2026-000001", amount, LocalDate.of(2026, 11, 30), LocalDate.of(2026, 11, 30),

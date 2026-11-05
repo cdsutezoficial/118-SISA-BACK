@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateAddress;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHealthProfile;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
@@ -14,21 +16,16 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
-import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
-import mx.edu.utez.sisa.shared.model.Address;
 import mx.edu.utez.sisa.shared.model.Gender;
-import mx.edu.utez.sisa.shared.model.HealthProfile;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,19 +44,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Edición de la ficha por Servicios Escolares (Fase 7 · T2): lectura del
- * formulario y guardado.
- */
 @ExtendWith(MockitoExtension.class)
 class UpdateCandidateUseCaseImplTest {
 
 	private static final UUID CANDIDATE_ID = UUID.randomUUID();
-	private static final UUID PERSON_ID = UUID.randomUUID();
 	private static final UUID CONFIG_ID = UUID.randomUUID();
 	private static final UUID CHANNEL_ID = UUID.randomUUID();
 	private static final UUID NEW_CHANNEL_ID = UUID.randomUUID();
@@ -70,9 +61,6 @@ class UpdateCandidateUseCaseImplTest {
 
 	@Mock
 	private CandidateRepository candidateRepository;
-
-	@Mock
-	private CandidatePersonRepository candidatePersonRepository;
 
 	@Mock
 	private OutreachChannelRepository outreachChannelRepository;
@@ -90,29 +78,22 @@ class UpdateCandidateUseCaseImplTest {
 	private ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
 	private UpdateCandidateUseCaseImpl useCase;
-
 	private GetCandidateEditFormUseCaseImpl getEditForm;
-
 	private Candidate candidate;
-
-	private Person person;
 
 	@BeforeEach
 	void setUp() {
-		useCase = new UpdateCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				outreachChannelRepository, highSchoolTypeRepository, changeCandidateProgramUseCase);
-		getEditForm = new GetCandidateEditFormUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, fichaPaymentPort, changeCandidateProgramUseCase);
+		useCase = new UpdateCandidateUseCaseImpl(candidateRepository, outreachChannelRepository, highSchoolTypeRepository,
+				changeCandidateProgramUseCase);
+		getEditForm = new GetCandidateEditFormUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				fichaPaymentPort, changeCandidateProgramUseCase);
 
-		person = CandidatePersonMapper.newPerson(command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID));
-		ReflectionTestUtils.setField(person, "id", PERSON_ID);
-		person.getHealthProfile().setBloodType(null);
-
-		candidate = new Candidate(PERSON_ID, CONFIG_ID, "ADM-2026-000001", true, true, CHANNEL_ID);
+		candidate = new Candidate(CONFIG_ID, "ADM-2026-000001", true, true, CHANNEL_ID);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
+		CandidateFichaMapper.apply(candidate, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID));
+		candidate.setHealthProfile(new CandidateHealthProfile(false, null, false, null, null));
 
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
-		lenient().when(candidatePersonRepository.findById(PERSON_ID)).thenReturn(Optional.of(person));
 		lenient().when(outreachChannelRepository.findById(any()))
 				.thenReturn(Optional.of(Mockito.mock(OutreachChannel.class)));
 		lenient().when(highSchoolTypeRepository.findById(any()))
@@ -121,62 +102,36 @@ class UpdateCandidateUseCaseImplTest {
 
 	@Test
 	void updatesEveryFichaFieldInPlaceAndKeepsFolioStatusAndPayments() {
-		Address originalAddress = person.getAddress();
-		HealthProfile originalHealth = person.getHealthProfile();
-		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN10")).thenReturn(Optional.empty());
+		CandidateAddress originalAddress = candidate.getAddress();
+		CandidateHealthProfile originalHealth = candidate.getHealthProfile();
 
 		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan Carlos", CONFIG_ID, NEW_CHANNEL_ID),
 				ACTOR_ID);
 
-		assertThat(person.getCurp()).isEqualTo("PEGJ900101HMSRRN10");
-		assertThat(person.getFirstName()).isEqualTo("Juan Carlos");
-		// Perfiles hijos modificados en su lugar, no reemplazados (@MapsId).
-		assertThat(person.getAddress()).isSameAs(originalAddress);
-		assertThat(person.getHealthProfile()).isSameAs(originalHealth);
-		assertThat(person.getAddress().getStreet()).isEqualTo("Calle Juan Carlos");
+		assertThat(candidate.getCurp()).isEqualTo("PEGJ900101HMSRRN10");
+		assertThat(candidate.getFirstName()).isEqualTo("Juan Carlos");
+		assertThat(candidate.getAddress()).isSameAs(originalAddress);
+		assertThat(candidate.getHealthProfile()).isSameAs(originalHealth);
+		assertThat(candidate.getAddress().getStreet()).isEqualTo("Calle Juan Carlos");
 		assertThat(candidate.getOutreachChannelId()).isEqualTo(NEW_CHANNEL_ID);
 		assertThat(candidate.getFolio()).isEqualTo("ADM-2026-000001");
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.REGISTERED);
 		assertThat(candidate.isLlaveMxVerified()).isTrue();
-		verify(candidatePersonRepository).save(person);
 		verify(candidateRepository).save(candidate);
-	}
-
-	@Test
-	void keepingTheSameCurpIsNotAConflict() {
-		when(candidatePersonRepository.findByCurp("PEGJ900101HMSRRN09")).thenReturn(Optional.of(person));
-
-		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
-
-		verify(candidatePersonRepository).save(person);
-	}
-
-	@Test
-	void rejectsACurpThatBelongsToAnotherPerson() {
-		Person other = new Person("OTRA900101HMSRRN01", "Otra", "Persona", null, null);
-		ReflectionTestUtils.setField(other, "id", UUID.randomUUID());
-		when(candidatePersonRepository.findByCurp("OTRA900101HMSRRN01")).thenReturn(Optional.of(other));
-
-		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
-				command("OTRA900101HMSRRN01", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID))
-				.isInstanceOf(CandidateAlreadyExistsException.class);
-		verify(candidatePersonRepository, never()).save(any());
 	}
 
 	@Test
 	void handsTheProgramChangeToItsUseCaseAfterSavingTheData() {
 		UUID newConfig = UUID.randomUUID();
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(person));
 
 		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", newConfig, CHANNEL_ID), ACTOR_ID);
 
-		verify(candidatePersonRepository).save(person);
+		verify(candidateRepository).save(candidate);
 		verify(changeCandidateProgramUseCase).change(CANDIDATE_ID, newConfig, ACTOR_ID);
 	}
 
 	@Test
 	void rejectsAnUnknownOutreachChannel() {
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(person));
 		when(outreachChannelRepository.findById(NEW_CHANNEL_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
@@ -186,7 +141,6 @@ class UpdateCandidateUseCaseImplTest {
 
 	@Test
 	void rejectsAnUnknownHighSchoolType() {
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(person));
 		when(highSchoolTypeRepository.findById(SCHOOL_TYPE_ID)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
@@ -225,7 +179,6 @@ class UpdateCandidateUseCaseImplTest {
 
 	@Test
 	void storesForeignBirthAndHighSchoolState() {
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(person));
 		RegisterCandidateCommand base = command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID);
 		DatosGenerales d = base.datosGenerales();
 		AntecedentesEscolares a = base.antecedentesEscolares();
@@ -240,12 +193,12 @@ class UpdateCandidateUseCaseImplTest {
 
 		useCase.update(CANDIDATE_ID, foreign, ACTOR_ID);
 
-		assertThat(person.getBirthCountry()).isEqualTo("Colombia");
-		assertThat(person.getBirthForeignState()).isEqualTo("Antioquia");
-		assertThat(person.getBirthForeignMunicipality()).isEqualTo("Medellín");
-		assertThat(person.getHighSchoolBackground().getForeignCountry()).isEqualTo("Colombia");
-		assertThat(person.getHighSchoolBackground().getSchoolForeignState()).isEqualTo("Antioquia");
-		assertThat(person.getHighSchoolBackground().getSchoolCity()).isEqualTo("Medellín");
+		assertThat(candidate.getBirthCountry()).isEqualTo("Colombia");
+		assertThat(candidate.getBirthForeignState()).isEqualTo("Antioquia");
+		assertThat(candidate.getBirthForeignMunicipality()).isEqualTo("Medellín");
+		assertThat(candidate.getHighSchoolBackground().getForeignCountry()).isEqualTo("Colombia");
+		assertThat(candidate.getHighSchoolBackground().getSchoolForeignState()).isEqualTo("Antioquia");
+		assertThat(candidate.getHighSchoolBackground().getSchoolCity()).isEqualTo("Medellín");
 
 		CandidateEditForm form = getEditForm.get(CANDIDATE_ID);
 		assertThat(form.ficha().datosGenerales().birthCountry()).isEqualTo("Colombia");
@@ -255,9 +208,8 @@ class UpdateCandidateUseCaseImplTest {
 
 	@Test
 	void legacyForeignBirthKeptTheCountryInTheStateColumn() {
-		// Antes de birth_country el país se guardaba en birth_foreign_state.
-		person.setBirthCountry(null);
-		person.setBirthForeignState("Colombia");
+		candidate.setBirthCountry(null);
+		candidate.setBirthForeignState("Colombia");
 
 		CandidateEditForm form = getEditForm.get(CANDIDATE_ID);
 

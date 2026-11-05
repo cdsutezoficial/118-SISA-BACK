@@ -168,7 +168,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 		// lenient: only the paths that get past the PAID check resolve the config
 		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
 				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
-						ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null, null,
+						ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null,
+						UUID.randomUUID(), null,
 						LocalDate.of(2026, 9, 1).atStartOfDay(ZONE).toInstant(),
 						LocalDate.of(2026, 9, 30).atStartOfDay(ZONE).toInstant(), 40)));
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
@@ -181,7 +182,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 	}
 
 	private static Candidate candidateRegisteredAt(Instant registeredAt) {
-		Candidate candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
 		candidate.linkFichaPayment(CHARGE_ID);
 		return candidate;
@@ -658,7 +659,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo admissionConfigClosingOn(LocalDate closeDay) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
-				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null, null,
+				ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID, "Ingeniería en Software", null, null,
+				UUID.randomUUID(), null,
 				LocalDate.of(2026, 9, 1).atStartOfDay(ZONE).toInstant(), closeDay.atStartOfDay(ZONE).toInstant(), 40);
 	}
 
@@ -770,7 +772,8 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer(OrderIdBuilder orderIdBuilder) {
 		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository,
-				checkoutAttemptRepository, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), 15);
+				checkoutAttemptRepository, fichaPaymentPort, programAdmissionConfigQueryPort,
+				Clock.fixed(NOW_AT_NOON, ZONE), 15);
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer);

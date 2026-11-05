@@ -4,26 +4,24 @@ import java.util.List;
 import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateAddress;
+import mx.edu.utez.sisa.admission.domain.model.CandidateDiversityProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateEmploymentInfo;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHealthProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHighSchoolBackground;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.PlaceNameLookupPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.AdmissionConfigInfo;
-import mx.edu.utez.sisa.shared.model.Address;
-import mx.edu.utez.sisa.shared.model.DiversityProfile;
-import mx.edu.utez.sisa.shared.model.EmploymentInfo;
 import mx.edu.utez.sisa.shared.model.Gender;
-import mx.edu.utez.sisa.shared.model.HealthProfile;
-import mx.edu.utez.sisa.shared.model.HighSchoolBackground;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
-import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -88,9 +86,6 @@ class GetCandidateFichaUseCaseImplTest {
 	private CandidateRepository candidateRepository;
 
 	@Mock
-	private CandidatePersonRepository candidatePersonRepository;
-
-	@Mock
 	private FichaPaymentPort fichaPaymentPort;
 
 	@Mock
@@ -116,37 +111,36 @@ class GetCandidateFichaUseCaseImplTest {
 	private GetCandidateFichaUseCaseImpl useCase;
 
 	private UUID candidateId;
-	private UUID personId;
 	private UUID configId;
 	private UUID programId;
 
 	@BeforeEach
 	void setUp() {
-		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, candidatePersonRepository, fichaPaymentPort,
+		useCase = new GetCandidateFichaUseCaseImpl(candidateRepository, fichaPaymentPort,
 				checkoutAttemptRepository, programAdmissionConfigQueryPort, placeNameLookupPort,
 				outreachChannelRepository, highSchoolTypeRepository, fichaAmountResolver, null, CLOCK, DEADLINE_DAYS);
 		candidateId = UUID.randomUUID();
-		personId = UUID.randomUUID();
 		configId = UUID.randomUUID();
 		programId = UUID.randomUUID();
 
-		var candidate = new Candidate(personId, configId, "ADM-2026-000001",
+		var candidate = new Candidate(configId, "ADM-2026-000001",
 				true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+		candidate.setCurp("CURP0000000000000000");
+		candidate.setFirstName("Juan");
+		candidate.setLastName1("Perez");
+		candidate.setLastName2("Lopez");
+		candidate.setPersonalEmail("juan@correo.com");
 		candidate.linkFichaPayment(chargeId);
 		lenient().when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
-
-		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
-		person.setPersonalEmail("juan@correo.com");
-		ReflectionTestUtils.setField(person, "id", personId);
-		lenient().when(candidatePersonRepository.findById(personId)).thenReturn(Optional.of(person));
 
 		lenient().when(fichaPaymentPort.findCharge(chargeId)).thenReturn(Optional.of(pendingFicha()));
 
 		lenient().when(programAdmissionConfigQueryPort.findById(configId)).thenReturn(Optional
 				.of(new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, programId, "Mecatrónica",
-						null, ProgramModality.PRESENCIAL, "2026-2", WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
+						null, ProgramModality.PRESENCIAL, UUID.randomUUID(), "2026-2", WINDOW_OPEN, WINDOW_CLOSE,
+						MAX_CANDIDATES)));
 
 		// The payment window is read live, so the PDF's "Fecha límite de pago" can
 		// differ from the registration window and a test can tell them apart.
@@ -210,33 +204,35 @@ class GetCandidateFichaUseCaseImplTest {
 		UUID schoolTypeId = UUID.randomUUID();
 
 		// Enrich the shared Person fixture with the Fase 7 profile fields.
-		var candidate = new Candidate(personId, configId, "ADM-2026-000001",
+		var candidate = new Candidate(configId, "ADM-2026-000001",
 				true, true, channelId);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		ReflectionTestUtils.setField(candidate, "registeredAt", REGISTERED_AT);
+		candidate.setCurp("CURP0000000000000000");
+		candidate.setFirstName("Juan");
+		candidate.setLastName1("Perez");
+		candidate.setLastName2("Lopez");
+		candidate.setPersonalEmail("juan@correo.com");
+		candidate.setBirthDate(LocalDate.of(2006, 3, 14));
+		candidate.setGender(Gender.M);
+		candidate.setNationality("Mexicana");
+		candidate.setBirthStateId(stateId);
+		candidate.setBirthMunicipalityId(municipalityId);
+		candidate.setMaritalStatus(MaritalStatus.SOLTERO);
+		candidate.setNativeLanguage("Español");
+		candidate.setHasChildren(false);
+		candidate.setMonthlyFamilyIncome(new BigDecimal("12000.00"));
+		candidate.setAddress(new CandidateAddress("Av. Lázaro Cárdenas", "100", "", "Centro", "Jiquilpan", "59510",
+				stateId, municipalityId, null, null));
+		candidate.setHealthProfile(new CandidateHealthProfile(true, "Asma", false, null, null));
+		candidate.setDiversityProfile(new CandidateDiversityProfile(true, false, true, false, false, false, false,
+				"Náhuatl", null));
+		candidate.setEmploymentInfo(new CandidateEmploymentInfo(true, null, "Ferretería López", "Cajero",
+				"3515123456", new BigDecimal("6500.00"), LocalTime.of(9, 0), LocalTime.of(18, 0)));
+		candidate.setHighSchoolBackground(new CandidateHighSchoolBackground("CBTis 121", "Jiquilpan", schoolTypeId,
+				new BigDecimal("8.9"), true, stateId, municipalityId, "16DCT0121B", true, null, null, null, null));
 		candidate.linkFichaPayment(chargeId);
 		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
-
-		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
-		person.setPersonalEmail("juan@correo.com");
-		person.setBirthDate(LocalDate.of(2006, 3, 14));
-		person.setGender(Gender.M);
-		person.setNationality("Mexicana");
-		person.setBirthStateId(stateId);
-		person.setBirthMunicipalityId(municipalityId);
-		person.setMaritalStatus(MaritalStatus.SOLTERO);
-		person.setNativeLanguage("Español");
-		person.setHasChildren(false);
-		person.setMonthlyFamilyIncome(new BigDecimal("12000.00"));
-		person.setAddress(new Address("Av. Lázaro Cárdenas", "100", "", "Centro", "Jiquilpan", "59510", stateId,
-				municipalityId, null, null));
-		person.setHealthProfile(new HealthProfile(true, "Asma", false, null, null));
-		person.setDiversityProfile(new DiversityProfile(true, false, true, false, false, false, false, "Náhuatl", null));
-		person.setEmploymentInfo(new EmploymentInfo(true, null, "Ferretería López", "Cajero",
-				"3515123456", new BigDecimal("6500.00"), LocalTime.of(9, 0), LocalTime.of(18, 0)));
-		person.setHighSchoolBackground(new HighSchoolBackground("CBTis 121", "Jiquilpan", schoolTypeId,
-				new BigDecimal("8.9"), true, stateId, municipalityId, "16DCT0121B", true, null, null, null, null));
-		when(candidatePersonRepository.findById(personId)).thenReturn(Optional.of(person));
 
 				// The ficha shows the EVO order id when an online checkout ran.
 		var attempt = FichaTestData.attempt("TESTUTEZ-ADM-2026-000001", chargeId, candidateId,

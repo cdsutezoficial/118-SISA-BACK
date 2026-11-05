@@ -23,6 +23,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
@@ -87,6 +88,9 @@ class CheckoutSlotClaimerTest {
 	@Mock
 	private FichaPaymentPort fichaPaymentPort;
 
+	@Mock
+	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
+
 	private CheckoutSlotClaimer claimer;
 
 	private Candidate candidate;
@@ -94,10 +98,16 @@ class CheckoutSlotClaimerTest {
 	@BeforeEach
 	void setUp() {
 		claimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository, checkoutAttemptRepository,
-				fichaPaymentPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES);
-		candidate = new Candidate(UUID.randomUUID(), ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+				fichaPaymentPort, programAdmissionConfigQueryPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES);
+		candidate = new Candidate(ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
+		candidate.setCurp("PEGJ900101HMSRRN09");
 		candidate.linkFichaPayment(CHARGE_ID);
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
+		lenient().when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(ADMISSION_CONFIG_ID,
+						null, null, null, null, null, UUID.randomUUID(), null, NOW.minusSeconds(3600),
+						NOW.plusSeconds(3600), MAX_CANDIDATES)));
+		lenient().when(candidateRepository.existsAnotherValidInPeriod(any(), any(), any())).thenReturn(false);
 		lenient().when(fichaPaymentPort.findCharge(CHARGE_ID))
 				.thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)));
 		lenient().when(admissionQuotaPort.lockQuota(ADMISSION_CONFIG_ID))

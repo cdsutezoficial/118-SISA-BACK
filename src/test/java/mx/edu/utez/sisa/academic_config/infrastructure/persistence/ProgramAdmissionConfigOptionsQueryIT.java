@@ -447,7 +447,7 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	private Candidate saveCandidate(UUID admissionConfigId) {
-		return candidateJpaRepository.save(new Candidate(UUID.randomUUID(), admissionConfigId,
+		return candidateJpaRepository.save(new Candidate(admissionConfigId,
 				"FOLIO-" + UUID.randomUUID(), false, true, null));
 	}
 }
