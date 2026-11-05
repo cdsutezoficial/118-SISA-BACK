@@ -14,7 +14,10 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
@@ -49,6 +52,7 @@ public class CheckoutSlotClaimer {
 	private final CandidateRepository candidateRepository;
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 	private final FichaPaymentPort fichaPaymentPort;
+	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 	private final Clock clock;
 	private final CandidateNotificationPort notifications;
 	private final FinanceAlertPort financeAlertPort;
@@ -57,7 +61,8 @@ public class CheckoutSlotClaimer {
 	private final int checkoutHoldMinutes;
 
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
-			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort, Clock clock,
+			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort,
+			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
 			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
 			CandidateNotificationPort notifications, FinanceAlertPort financeAlertPort) {
 		this.notifications = notifications;
@@ -66,6 +71,7 @@ public class CheckoutSlotClaimer {
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
+		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.clock = clock;
 		this.checkoutHoldMinutes = checkoutHoldMinutes;
 	}
@@ -108,6 +114,7 @@ public class CheckoutSlotClaimer {
 		if (occupiedByOthers >= quota.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
 		}
+		requireNoOtherValidCandidateInPeriod(candidate);
 		requirePendingCharge(candidate);
 		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, price.financePaymentId(), candidateId, null,
 				price.amountDue(), now, price.rateId(), price.originalAmount(), price.discountAmount(),
@@ -144,6 +151,7 @@ public class CheckoutSlotClaimer {
 		if (occupiedByOthers >= quota.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
 		}
+		UUID periodId = requireNoOtherValidCandidateInPeriod(candidate);
 		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
 
 		BigDecimal paidSoFar = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
@@ -151,7 +159,7 @@ public class CheckoutSlotClaimer {
 			String receipt = creditReceipt(candidate.getFolio());
 			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(charge.financePaymentId(), receipt);
 			if (use.settled()) {
-				candidate.markPaid();
+				candidate.markPaid(periodId);
 				candidateRepository.save(candidate);
 				notifyCreditPayment(candidate, charge.referenceNumber(), receipt, use, null, false);
 				return new CreditClaim(receipt, BigDecimal.ZERO);
@@ -256,10 +264,14 @@ public class CheckoutSlotClaimer {
 	public String settleExempt(UUID candidateId, FichaPaymentPort.FichaQuote price) {
 		Candidate candidate = requireCandidate(candidateId);
 		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
+		UUID periodId = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
+				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
+				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
 		String receipt = exemptionReceipt(candidate.getFolio());
 		fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(price.financePaymentId(), price.charged(),
 				false, null, receipt, charge.referenceNumber(), null, EXEMPTION_COLLECTOR));
-		candidate.markPaid();
+		candidate.markPaid(periodId);
 		candidateRepository.save(candidate);
 		// F3: an exemption is a paid ficha too, and gets its receipt at $0.
 		notifications.paymentConfirmed(new ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult(candidate.getId(),
@@ -365,6 +377,18 @@ public class CheckoutSlotClaimer {
 					+ " no está pendiente de pago; no se puede iniciar el cobro.");
 		}
 		return charge;
+	}
+
+	private UUID requireNoOtherValidCandidateInPeriod(Candidate candidate) {
+		UUID periodId = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
+				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
+				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
+		if (candidateRepository.existsAnotherValidInPeriod(candidate.getCurp(), periodId, candidate.getId())) {
+			throw new CandidateAlreadyExistsException(
+					"Este CURP ya tiene una candidatura válida en este proceso de admisión.");
+		}
+		return periodId;
 	}
 
 	/**

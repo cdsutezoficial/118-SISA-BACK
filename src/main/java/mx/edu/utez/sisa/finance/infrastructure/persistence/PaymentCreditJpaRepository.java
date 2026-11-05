@@ -41,19 +41,17 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 	 */
 	@Query("""
 			SELECT c FROM PaymentCredit c
-			WHERE c.personId = :personId
-			   OR c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.personId = :personId)
+			WHERE c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.curp = :curp)
 			ORDER BY c.createdAt DESC""")
-	List<PaymentCredit> findByPerson(@Param("personId") UUID personId);
+	List<PaymentCredit> findByCurp(@Param("curp") String curp);
 
 	/** The {@code AVAILABLE} credits of a person, oldest first (same matching). */
 	@Query("""
 			SELECT c FROM PaymentCredit c
 			WHERE c.status = mx.edu.utez.sisa.finance.domain.model.CreditStatus.AVAILABLE
-			  AND (c.personId = :personId
-			       OR c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.personId = :personId))
+			  AND c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.curp = :curp)
 			ORDER BY c.createdAt ASC""")
-	List<PaymentCredit> findAvailableByPerson(@Param("personId") UUID personId);
+	List<PaymentCredit> findAvailableByCurp(@Param("curp") String curp);
 
 	List<PaymentCredit> findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
 }

@@ -104,9 +104,10 @@ class ChangeCandidateProgramUseCaseImplTest {
 		useCase = new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
 				programChangeRepository, CLOCK, 10, 15, notifications);
-		candidate = new Candidate(UUID.randomUUID(), OLD_CONFIG, "ADM-2026-000001", true, true, null);
+		candidate = new Candidate(OLD_CONFIG, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		ReflectionTestUtils.setField(candidate, "registeredAt", Instant.parse("2026-10-25T18:00:00Z"));
+		candidate.setCurp("PEGJ900101HMSRRN09");
 		candidate.linkFichaPayment(FICHA_PAYMENT);
 
 		lenient().when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
@@ -336,7 +337,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private void newConfig(ProgramAdmissionConfigStatus status, String opensAt, String closesAt) {
 		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(
 				new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(NEW_CONFIG, status, NEW_PROGRAM,
-						"Licenciatura", null, null, null, Instant.parse(opensAt), Instant.parse(closesAt), 40)));
+						"Licenciatura", null, null, NEW_PERIOD, null, Instant.parse(opensAt), Instant.parse(closesAt), 40)));
 	}
 
 	@Test
@@ -384,7 +385,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config(UUID id, UUID programId, String name,
 			int max) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN,
-				programId, name, null, null, null, Instant.parse("2026-09-01T00:00:00Z"),
-				Instant.parse("2026-12-15T05:00:00Z"), max, NEW_PERIOD, NEW_GENERATION);
+				programId, name, null, null, NEW_PERIOD, null, Instant.parse("2026-09-01T00:00:00Z"),
+				Instant.parse("2026-12-15T05:00:00Z"), max, NEW_GENERATION);
 	}
 }

@@ -40,7 +40,7 @@ class ListOverpaymentsUseCaseImplTest {
 		when(payment.getReferenceNumber()).thenReturn("REF-ADM-2026-000010");
 		when(credits.findOverpayments()).thenReturn(List.of(credit));
 		when(payments.findById(ficha)).thenReturn(Optional.of(payment));
-		when(anchors.findPersonByCandidateId(candidate))
+		when(anchors.findPayerByCandidateId(candidate))
 				.thenReturn(Optional.of(new PersonView(UUID.randomUUID(), "PEGJ900101HMSRRN09", "Juan", "Pérez", null)));
 
 		List<OverpaymentView> items = useCase.list();
@@ -61,7 +61,7 @@ class ListOverpaymentsUseCaseImplTest {
 		UUID candidate = UUID.randomUUID();
 		when(credits.findOverpayments()).thenReturn(List.of(PaymentCredit.overpayment(candidate, null, null, "ORD-2",
 				new BigDecimal("100.00"), Instant.parse("2026-11-04T08:00:00Z"))));
-		when(anchors.findPersonByCandidateId(candidate)).thenReturn(Optional.empty());
+		when(anchors.findPayerByCandidateId(candidate)).thenReturn(Optional.empty());
 
 		assertThat(useCase.list()).singleElement().satisfies(item -> {
 			assertThat(item.personName()).isNull();

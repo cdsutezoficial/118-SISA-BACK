@@ -89,6 +89,7 @@ public class GlobalExceptionHandler {
 	public static final String CODE_CONFIG_NOT_OPEN = "ADMISSION_CONFIG_NOT_OPEN";
 	public static final String CODE_PAYMENT_WINDOW_CLOSED = "ADMISSION_PAYMENT_WINDOW_CLOSED";
 	public static final String CODE_CANDIDATE_ALREADY_EXISTS = "ADMISSION_CANDIDATE_ALREADY_EXISTS";
+	public static final String CODE_CANDIDATE_ALREADY_VALID_IN_PERIOD = "CANDIDATE_ALREADY_VALID_IN_PERIOD";
 	public static final String CODE_CANDIDATE_NOT_FOUND = "ADMISSION_CANDIDATE_NOT_FOUND";
 	public static final String CODE_CONFIG_NOT_FOUND = "ADMISSION_CONFIG_NOT_FOUND";
 	/**
@@ -223,9 +224,25 @@ public class GlobalExceptionHandler {
 	 */
 	@ExceptionHandler(DuplicateKeyException.class)
 	public ResponseEntity<ErrorResponse> handleDuplicateKey(DuplicateKeyException ex, HttpServletRequest request) {
+		if (isValidCandidatePeriodViolation(ex)) {
+			return build(HttpStatus.CONFLICT, CODE_CANDIDATE_ALREADY_VALID_IN_PERIOD,
+					"Este CURP ya tiene una candidatura válida en este proceso de admisión.", request);
+		}
 		log.warn("Unique constraint violated on {}", request.getRequestURI(), ex);
 		return build(HttpStatus.CONFLICT, CODE_REGISTRATION_CONFLICT,
 				"No pudimos completar tu registro en este momento. Inténtalo de nuevo en un momento.", request);
+	}
+
+	private static boolean isValidCandidatePeriodViolation(DuplicateKeyException ex) {
+		Throwable current = ex;
+		while (current != null) {
+			String message = current.getMessage();
+			if (message != null && message.contains("ux_candidate_valid_curp_period")) {
+				return true;
+			}
+			current = current.getCause();
+		}
+		return false;
 	}
 
 	@ExceptionHandler(ProgramAdmissionConfigNotOpenException.class)

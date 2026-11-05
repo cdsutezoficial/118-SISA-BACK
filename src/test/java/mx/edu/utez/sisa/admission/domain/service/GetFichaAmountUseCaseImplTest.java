@@ -67,8 +67,8 @@ class GetFichaAmountUseCaseImplTest {
 	void quotesTheProgramConceptAmount() {
 		when(programAdmissionConfigQueryPort.findById(CONFIG_ID))
 				.thenReturn(Optional.of(new AdmissionConfigInfo(CONFIG_ID, ProgramAdmissionConfigStatus.OPEN,
-						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, null, WINDOW_OPEN,
-						WINDOW_CLOSE, MAX_CANDIDATES)));
+						PROGRAM_ID, "Ingeniería en Desarrollo y Gestión de Software", null, null, UUID.randomUUID(),
+						null, WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
 		when(fichaAmountResolver.resolve(PROGRAM_ID, QUOTE_DATE))
 				.thenReturn(new FichaAmountResolver.FichaAmount(new BigDecimal("1578.00"), "Inscripción"));
 

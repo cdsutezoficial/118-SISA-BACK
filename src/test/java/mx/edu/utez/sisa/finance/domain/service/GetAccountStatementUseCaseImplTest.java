@@ -60,7 +60,7 @@ class GetAccountStatementUseCaseImplTest {
 
 	@Test
 	void unknownAnchor_fails() {
-		when(anchorQueryPort.findPersonByCandidateId(candidateId)).thenReturn(Optional.empty());
+		when(anchorQueryPort.findPayerByCandidateId(candidateId)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> useCase.getAccountStatement(candidateId, null))
 				.isInstanceOf(PersonNotFoundException.class);
@@ -72,7 +72,7 @@ class GetAccountStatementUseCaseImplTest {
 		PaymentEntry entry = new PaymentEntry(null, new BigDecimal("300.00"), PaymentEntryMethod.CASH,
 				PaymentChannel.CASHIER, null, null, null, null, "REC-1", true, UUID.randomUUID(), "Finanzas",
 				Instant.parse("2026-10-10T00:00:00Z"), null);
-		when(anchorQueryPort.findPersonByCandidateId(candidateId)).thenReturn(Optional.of(
+		when(anchorQueryPort.findPayerByCandidateId(candidateId)).thenReturn(Optional.of(
 				new PersonView(candidateId, "CURP", "Ana", "Lopez", "Perez")));
 		when(paymentRepository.findByCandidateId(candidateId)).thenReturn(List.of(payment));
 		when(paymentEntryRepository.findByPaymentIdOrderByPaidAtAsc(any())).thenReturn(List.of(entry));

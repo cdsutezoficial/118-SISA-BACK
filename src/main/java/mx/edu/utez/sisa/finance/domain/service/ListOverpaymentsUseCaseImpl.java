@@ -39,7 +39,7 @@ public class ListOverpaymentsUseCaseImpl implements ListOverpaymentsUseCase {
 		Map<UUID, String> references = new HashMap<>();
 		return paymentCreditRepository.findOverpayments().stream().map(credit -> {
 			Optional<PersonView> person = credit.getCandidateId() == null ? Optional.empty()
-					: people.computeIfAbsent(credit.getCandidateId(), anchorQueryPort::findPersonByCandidateId);
+					: people.computeIfAbsent(credit.getCandidateId(), anchorQueryPort::findPayerByCandidateId);
 			return new OverpaymentView(credit.getId(), credit.getCandidateId(),
 					person.map(ListOverpaymentsUseCaseImpl::fullName).orElse(null),
 					person.map(PersonView::curp).orElse(null), credit.getAmount(), credit.getStatus(),

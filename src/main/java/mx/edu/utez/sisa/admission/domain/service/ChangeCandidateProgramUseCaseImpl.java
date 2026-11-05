@@ -157,6 +157,7 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 			fichaPaymentPort.reassignProgram(charge.financePaymentId(), concept.code(), to.programId(),
 					to.periodId(), to.targetGenerationId());
 			candidate.changeAdmissionConfig(to.id());
+			rebaseValidPeriod(candidate, to.periodId());
 			candidateRepository.save(candidate);
 			BigDecimal newAmount = currentAmount(charge.financePaymentId());
 			programChangeRepository.save(new CandidateProgramChange(candidate.getId(), fromConfigId, to.id(), false,
@@ -188,6 +189,7 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 			candidate.awaitProgramChangePayment(amounts.financePaymentId());
 		}
 		candidate.changeAdmissionConfig(to.id());
+		rebaseValidPeriod(candidate, to.periodId());
 		candidateRepository.save(candidate);
 		programChangeRepository.save(new CandidateProgramChange(candidate.getId(), fromConfigId, to.id(), true,
 				fromPaymentId, amounts.financePaymentId(), previous, amounts.alreadyPaid(), amounts.newAmount(),
@@ -303,5 +305,11 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 
 	private static String programName(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {
 		return config == null ? null : config.programName();
+	}
+
+	private void rebaseValidPeriod(Candidate candidate, UUID periodId) {
+		if (candidate.getValidPeriodId() != null && !candidate.getValidPeriodId().equals(periodId)) {
+			candidate.setValidPeriodId(periodId);
+		}
 	}
 }

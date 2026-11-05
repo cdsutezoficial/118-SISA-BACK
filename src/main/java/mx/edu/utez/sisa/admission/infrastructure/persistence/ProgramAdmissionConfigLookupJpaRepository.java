@@ -18,7 +18,7 @@ import java.util.UUID;
  * {@code admission} defines its own minimal read-only repository over the
  * cross-bounded-context aggregate instead of importing academic_config's
  * full repository (same "own minimal access" rationale as
- * {@code CandidatePersonJpaRepository} / academic_config's
+ * admission's JPA lookup conventions / academic_config's
  * {@code PersonLookupJpaRepository}).
  */
 public interface ProgramAdmissionConfigLookupJpaRepository extends JpaRepository<ProgramAdmissionConfig, UUID> {

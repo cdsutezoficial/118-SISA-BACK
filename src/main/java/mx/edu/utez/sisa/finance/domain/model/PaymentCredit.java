@@ -35,11 +35,11 @@ import java.util.UUID;
  * re-run of the reconciliation cannot book the same order twice, and it is how
  * Finanzas lists those cases.
  *
- * <p>{@code personId} is whose money it is (D9): the saldo belongs to the
- * person, not to the candidate record or the concept. A second ficha of the
- * same person is a new candidate, and it must still see and use this saldo. It
- * is filled when the credit is saved, from the candidate (or, later, the
- * student) behind the anchor.
+ * <p>The saldo belongs to the person, not to the candidate record or the
+ * concept (D9). A second ficha of the same person is a new candidate, and it
+ * must still see and use this saldo: the repository gathers the credits of
+ * every candidate with the same CURP. {@code personId} is a leftover column
+ * from when candidates pointed to a {@code Person}; nothing fills it now.
  *
  * <p>The row is never hard-deleted; a voided credit becomes
  * {@link CreditStatus#CANCELLED}.
@@ -128,13 +128,6 @@ public class PaymentCredit {
 	public void applyTo(UUID paymentId) {
 		this.status = CreditStatus.APPLIED;
 		this.appliedToPaymentId = paymentId;
-	}
-
-	/** Ties the saldo to the person behind its anchor; set once, never moved. */
-	public void assignPerson(UUID personId) {
-		if (this.personId == null) {
-			this.personId = personId;
-		}
 	}
 
 	public UUID getPersonId() {

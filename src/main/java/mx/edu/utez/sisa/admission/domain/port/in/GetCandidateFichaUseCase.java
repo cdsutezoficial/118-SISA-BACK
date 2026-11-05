@@ -48,7 +48,7 @@ public interface GetCandidateFichaUseCase {
 	 * PDF prints {@code paymentDeadline} under "Fecha límite de pago", and only
 	 * when it differs from {@code registrationDeadline}.
 	 */
-	record FichaData(UUID candidateId, UUID personId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
+	record FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus, Instant registeredAt,
 			UUID admissionConfigId, String programName, String divisionName, String curp, String firstName, String lastName1,
 			String lastName2, String email, String homePhone, String mobilePhone, String referenceNumber,
 			BigDecimal amount, LocalDate registrationDeadline, LocalDate paymentClosesOn, LocalDate paymentDeadline,
@@ -59,7 +59,7 @@ public interface GetCandidateFichaUseCase {
 			BigDecimal discountAmount, String discountReason, String conceptName, PendingDifference pendingDifference) {
 
 		/** Without a pending career-change difference. */
-		public FichaData(UUID candidateId, UUID personId, String folio, CandidateStatus candidateStatus,
+		public FichaData(UUID candidateId, String folio, CandidateStatus candidateStatus,
 				Instant registeredAt, UUID admissionConfigId, String programName, String divisionName, String curp,
 				String firstName, String lastName1, String lastName2, String email, String homePhone,
 				String mobilePhone, String referenceNumber, BigDecimal amount, LocalDate registrationDeadline,
@@ -69,7 +69,7 @@ public interface GetCandidateFichaUseCase {
 				SeleccionCarrera seleccionCarrera, AntecedentesEscolares antecedentesEscolares,
 				PaymentData inductionPayment, BigDecimal originalAmount, BigDecimal discountAmount,
 				String discountReason, String conceptName) {
-			this(candidateId, personId, folio, candidateStatus, registeredAt, admissionConfigId, programName,
+			this(candidateId, folio, candidateStatus, registeredAt, admissionConfigId, programName,
 					divisionName, curp, firstName, lastName1, lastName2, email, homePhone, mobilePhone,
 					referenceNumber, amount, registrationDeadline, paymentClosesOn, paymentDeadline, paymentStatus,
 					receiptNumber, paidAt, orderId, datosGenerales, domicilio, informacionComplementaria, ingresos,

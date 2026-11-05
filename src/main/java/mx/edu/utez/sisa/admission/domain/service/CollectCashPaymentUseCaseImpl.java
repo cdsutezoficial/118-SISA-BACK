@@ -8,6 +8,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.StaffDirectoryPort;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
@@ -124,6 +125,11 @@ public class CollectCashPaymentUseCaseImpl implements CollectCashPaymentUseCase 
 		if (occupiedByOthers >= config.maxCandidates()) {
 			throw new ProgramAdmissionConfigCapacityReachedException(
 					"El cupo de esta carrera se agotó. No recibas el pago.");
+		}
+		if (candidateRepository.existsAnotherValidInPeriod(candidate.getCurp(), config.periodId(),
+				candidate.getId())) {
+			throw new CandidateAlreadyExistsException("Este CURP ya tiene una candidatura válida en este proceso "
+					+ "de admisión. No recibas el pago.");
 		}
 		return new CashPaymentPreview(candidate.getId(), candidate.getFolio(), charge.referenceNumber(), false,
 				quote.amountDue(), paidSoFar, toCollect, charge.dueAt());

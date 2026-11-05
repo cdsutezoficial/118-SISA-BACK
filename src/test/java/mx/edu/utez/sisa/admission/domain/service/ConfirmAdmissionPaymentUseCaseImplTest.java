@@ -6,6 +6,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
@@ -57,6 +58,9 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@Mock
 	private AdmissionQuotaPort admissionQuotaPort;
 
+	@Mock
+	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
+
 	private ConfirmAdmissionPaymentUseCaseImpl useCase;
 
 	private UUID candidateId;
@@ -65,10 +69,10 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository, notifications, admissionQuotaPort,
+				checkoutAttemptRepository, notifications, admissionQuotaPort, programAdmissionConfigQueryPort,
 				Clock.fixed(Instant.parse("2026-11-05T17:00:00Z"), ZoneOffset.UTC), 60);
 		candidateId = UUID.randomUUID();
-		candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		candidate = new Candidate(UUID.randomUUID(), "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		candidate.linkFichaPayment(CHARGE_ID);
 	}
@@ -76,6 +80,9 @@ class ConfirmAdmissionPaymentUseCaseImplTest {
 	private void stubHappyPath() {
 		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
 		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.pendingCharge(CHARGE_ID)));
+		when(programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())).thenReturn(Optional
+				.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(candidate.getAdmissionConfigId(), null,
+						null, null, null, null, UUID.randomUUID(), null, Instant.now(), Instant.now(), 40)));
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		when(fichaPaymentPort.settle(any())).thenReturn(new FichaPaymentPort.SettledFicha(AMOUNT,
 				BigDecimal.ZERO.setScale(2), AMOUNT, AMOUNT, null, false));

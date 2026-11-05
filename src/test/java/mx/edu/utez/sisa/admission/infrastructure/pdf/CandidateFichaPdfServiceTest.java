@@ -274,7 +274,7 @@ class CandidateFichaPdfServiceTest {
 
 	/** F6: the same ficha with a career-change difference still to pay. */
 	private static FichaData withDifference(FichaData f, FichaData.PendingDifference d) {
-		return new FichaData(f.candidateId(), f.personId(), f.folio(), f.candidateStatus(), f.registeredAt(),
+		return new FichaData(f.candidateId(), f.folio(), f.candidateStatus(), f.registeredAt(),
 				f.admissionConfigId(), f.programName(), f.divisionName(), f.curp(), f.firstName(), f.lastName1(),
 				f.lastName2(), f.email(), f.homePhone(), f.mobilePhone(), f.referenceNumber(), f.amount(),
 				f.registrationDeadline(), f.paymentClosesOn(), f.paymentDeadline(), f.paymentStatus(),
@@ -307,7 +307,6 @@ class CandidateFichaPdfServiceTest {
 	private static FichaData fullFicha(LocalDate paymentDeadline) {
 		return new FichaData(
 				UUID.fromString("11111111-1111-1111-1111-111111111111"),
-				UUID.fromString("99999999-9999-9999-9999-999999999999"),
 				"ADM-2026-000001",
 				CandidateStatus.REGISTERED,
 				Instant.parse("2026-01-20T12:00:00Z"),
@@ -352,7 +351,6 @@ class CandidateFichaPdfServiceTest {
 	private static FichaData minimalFicha() {
 		return new FichaData(
 				UUID.fromString("33333333-3333-3333-3333-333333333333"),
-				UUID.fromString("88888888-8888-8888-8888-888888888888"),
 				"ADM-2026-000099",
 				CandidateStatus.REGISTERED,
 				Instant.parse("2026-01-20T12:00:00Z"),

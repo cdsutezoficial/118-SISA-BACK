@@ -3,11 +3,15 @@ package mx.edu.utez.sisa.admission.domain.service;
 import java.util.List;
 import java.util.Optional;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.model.CandidateAddress;
+import mx.edu.utez.sisa.admission.domain.model.CandidateDiversityProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateEmploymentInfo;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHealthProfile;
+import mx.edu.utez.sisa.admission.domain.model.CandidateHighSchoolBackground;
 import mx.edu.utez.sisa.admission.domain.model.HighSchoolType;
 import mx.edu.utez.sisa.admission.domain.model.OutreachChannel;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
@@ -20,12 +24,6 @@ import mx.edu.utez.sisa.admission.shared.exception.PaymentConceptExpiredExceptio
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
-import mx.edu.utez.sisa.shared.model.Address;
-import mx.edu.utez.sisa.shared.model.DiversityProfile;
-import mx.edu.utez.sisa.shared.model.EmploymentInfo;
-import mx.edu.utez.sisa.shared.model.HealthProfile;
-import mx.edu.utez.sisa.shared.model.HighSchoolBackground;
-import mx.edu.utez.sisa.shared.model.Person;
 import mx.edu.utez.sisa.shared.model.ProgramModality;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,8 +54,6 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 
 	private final CandidateRepository candidateRepository;
 
-	private final CandidatePersonRepository candidatePersonRepository;
-
 	private final FichaPaymentPort fichaPaymentPort;
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
@@ -82,7 +78,6 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 	 *                          {@code null} falls back to the program's list price
 	 */
 	public GetCandidateFichaUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, PlaceNameLookupPort placeNameLookupPort,
 			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
@@ -90,7 +85,6 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 			int fichaDeadlineDays) {
 		this.fichaDisplayPrice = fichaDisplayPrice;
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
@@ -118,21 +112,17 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		// The induction course is not charged yet; when it is, it will be another
 		// finance charge of the candidate, read the same way as the ficha.
 		FichaData.PaymentData inductionPayment = null;
-		Person person = candidatePersonRepository.findById(candidate.getPersonId()).orElse(null);
-		if (person == null) {
-			return Optional.empty();
-		}
 		AdmissionConfigInfo config = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
 				.orElse(null);
 		String programName = config == null ? null : config.programName();
 		String modalityName = modalityLabel(config == null ? null : config.modality());
 		String periodName = config == null ? null : config.periodName();
 		String outreachChannelName = resolveOutreachChannel(candidate.getOutreachChannelId());
-		Address address = person.getAddress();
-		HealthProfile health = person.getHealthProfile();
-		DiversityProfile diversity = person.getDiversityProfile();
-		EmploymentInfo employment = person.getEmploymentInfo();
-		HighSchoolBackground school = person.getHighSchoolBackground();
+		CandidateAddress address = candidate.getAddress();
+		CandidateHealthProfile health = candidate.getHealthProfile();
+		CandidateDiversityProfile diversity = candidate.getDiversityProfile();
+		CandidateEmploymentInfo employment = candidate.getEmploymentInfo();
+		CandidateHighSchoolBackground school = candidate.getHighSchoolBackground();
 		// The PDF is the artifact the applicant carries to ventanilla, so it is
 		// the worst place to print a date under the wrong label: it has to name
 		// both windows separately, and the payment one is read live so an
@@ -156,16 +146,18 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		FichaDisplayPrice.Price price = difference != null && fichaDisplayPrice != null
 				? fichaDisplayPrice.of(candidate.getProgramChangePaymentId(), null)
 				: price(config, payment);
-		return Optional.of(new FichaData(candidate.getId(), candidate.getPersonId(), candidate.getFolio(),
+		return Optional.of(new FichaData(candidate.getId(), candidate.getFolio(),
 				candidate.getStatus(), candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
-				config == null ? null : config.divisionName(), person.getCurp(),
-				person.getFirstName(), person.getLastName1(), person.getLastName2(), person.getPersonalEmail(),
-				person.getHomePhone(), person.getMobilePhone(), payment.referenceNumber(),
+				config == null ? null : config.divisionName(), candidate.getCurp(),
+				candidate.getFirstName(), candidate.getLastName1(), candidate.getLastName2(),
+				candidate.getPersonalEmail(), candidate.getHomePhone(), candidate.getMobilePhone(),
+				payment.referenceNumber(),
 				price.amount(), registrationDeadline, paymentClosesOn, paymentDeadline,
 				payment.status(), payment.receiptNumber(), payment.paidAt(), orderIdOf(candidate.getId()),
-				new FichaData.DatosGenerales(person.getBirthDate(), person.getGender(), person.getNationality(),
-						resolveState(person.getBirthStateId()), resolveMunicipality(person.getBirthMunicipalityId()),
-						person.getMaritalStatus(), person.getNativeLanguage(), Boolean.TRUE.equals(person.getHasChildren())),
+				new FichaData.DatosGenerales(candidate.getBirthDate(), candidate.getGender(), candidate.getNationality(),
+						resolveState(candidate.getBirthStateId()),
+						resolveMunicipality(candidate.getBirthMunicipalityId()), candidate.getMaritalStatus(),
+						candidate.getNativeLanguage(), Boolean.TRUE.equals(candidate.getHasChildren())),
 				address == null ? emptyDomicilio()
 						: new FichaData.Domicilio(address.getStreet(), address.getExteriorNumber(),
 								address.getInteriorNumber(), address.getNeighborhood(), address.getLocality(),
@@ -185,7 +177,7 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								diversity != null && diversity.isAfrodescendant(),
 								diversity != null && diversity.isSelfIdentifiesAfrodescendant()),
 				employment == null ? emptyIngresos()
-						: new FichaData.Ingresos(person.getMonthlyFamilyIncome(), employment.isEmployed(),
+						: new FichaData.Ingresos(candidate.getMonthlyFamilyIncome(), employment.isEmployed(),
 								employment.getEmploymentType(), employment.getWorkPhone(),
 								employment.getMonthlyIncome(), employment.getCompanyName(), employment.getJobTitle(),
 								employment.getWorkStartTime(), employment.getWorkEndTime()),

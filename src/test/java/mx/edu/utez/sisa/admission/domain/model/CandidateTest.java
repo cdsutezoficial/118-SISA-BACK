@@ -15,7 +15,7 @@ class CandidateTest {
 	private static final ZoneId ZONE = ZoneId.of("America/Mexico_City");
 
 	private static Candidate candidateRegisteredAt(Instant registeredAt) {
-		Candidate candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(UUID.randomUUID(), "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
 		return candidate;
 	}

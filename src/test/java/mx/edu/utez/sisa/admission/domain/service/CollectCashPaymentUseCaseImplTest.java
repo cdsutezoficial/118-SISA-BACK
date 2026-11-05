@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.StaffDirectoryPort;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentExpiredException;
 import mx.edu.utez.sisa.admission.shared.exception.NothingToCollectException;
@@ -77,7 +78,8 @@ class CollectCashPaymentUseCaseImplTest {
 				pendingCheckoutGuard, admissionQuotaPort, confirmAdmissionPaymentUseCase, staffDirectory,
 				Clock.fixed(NOW, ZoneOffset.UTC), 60);
 		candidateId = UUID.randomUUID();
-		candidate = new Candidate(UUID.randomUUID(), UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		candidate = new Candidate(UUID.randomUUID(), "ADM-2026-000001", true, true, null);
+		candidate.setCurp("PEGJ900101HMSRRN09");
 		ReflectionTestUtils.setField(candidate, "id", candidateId);
 		candidate.linkFichaPayment(CHARGE_ID);
 		when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
@@ -96,9 +98,11 @@ class CollectCashPaymentUseCaseImplTest {
 
 	private static final UUID CONFIG_ID = UUID.randomUUID();
 
+	private static final UUID PERIOD_ID = UUID.randomUUID();
+
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo realConfig() {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(CONFIG_ID, null, UUID.randomUUID(), "TIC",
-				"DATIC", null, "2026", NOW.minusSeconds(86400), NOW.plusSeconds(86400 * 30), 10);
+				"DATIC", null, PERIOD_ID, "2026", NOW.minusSeconds(86400), NOW.plusSeconds(86400 * 30), 10);
 	}
 
 	@Test
@@ -119,6 +123,19 @@ class CollectCashPaymentUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.preview(candidateId))
 				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
+	}
+
+	@Test
+	void preview_refusesACurpThatAlreadyHasAValidCandidacyInThePeriod() {
+		stubOwedFicha(PRICE, 0);
+		when(candidateRepository.existsAnotherValidInPeriod("PEGJ900101HMSRRN09", PERIOD_ID, candidateId))
+				.thenReturn(true);
+
+		assertThatThrownBy(() -> useCase.preview(candidateId))
+				.isInstanceOf(CandidateAlreadyExistsException.class).hasMessageContaining("No recibas el pago");
+		assertThatThrownBy(() -> useCase.collect(candidateId, PRICE, UUID.randomUUID()))
+				.isInstanceOf(CandidateAlreadyExistsException.class);
+		verify(confirmAdmissionPaymentUseCase, never()).confirmCash(any(), any(), any(), any());
 	}
 
 	@Test

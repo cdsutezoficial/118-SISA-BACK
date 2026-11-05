@@ -7,13 +7,11 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandi
 import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase.ListCandidatesResult;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort;
 import mx.edu.utez.sisa.admission.domain.port.out.CallerDivisionScopePort.DivisionScope;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchCriteria;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository.CandidateSearchPage;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort.ProgramRef;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,9 +41,6 @@ class ListCandidatesUseCaseImplTest {
 	private CandidateRepository candidateRepository;
 
 	@Mock
-	private CandidatePersonRepository candidatePersonRepository;
-
-	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	@Mock
@@ -55,20 +50,19 @@ class ListCandidatesUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
-		useCase = new ListCandidatesUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, callerDivisionScopePort);
+		useCase = new ListCandidatesUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				callerDivisionScopePort);
 	}
 
-	private static Candidate candidateWithId(UUID id, UUID personId, UUID admissionConfigId, String folio) {
-		Candidate candidate = new Candidate(personId, admissionConfigId, folio, true, true, null);
+	private static Candidate candidateWithId(UUID id, UUID admissionConfigId, String folio,
+			String curp, String firstName, String lastName1, String lastName2) {
+		Candidate candidate = new Candidate(admissionConfigId, folio, true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", id);
+		candidate.setCurp(curp);
+		candidate.setFirstName(firstName);
+		candidate.setLastName1(lastName1);
+		candidate.setLastName2(lastName2);
 		return candidate;
-	}
-
-	private static Person personWithId(UUID id, String curp, String firstName, String lastName1, String lastName2) {
-		Person person = new Person(curp, firstName, lastName1, lastName2, null);
-		ReflectionTestUtils.setField(person, "id", id);
-		return person;
 	}
 
 	private static ListCandidatesQuery query(int page, int size) {
@@ -113,17 +107,15 @@ class ListCandidatesUseCaseImplTest {
 
 	@Test
 	void mapsPersonAndProgramNameOntoTheRow() {
-		UUID personId = UUID.randomUUID();
 		UUID configId = UUID.randomUUID();
 		UUID programId = UUID.randomUUID();
 		UUID candidateId = UUID.randomUUID();
-		Candidate candidate = candidateWithId(candidateId, personId, configId, "ADM-2026-000001");
-		Person person = personWithId(personId, "GOCD050101HDFRNS04", "Ana", "Torres", "Ramos");
+		Candidate candidate = candidateWithId(candidateId, configId, "ADM-2026-000001",
+				"GOCD050101HDFRNS04", "Ana", "Torres", "Ramos");
 
 		when(callerDivisionScopePort.resolve(CALLER)).thenReturn(DivisionScope.unrestricted());
 		when(candidateRepository.search(any()))
 				.thenReturn(new CandidateSearchPage(List.of(candidate), 1, 1));
-		when(candidatePersonRepository.findByIds(List.of(personId))).thenReturn(List.of(person));
 		when(programAdmissionConfigQueryPort.findProgramRefsByConfigIds(List.of(configId)))
 				.thenReturn(Map.of(configId, new ProgramRef(programId, "Ing. en Tecnologías de la Información")));
 
@@ -142,14 +134,13 @@ class ListCandidatesUseCaseImplTest {
 
 	@Test
 	void missingPersonLeavesNameAndCurpNullWithoutDroppingTheRow() {
-		UUID personId = UUID.randomUUID();
 		UUID configId = UUID.randomUUID();
-		Candidate candidate = candidateWithId(UUID.randomUUID(), personId, configId, "ADM-2026-000002");
+		Candidate candidate = candidateWithId(UUID.randomUUID(), configId, "ADM-2026-000002",
+				null, null, null, null);
 
 		when(callerDivisionScopePort.resolve(CALLER)).thenReturn(DivisionScope.unrestricted());
 		when(candidateRepository.search(any()))
 				.thenReturn(new CandidateSearchPage(List.of(candidate), 1, 1));
-		when(candidatePersonRepository.findByIds(List.of(personId))).thenReturn(List.of());
 		when(programAdmissionConfigQueryPort.findProgramRefsByConfigIds(List.of(configId))).thenReturn(Map.of());
 
 		ListCandidatesResult result = useCase.listCandidates(query(0, 20));

@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -32,43 +33,8 @@ public class EmploymentInfo {
 	@JoinColumn(name = "person_id")
 	private Person person;
 
-	@Column(name = "is_employed", nullable = false)
-	private boolean isEmployed;
-
-	/**
-	 * Free text as the applicant wrote it, not a catalog.
-	 *
-	 * <p>This was an {@code @Enumerated(STRING)} {@code EmploymentType}
-	 * (PERMANENT/TEMPORARY), and that was silently dropping data: both admission
-	 * forms write this field and neither restricts it to those two values — the
-	 * registration form offered a plain {@code TextField} and the enrollment
-	 * wizard a 4-option select whose "Freelance" and "Negocio propio" mapped to
-	 * {@code null}. Nothing errored, the value just never reached the PDF.
-	 *
-	 * <p>As free text the column keeps its existing VARCHAR type and its existing
-	 * rows; only the {@code PERMANENT}/{@code TEMPORARY} literals left behind by
-	 * the enum are renamed to Spanish once (see CHANGELOG).
-	 */
-	@Column(name = "employment_type")
-	private String employmentType;
-
-	@Column(name = "company_name")
-	private String companyName;
-
-	@Column(name = "job_title")
-	private String jobTitle;
-
-	@Column(name = "work_phone")
-	private String workPhone;
-
-	@Column(name = "monthly_income", precision = 12, scale = 2)
-	private BigDecimal monthlyIncome;
-
-	@Column(name = "work_start_time")
-	private LocalTime workStartTime;
-
-	@Column(name = "work_end_time")
-	private LocalTime workEndTime;
+	@Embedded
+	private EmploymentData data;
 
 	protected EmploymentInfo() {
 		// JPA
@@ -76,14 +42,8 @@ public class EmploymentInfo {
 
 	public EmploymentInfo(boolean isEmployed, String employmentType, String companyName, String jobTitle,
 			String workPhone, BigDecimal monthlyIncome, LocalTime workStartTime, LocalTime workEndTime) {
-		this.isEmployed = isEmployed;
-		this.employmentType = employmentType;
-		this.companyName = companyName;
-		this.jobTitle = jobTitle;
-		this.workPhone = workPhone;
-		this.monthlyIncome = monthlyIncome;
-		this.workStartTime = workStartTime;
-		this.workEndTime = workEndTime;
+		this.data = new EmploymentData(isEmployed, employmentType, companyName, jobTitle, workPhone, monthlyIncome,
+				workStartTime, workEndTime);
 	}
 
 	public UUID getPersonId() {
@@ -99,67 +59,74 @@ public class EmploymentInfo {
 	}
 
 	public boolean isEmployed() {
-		return isEmployed;
+		return data != null && data.isEmployed();
 	}
 
 	public void setEmployed(boolean employed) {
-		isEmployed = employed;
+		data().setEmployed(employed);
 	}
 
 	public String getEmploymentType() {
-		return employmentType;
+		return data == null ? null : data.getEmploymentType();
 	}
 
 	public void setEmploymentType(String employmentType) {
-		this.employmentType = employmentType;
+		data().setEmploymentType(employmentType);
 	}
 
 	public String getCompanyName() {
-		return companyName;
+		return data == null ? null : data.getCompanyName();
 	}
 
 	public void setCompanyName(String companyName) {
-		this.companyName = companyName;
+		data().setCompanyName(companyName);
 	}
 
 	public String getJobTitle() {
-		return jobTitle;
+		return data == null ? null : data.getJobTitle();
 	}
 
 	public void setJobTitle(String jobTitle) {
-		this.jobTitle = jobTitle;
+		data().setJobTitle(jobTitle);
 	}
 
 	public String getWorkPhone() {
-		return workPhone;
+		return data == null ? null : data.getWorkPhone();
 	}
 
 	public void setWorkPhone(String workPhone) {
-		this.workPhone = workPhone;
+		data().setWorkPhone(workPhone);
 	}
 
 	public BigDecimal getMonthlyIncome() {
-		return monthlyIncome;
+		return data == null ? null : data.getMonthlyIncome();
 	}
 
 	public void setMonthlyIncome(BigDecimal monthlyIncome) {
-		this.monthlyIncome = monthlyIncome;
+		data().setMonthlyIncome(monthlyIncome);
 	}
 
 	public LocalTime getWorkStartTime() {
-		return workStartTime;
+		return data == null ? null : data.getWorkStartTime();
 	}
 
 	public void setWorkStartTime(LocalTime workStartTime) {
-		this.workStartTime = workStartTime;
+		data().setWorkStartTime(workStartTime);
 	}
 
 	public LocalTime getWorkEndTime() {
-		return workEndTime;
+		return data == null ? null : data.getWorkEndTime();
 	}
 
 	public void setWorkEndTime(LocalTime workEndTime) {
-		this.workEndTime = workEndTime;
+		data().setWorkEndTime(workEndTime);
+	}
+
+	private EmploymentData data() {
+		if (data == null) {
+			data = new EmploymentData();
+		}
+		return data;
 	}
 
 	@Override

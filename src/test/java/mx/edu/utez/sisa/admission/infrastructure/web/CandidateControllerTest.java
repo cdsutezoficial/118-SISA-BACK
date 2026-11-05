@@ -514,7 +514,7 @@ class CandidateControllerTest {
 	void listCandidatesUsesThePrincipalAsCallerId() throws Exception {
 		UUID callerId = UUID.randomUUID();
 		when(listCandidatesUseCase.listCandidates(any())).thenReturn(
-				new ListCandidatesResult(List.of(new CandidateListItem(ID, UUID.randomUUID(), "ADM-2026-000001",
+				new ListCandidatesResult(List.of(new CandidateListItem(ID, "ADM-2026-000001",
 						"Ana Torres Ramos", "GOCD050101HDFRNS04", UUID.fromString(CFG_ID), "Ing. en TI",
 						CandidateStatus.REGISTERED, Instant.parse("2026-09-24T12:00:00Z"))), 1, 1, 0, 20));
 

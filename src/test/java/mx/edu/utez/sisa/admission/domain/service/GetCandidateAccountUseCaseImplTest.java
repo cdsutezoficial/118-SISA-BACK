@@ -59,13 +59,13 @@ class GetCandidateAccountUseCaseImplTest {
 	void setUp() {
 		useCase = new GetCandidateAccountUseCaseImpl(candidateRepository, candidateAccountPort,
 				programChangeRepository, programAdmissionConfigQueryPort);
-		candidate = new Candidate(UUID.randomUUID(), NEW_CONFIG, "ADM-2026-000002", true, true, null);
+		candidate = new Candidate(NEW_CONFIG, "ADM-2026-000002", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
 		lenient().when(programAdmissionConfigQueryPort.findById(any())).thenAnswer(inv -> Optional.of(
 				new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(inv.getArgument(0), null, null,
-						OLD_CONFIG.equals(inv.getArgument(0)) ? "Software" : "Diseño", null, null, null, null, null,
-						40)));
+						OLD_CONFIG.equals(inv.getArgument(0)) ? "Software" : "Diseño", null, null,
+						UUID.randomUUID(), null, null, null, 40)));
 	}
 
 	@Test

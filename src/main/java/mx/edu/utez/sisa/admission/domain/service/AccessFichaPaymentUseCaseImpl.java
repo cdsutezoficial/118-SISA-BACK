@@ -4,11 +4,9 @@ import java.util.UUID;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.AccessFichaPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -39,8 +37,6 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 
 	private final CandidateRepository candidateRepository;
 
-	private final CandidatePersonRepository candidatePersonRepository;
-
 	private final FichaPaymentPort fichaPaymentPort;
 
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
@@ -58,13 +54,11 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 	 *                          (tarifa vigente − descuento vigente)
 	 */
 	public AccessFichaPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository,
 			FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaDisplayPrice fichaDisplayPrice, Clock clock, int fichaDeadlineDays) {
 		this.fichaDisplayPrice = fichaDisplayPrice;
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
@@ -123,7 +117,7 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 				: FichaDisplayPrice.Price.NONE;
 
 		return new PaymentAccess(candidate.getId(), candidate.getFolio(),
-				fullName(candidatePersonRepository.findById(candidate.getPersonId()).orElse(null)),
+				fullName(candidate),
 				config == null ? null : config.programName(), price.amount(), payment.referenceNumber(),
 				registrationDeadline, payment.status(), payment.receiptNumber(),
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
@@ -174,8 +168,7 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 	}
 
 	private void verifyCurpSuffix(Candidate candidate, String curpSuffix) {
-		String expected = candidatePersonRepository.findById(candidate.getPersonId()).map(Person::getCurp)
-				.map(curp -> curp.trim().toUpperCase(Locale.ROOT)).orElse(null);
+		String expected = candidate.getCurp() == null ? null : candidate.getCurp().trim().toUpperCase(Locale.ROOT);
 		String provided = curpSuffix == null ? "" : curpSuffix.trim().toUpperCase(Locale.ROOT);
 
 		if (expected == null || expected.length() < CURP_SUFFIX_LENGTH
@@ -200,11 +193,9 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 	 * "Ana Torres Ramos" — a missing second surname must not leave a double or
 	 * trailing space ("Ana Torres "), so the joined parts are trimmed at the end.
 	 */
-	private static String fullName(Person person) {
-		if (person == null) {
-			return null;
-		}
-		String name = (join(person.getFirstName()) + join(person.getLastName1()) + join(person.getLastName2())).trim();
+	private static String fullName(Candidate candidate) {
+		String name = (join(candidate.getFirstName()) + join(candidate.getLastName1()) + join(candidate.getLastName2()))
+				.trim();
 		return name.isEmpty() ? null : name;
 	}
 

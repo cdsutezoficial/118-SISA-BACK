@@ -5,7 +5,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
@@ -13,19 +12,15 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsExcepti
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 
 	private final CandidateRepository candidateRepository;
-
-	private final CandidatePersonRepository candidatePersonRepository;
 
 	private final OutreachChannelRepository outreachChannelRepository;
 
@@ -36,37 +31,25 @@ public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 	private final CandidateAuditPort candidateAuditPort;
 
 	public UpdateCandidateUseCaseImpl(CandidateRepository candidateRepository,
-			CandidatePersonRepository candidatePersonRepository, OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository,
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase, CandidateAuditPort candidateAuditPort) {
 		this.candidateAuditPort = candidateAuditPort;
 		this.candidateRepository = candidateRepository;
-		this.candidatePersonRepository = candidatePersonRepository;
 		this.outreachChannelRepository = outreachChannelRepository;
 		this.highSchoolTypeRepository = highSchoolTypeRepository;
 		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
 	}
 
-	/**
-	 * {@code READ_COMMITTED} por el cambio de carrera con la ficha pagada: cuenta
-	 * el cupo de la carrera nueva bajo candado, igual que el checkout, y esa cuenta
-	 * tiene que ver lo último confirmado.
-	 */
 	@Override
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void update(UUID candidateId, RegisterCandidateCommand command, UUID actingUserId) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
-		Person person = candidatePersonRepository.findById(candidate.getPersonId())
-				.orElseThrow(() -> new CandidateNotFoundException(
-						"No existe la persona del candidato: " + candidateId));
 
-		validate(candidate, person, command);
-		Map<String, String> before = CandidateFichaSnapshot.of(person, candidate);
-
-		CandidatePersonMapper.apply(person, command);
-		candidatePersonRepository.save(person);
-
+		validate(command);
+		requireCurpFreeInPeriod(candidate, command.datosGenerales().curp());
+		Map<String, String> before = CandidateFichaSnapshot.of(candidate);
+		CandidateFichaMapper.apply(candidate, command);
 		candidate.updateSelection(command.seleccionCarrera().outreachChannelId(),
 				command.seleccionCarrera().isFirstChoice());
 		candidateRepository.save(candidate);
@@ -78,18 +61,26 @@ public class UpdateCandidateUseCaseImpl implements UpdateCandidateUseCase {
 		// carrera, para que la carrera nueva también quede en el rastro.
 		Candidate after = candidateRepository.findById(candidateId).orElse(candidate);
 		candidateAuditPort.fichaEdited(candidateId, actingUserId,
-				CandidateFichaSnapshot.diff(before, CandidateFichaSnapshot.of(person, after)));
+				CandidateFichaSnapshot.diff(before, CandidateFichaSnapshot.of(after)));
 	}
 
-	private void validate(Candidate candidate, Person person, RegisterCandidateCommand command) {
-		// La CURP identifica a la persona: si se corrige, no puede quedar igual a
-		// la de otra persona ya registrada (sería fusionar dos expedientes).
-		Optional<Person> owner = candidatePersonRepository.findByCurp(command.datosGenerales().curp());
-		if (owner.isPresent() && !owner.get().getId().equals(person.getId())) {
-			throw new CandidateAlreadyExistsException("La CURP " + command.datosGenerales().curp()
-					+ " ya está registrada a nombre de otra persona.");
+	/**
+	 * Una candidatura válida por CURP en el periodo: si la ficha ya cuenta en uno
+	 * (pagada), la CURP nueva no puede ser la de otra candidatura válida ahí. Una
+	 * ficha sin pagar no ocupa periodo; la regla se revisa cuando paga.
+	 */
+	private void requireCurpFreeInPeriod(Candidate candidate, String newCurp) {
+		if (candidate.getValidPeriodId() == null || newCurp == null || newCurp.equals(candidate.getCurp())) {
+			return;
 		}
+		if (candidateRepository.existsAnotherValidInPeriod(newCurp, candidate.getValidPeriodId(),
+				candidate.getId())) {
+			throw new CandidateAlreadyExistsException(
+					"Esta CURP ya tiene una candidatura válida en este proceso de admisión.");
+		}
+	}
 
+	private void validate(RegisterCandidateCommand command) {
 		UUID channelId = command.seleccionCarrera().outreachChannelId();
 		if (channelId != null && outreachChannelRepository.findById(channelId).isEmpty()) {
 			throw new OutreachChannelNotFoundException("No existe el canal de difusión: " + channelId);

@@ -2,7 +2,7 @@ package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
 import mx.edu.utez.sisa.finance.domain.port.out.AnchorQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.PersonQueryPort;
-import mx.edu.utez.sisa.shared.model.Person;
+import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
@@ -24,18 +24,13 @@ public class AnchorQueryAdapter implements AnchorQueryPort {
 
 	private final FinanceCandidateJpaRepository candidateJpaRepository;
 
-	private final FinancePersonJpaRepository personJpaRepository;
-
-	public AnchorQueryAdapter(FinanceCandidateJpaRepository candidateJpaRepository,
-			FinancePersonJpaRepository personJpaRepository) {
+	public AnchorQueryAdapter(FinanceCandidateJpaRepository candidateJpaRepository) {
 		this.candidateJpaRepository = candidateJpaRepository;
-		this.personJpaRepository = personJpaRepository;
 	}
 
 	@Override
-	public Optional<PersonQueryPort.PersonView> findPersonByCandidateId(UUID candidateId) {
+	public Optional<PersonQueryPort.PersonView> findPayerByCandidateId(UUID candidateId) {
 		return candidateJpaRepository.findById(candidateId)
-				.flatMap(candidate -> personJpaRepository.findById(candidate.getPersonId()))
 				.map(AnchorQueryAdapter::toView);
 	}
 
@@ -54,8 +49,8 @@ public class AnchorQueryAdapter implements AnchorQueryPort {
 		return false;
 	}
 
-	private static PersonQueryPort.PersonView toView(Person person) {
-		return new PersonQueryPort.PersonView(person.getId(), person.getCurp(), person.getFirstName(),
-				person.getLastName1(), person.getLastName2());
+	private static PersonQueryPort.PersonView toView(Candidate candidate) {
+		return new PersonQueryPort.PersonView(candidate.getId(), candidate.getCurp(), candidate.getFirstName(),
+				candidate.getLastName1(), candidate.getLastName2());
 	}
 }

@@ -14,7 +14,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingres
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.CandidateRegistrationResult;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
-import mx.edu.utez.sisa.admission.domain.port.out.CandidatePersonRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
@@ -27,7 +26,6 @@ import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsExcepti
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.shared.model.Gender;
 import mx.edu.utez.sisa.shared.model.MaritalStatus;
-import mx.edu.utez.sisa.shared.model.Person;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -113,9 +111,6 @@ class RegisterCandidateUseCaseImplTest {
 	private CandidateRepository candidateRepository;
 
 	@Mock
-	private CandidatePersonRepository candidatePersonRepository;
-
-	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	@Mock
@@ -149,8 +144,8 @@ class RegisterCandidateUseCaseImplTest {
 	}
 
 	private RegisterCandidateUseCaseImpl useCaseAt(Instant now, ZoneId zone) {
-		return new RegisterCandidateUseCaseImpl(candidateRepository, candidatePersonRepository,
-				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
+		return new RegisterCandidateUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
+				fichaAmountResolver, fichaPaymentPort,
 				outreachChannelRepository, highSchoolTypeRepository, REGISTRATION_DATE, Clock.fixed(now, zone),
 				FICHA_DEADLINE_DAYS);
 	}
@@ -166,7 +161,7 @@ class RegisterCandidateUseCaseImplTest {
 	 */
 	private static AdmissionConfigInfo configIn(UUID configId, Instant opensAt, Instant closesAt, int maxCandidates) {
 		return new AdmissionConfigInfo(configId, ProgramAdmissionConfigStatus.OPEN, PROGRAM_ID,
-				"Ingeniería en Sistemas", null, null, null, opensAt, closesAt, maxCandidates, PERIOD_ID, GENERATION_ID);
+				"Ingeniería en Sistemas", null, null, PERIOD_ID, null, opensAt, closesAt, maxCandidates, GENERATION_ID);
 	}
 
 	/**
@@ -176,7 +171,6 @@ class RegisterCandidateUseCaseImplTest {
 	 * {@code MockitoExtension}'s strict mode treats as a failure.
 	 */
 	private void stubConfig(AdmissionConfigInfo config) {
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.empty());
 		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID)).thenReturn(Optional.of(config));
 	}
 
@@ -187,7 +181,7 @@ class RegisterCandidateUseCaseImplTest {
 	 * one stub they are actually about.
 	 */
 	private void stubAcceptedRegistration(AdmissionConfigInfo config) {
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.empty());
+		when(candidateRepository.findAllByCurpAndPeriodId(any(), any())).thenReturn(List.of());
 		stubAcceptedRegistrationStubs(config);
 	}
 
@@ -197,16 +191,8 @@ class RegisterCandidateUseCaseImplTest {
 	 * registration goes through is then decided by that ficha's status and date.
 	 */
 	private void stubAcceptedRegistrationWithCurpAlreadyUsed(AdmissionConfigInfo config, Candidate previousFicha) {
-		Person existing = personWithId();
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(existing));
-		when(candidateRepository.findAllByPersonId(existing.getId())).thenReturn(List.of(previousFicha));
+		when(candidateRepository.findAllByCurpAndPeriodId(any(), any())).thenReturn(List.of(previousFicha));
 		stubAcceptedRegistrationStubs(config);
-	}
-
-	private static Person personWithId() {
-		Person person = new Person("CURP0000000000000000", "Juan", "Perez", "Lopez", null);
-		ReflectionTestUtils.setField(person, "id", UUID.randomUUID());
-		return person;
 	}
 
 	/** The config lookup alone, shared by every accepted-registration stub. */
@@ -215,12 +201,10 @@ class RegisterCandidateUseCaseImplTest {
 	}
 
 	private void stubAcceptedRegistrationStubs(AdmissionConfigInfo config) {
-		Person person = personWithId();
 		when(outreachChannelRepository.findById(CHANNEL_ID))
 				.thenReturn(Optional.of(new OutreachChannel("Portal de admisión")));
 		when(highSchoolTypeRepository.findById(SCHOOL_TYPE_ID))
 				.thenReturn(Optional.of(new HighSchoolType("Bachillerato")));
-		when(candidatePersonRepository.save(any())).thenReturn(person);
 		when(candidateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		stubConfigLookup(config);
 		// The ficha is raised as a header for the program's real catalog concept,
@@ -446,9 +430,9 @@ class RegisterCandidateUseCaseImplTest {
 	@Test
 	void register_rejectsAReRegistrationWhenTheCurpStillHasALiveFicha() {
 		Candidate live = candidateRegisteredAt(Instant.parse("2026-09-22T18:00:00Z"));
-		Person existing = personWithId();
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(existing));
-		when(candidateRepository.findAllByPersonId(existing.getId())).thenReturn(List.of(live));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
+		when(candidateRepository.findAllByCurpAndPeriodId(any(), any())).thenReturn(List.of(live));
 
 		assertThatThrownBy(() -> useCase.register(command()))
 				.isInstanceOf(CandidateAlreadyExistsException.class)
@@ -459,9 +443,9 @@ class RegisterCandidateUseCaseImplTest {
 	void register_rejectsAReRegistrationWhenTheCurpAlreadyPaid() {
 		Candidate paid = candidateRegisteredAt(Instant.parse("2026-09-01T18:00:00Z"));
 		paid.markPaid();
-		Person existing = personWithId();
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(existing));
-		when(candidateRepository.findAllByPersonId(existing.getId())).thenReturn(List.of(paid));
+		when(programAdmissionConfigQueryPort.findById(ADMISSION_CONFIG_ID))
+				.thenReturn(Optional.of(config(WINDOW_OPEN, WINDOW_CLOSE, MAX_CANDIDATES)));
+		when(candidateRepository.findAllByCurpAndPeriodId(any(), any())).thenReturn(List.of(paid));
 
 		assertThatThrownBy(() -> useCase.register(command()))
 				.isInstanceOf(CandidateAlreadyExistsException.class)
@@ -511,9 +495,7 @@ class RegisterCandidateUseCaseImplTest {
 		// Registered on the 20th: her own ten days run to the 30th, so only the
 		// closing of her process can end this ficha.
 		Candidate fresh = candidateRegisteredIn(CLOSED_CONFIG_ID, Instant.parse("2026-09-20T18:00:00Z"));
-		Person existing = personWithId();
-		when(candidatePersonRepository.findByCurp(any())).thenReturn(Optional.of(existing));
-		when(candidateRepository.findAllByPersonId(existing.getId())).thenReturn(List.of(fresh));
+		when(candidateRepository.findAllByCurpAndPeriodId(any(), any())).thenReturn(List.of(fresh));
 		// Her process closed yesterday. Not stubAcceptedRegistration: that would
 		// re-stub the CURP as free and undo the whole point of this test.
 		when(programAdmissionConfigQueryPort.findById(CLOSED_CONFIG_ID)).thenReturn(Optional
@@ -528,7 +510,8 @@ class RegisterCandidateUseCaseImplTest {
 	}
 
 	private static Candidate candidateRegisteredIn(UUID configId, Instant registeredAt) {
-		Candidate candidate = new Candidate(UUID.randomUUID(), configId, "ADM-2026-000001", true, true, null);
+		Candidate candidate = new Candidate(configId, "ADM-2026-000001", true, true, null);
+		candidate.setCurp("CURP0000000000000000");
 		ReflectionTestUtils.setField(candidate, "registeredAt", registeredAt);
 		return candidate;
 	}

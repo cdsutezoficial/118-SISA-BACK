@@ -26,12 +26,8 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		this.candidateJpaRepository = candidateJpaRepository;
 	}
 
-	/** Fills whose money it is before writing, so every flow that books saldo ties it to the person (D9). */
 	@Override
 	public PaymentCredit save(PaymentCredit credit) {
-		if (credit.getPersonId() == null) {
-			personOfCandidate(credit.getCandidateId()).ifPresent(credit::assignPerson);
-		}
 		return jpaRepository.save(credit);
 	}
 
@@ -45,10 +41,14 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByIdForUpdate(id);
 	}
 
-	/** Every credit of the person behind this candidate, whichever ficha produced it. */
+	/**
+	 * Every credit of the person behind this candidate, whichever ficha produced it
+	 * (D9). The person is the CURP: it does not change between fichas, so every
+	 * candidacy that carries it shares the saldo.
+	 */
 	@Override
 	public List<PaymentCredit> findByCandidateId(UUID candidateId) {
-		return personOfCandidate(candidateId).map(jpaRepository::findByPerson)
+		return curpOfCandidate(candidateId).map(jpaRepository::findByCurp)
 				.orElseGet(() -> jpaRepository.findByCandidateIdOrderByCreatedAtDesc(candidateId));
 	}
 
@@ -60,7 +60,7 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 	/** The available saldo of the person behind this candidate, whichever ficha produced it. */
 	@Override
 	public List<PaymentCredit> findAvailableByCandidateId(UUID candidateId) {
-		return personOfCandidate(candidateId).map(jpaRepository::findAvailableByPerson)
+		return curpOfCandidate(candidateId).map(jpaRepository::findAvailableByCurp)
 				.orElseGet(() -> jpaRepository.findByCandidateIdAndStatusOrderByCreatedAtAsc(candidateId,
 						CreditStatus.AVAILABLE));
 	}
@@ -80,8 +80,9 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
 	}
 
-	private Optional<UUID> personOfCandidate(UUID candidateId) {
+	private Optional<String> curpOfCandidate(UUID candidateId) {
 		return candidateId == null ? Optional.empty()
-				: candidateJpaRepository.findById(candidateId).map(candidate -> candidate.getPersonId());
+				: candidateJpaRepository.findById(candidateId).map(candidate -> candidate.getCurp())
+						.filter(curp -> !curp.isBlank());
 	}
 }

@@ -52,7 +52,7 @@ class SettleCheckoutsBeforeCandidateUpdateTest {
 	void setUp() {
 		useCase = new SettleCheckoutsBeforeCandidateUpdate(candidateRepository, pendingCheckoutGuard,
 				transactionalUpdate);
-		candidate = new Candidate(UUID.randomUUID(), CURRENT_CONFIG, "ADM-2026-000001", true, true, null);
+		candidate = new Candidate(CURRENT_CONFIG, "ADM-2026-000001", true, true, null);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
 	}
 

@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -30,32 +31,8 @@ public class DiversityProfile {
 	@JoinColumn(name = "person_id")
 	private Person person;
 
-	@Column(name = "parents_speak_indigenous_language", nullable = false)
-	private boolean parentsSpeakIndigenousLanguage;
-
-	@Column(name = "speaks_indigenous_language", nullable = false)
-	private boolean speaksIndigenousLanguage;
-
-	@Column(name = "self_identifies_indigenous", nullable = false)
-	private boolean selfIdentifiesIndigenous;
-
-	@Column(name = "self_identifies_non_binary", nullable = false)
-	private boolean selfIdentifiesNonBinary;
-
-	@Column(name = "belongs_to_lgbttiq_community", nullable = false)
-	private boolean belongsToLgbttiqCommunity;
-
-	@Column(name = "is_afrodescendant", nullable = false)
-	private boolean isAfrodescendant;
-
-	@Column(name = "self_identifies_afrodescendant", nullable = false)
-	private boolean selfIdentifiesAfrodescendant;
-
-	@Column(name = "parents_indigenous_language")
-	private String parentsIndigenousLanguage;
-
-	@Column(name = "indigenous_language")
-	private String indigenousLanguage;
+	@Embedded
+	private DiversityData data;
 
 	protected DiversityProfile() {
 		// JPA
@@ -65,15 +42,9 @@ public class DiversityProfile {
 			boolean selfIdentifiesIndigenous, boolean selfIdentifiesNonBinary, boolean belongsToLgbttiqCommunity,
 			boolean isAfrodescendant, boolean selfIdentifiesAfrodescendant, String parentsIndigenousLanguage,
 			String indigenousLanguage) {
-		this.parentsSpeakIndigenousLanguage = parentsSpeakIndigenousLanguage;
-		this.speaksIndigenousLanguage = speaksIndigenousLanguage;
-		this.selfIdentifiesIndigenous = selfIdentifiesIndigenous;
-		this.selfIdentifiesNonBinary = selfIdentifiesNonBinary;
-		this.belongsToLgbttiqCommunity = belongsToLgbttiqCommunity;
-		this.isAfrodescendant = isAfrodescendant;
-		this.selfIdentifiesAfrodescendant = selfIdentifiesAfrodescendant;
-		this.parentsIndigenousLanguage = parentsIndigenousLanguage;
-		this.indigenousLanguage = indigenousLanguage;
+		this.data = new DiversityData(parentsSpeakIndigenousLanguage, speaksIndigenousLanguage,
+				selfIdentifiesIndigenous, selfIdentifiesNonBinary, belongsToLgbttiqCommunity, isAfrodescendant,
+				selfIdentifiesAfrodescendant, parentsIndigenousLanguage, indigenousLanguage);
 	}
 
 	public UUID getPersonId() {
@@ -89,75 +60,82 @@ public class DiversityProfile {
 	}
 
 	public boolean isParentsSpeakIndigenousLanguage() {
-		return parentsSpeakIndigenousLanguage;
+		return data != null && data.isParentsSpeakIndigenousLanguage();
 	}
 
 	public void setParentsSpeakIndigenousLanguage(boolean parentsSpeakIndigenousLanguage) {
-		this.parentsSpeakIndigenousLanguage = parentsSpeakIndigenousLanguage;
+		data().setParentsSpeakIndigenousLanguage(parentsSpeakIndigenousLanguage);
 	}
 
 	public boolean isSpeaksIndigenousLanguage() {
-		return speaksIndigenousLanguage;
+		return data != null && data.isSpeaksIndigenousLanguage();
 	}
 
 	public void setSpeaksIndigenousLanguage(boolean speaksIndigenousLanguage) {
-		this.speaksIndigenousLanguage = speaksIndigenousLanguage;
+		data().setSpeaksIndigenousLanguage(speaksIndigenousLanguage);
 	}
 
 	public boolean isSelfIdentifiesIndigenous() {
-		return selfIdentifiesIndigenous;
+		return data != null && data.isSelfIdentifiesIndigenous();
 	}
 
 	public void setSelfIdentifiesIndigenous(boolean selfIdentifiesIndigenous) {
-		this.selfIdentifiesIndigenous = selfIdentifiesIndigenous;
+		data().setSelfIdentifiesIndigenous(selfIdentifiesIndigenous);
 	}
 
 	public boolean isSelfIdentifiesNonBinary() {
-		return selfIdentifiesNonBinary;
+		return data != null && data.isSelfIdentifiesNonBinary();
 	}
 
 	public void setSelfIdentifiesNonBinary(boolean selfIdentifiesNonBinary) {
-		this.selfIdentifiesNonBinary = selfIdentifiesNonBinary;
+		data().setSelfIdentifiesNonBinary(selfIdentifiesNonBinary);
 	}
 
 	public boolean isBelongsToLgbttiqCommunity() {
-		return belongsToLgbttiqCommunity;
+		return data != null && data.isBelongsToLgbttiqCommunity();
 	}
 
 	public void setBelongsToLgbttiqCommunity(boolean belongsToLgbttiqCommunity) {
-		this.belongsToLgbttiqCommunity = belongsToLgbttiqCommunity;
+		data().setBelongsToLgbttiqCommunity(belongsToLgbttiqCommunity);
 	}
 
 	public boolean isAfrodescendant() {
-		return isAfrodescendant;
+		return data != null && data.isAfrodescendant();
 	}
 
 	public void setAfrodescendant(boolean afrodescendant) {
-		isAfrodescendant = afrodescendant;
+		data().setAfrodescendant(afrodescendant);
 	}
 
 	public boolean isSelfIdentifiesAfrodescendant() {
-		return selfIdentifiesAfrodescendant;
+		return data != null && data.isSelfIdentifiesAfrodescendant();
 	}
 
 	public void setSelfIdentifiesAfrodescendant(boolean selfIdentifiesAfrodescendant) {
-		this.selfIdentifiesAfrodescendant = selfIdentifiesAfrodescendant;
+		data().setSelfIdentifiesAfrodescendant(selfIdentifiesAfrodescendant);
 	}
 
 	public String getParentsIndigenousLanguage() {
-		return parentsIndigenousLanguage;
+		return data == null ? null : data.getParentsIndigenousLanguage();
 	}
 
 	public void setParentsIndigenousLanguage(String parentsIndigenousLanguage) {
-		this.parentsIndigenousLanguage = parentsIndigenousLanguage;
+		data().setParentsIndigenousLanguage(parentsIndigenousLanguage);
 	}
 
 	public String getIndigenousLanguage() {
-		return indigenousLanguage;
+		return data == null ? null : data.getIndigenousLanguage();
 	}
 
 	public void setIndigenousLanguage(String indigenousLanguage) {
-		this.indigenousLanguage = indigenousLanguage;
+		data().setIndigenousLanguage(indigenousLanguage);
+	}
+
+	private DiversityData data() {
+		if (data == null) {
+			data = new DiversityData();
+		}
+		return data;
 	}
 
 	@Override

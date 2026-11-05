@@ -17,8 +17,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The saldo a favor is of the person, not of the candidate record (D9): a
  * second ficha of the same person is a new candidate and must see the saldo
- * the first one left. Real DB, because the matching is JPQL across
- * {@code payment_credit} and {@code candidate}.
+ * the first one left. The person is the CURP, which does not change between
+ * fichas. Real DB, because the matching is JPQL across {@code payment_credit}
+ * and {@code candidate}.
  *
  * <h2>Warning: this class recreates the schema it points at</h2>
  * Run it only with {@code DB_URL} pointing at {@code sisa_it}.
@@ -26,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DataJpaTest
 @Import(PaymentCreditRepositoryAdapter.class)
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
-class PaymentCreditPersonQueryIT {
+class PaymentCreditCurpQueryIT {
 
 	@Autowired
 	private PaymentCreditRepositoryAdapter credits;
@@ -34,17 +35,16 @@ class PaymentCreditPersonQueryIT {
 	@Autowired
 	private FinanceCandidateJpaRepository candidates;
 
-	private final UUID person = UUID.randomUUID();
+	private final String curp = "PEGJ" + UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase();
 
 	@Test
 	void aNewFichaOfTheSamePersonSeesTheSaldoOfTheFirst() {
-		Candidate first = candidate(person);
-		Candidate second = candidate(person);
-		Candidate stranger = candidate(UUID.randomUUID());
+		Candidate first = candidate(curp);
+		Candidate second = candidate(curp);
+		Candidate stranger = candidate("OTRA" + curp.substring(4));
 		PaymentCredit saldo = credits.save(credit(first, "250.00", "2026-10-01T00:00:00Z"));
 		credits.save(credit(stranger, "99.00", "2026-10-02T00:00:00Z"));
 
-		assertThat(saldo.getPersonId()).isEqualTo(person);
 		assertThat(credits.findAvailableByCandidateId(second.getId())).extracting(PaymentCredit::getId)
 				.containsExactly(saldo.getId());
 		assertThat(credits.findByCandidateId(second.getId())).extracting(PaymentCredit::getId)
@@ -53,8 +53,8 @@ class PaymentCreditPersonQueryIT {
 
 	@Test
 	void aSpentSaldoIsListedButNotAvailableAndOldestComesFirst() {
-		Candidate first = candidate(person);
-		Candidate second = candidate(person);
+		Candidate first = candidate(curp);
+		Candidate second = candidate(curp);
 		PaymentCredit spent = credits.save(credit(first, "100.00", "2026-10-01T00:00:00Z"));
 		spent.applyTo(UUID.randomUUID());
 		credits.save(spent);
@@ -66,9 +66,12 @@ class PaymentCreditPersonQueryIT {
 		assertThat(credits.findByCandidateId(second.getId())).hasSize(3);
 	}
 
-	private Candidate candidate(UUID personId) {
-		return candidates.save(new Candidate(personId, UUID.randomUUID(), "ADM-" + UUID.randomUUID(), false, true,
-				null));
+	private Candidate candidate(String curp) {
+		Candidate candidate = new Candidate(UUID.randomUUID(), "ADM-" + UUID.randomUUID(), false, true, null);
+		candidate.setCurp(curp);
+		candidate.setFirstName("Prueba");
+		candidate.setLastName1("Saldo");
+		return candidates.save(candidate);
 	}
 
 	private static PaymentCredit credit(Candidate owner, String amount, String createdAt) {

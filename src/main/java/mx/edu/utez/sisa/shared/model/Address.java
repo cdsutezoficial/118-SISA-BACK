@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.shared.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -42,35 +43,8 @@ public class Address {
 	@JoinColumn(name = "person_id")
 	private Person person;
 
-	@Column(nullable = false)
-	private String street;
-
-	@Column(name = "exterior_number", nullable = false)
-	private String exteriorNumber;
-
-	@Column(name = "interior_number")
-	private String interiorNumber;
-
-	@Column
-	private String neighborhood;
-
-	@Column
-	private String locality;
-
-	@Column(name = "postal_code", nullable = false)
-	private String postalCode;
-
-	@Column(name = "state_id")
-	private UUID stateId;
-
-	@Column(name = "municipality_id")
-	private UUID municipalityId;
-
-	@Column(name = "foreign_state")
-	private String foreignState;
-
-	@Column(name = "foreign_municipality")
-	private String foreignMunicipality;
+	@Embedded
+	private AddressData data;
 
 	protected Address() {
 		// JPA
@@ -78,16 +52,8 @@ public class Address {
 
 	public Address(String street, String exteriorNumber, String interiorNumber, String neighborhood, String locality,
 			String postalCode, UUID stateId, UUID municipalityId, String foreignState, String foreignMunicipality) {
-		this.street = street;
-		this.exteriorNumber = exteriorNumber;
-		this.interiorNumber = interiorNumber;
-		this.neighborhood = neighborhood;
-		this.locality = locality;
-		this.postalCode = postalCode;
-		this.stateId = stateId;
-		this.municipalityId = municipalityId;
-		this.foreignState = foreignState;
-		this.foreignMunicipality = foreignMunicipality;
+		this.data = new AddressData(street, exteriorNumber, interiorNumber, neighborhood, locality, postalCode,
+				stateId, municipalityId, foreignState, foreignMunicipality);
 	}
 
 	public UUID getPersonId() {
@@ -103,83 +69,90 @@ public class Address {
 	}
 
 	public String getStreet() {
-		return street;
+		return data == null ? null : data.getStreet();
 	}
 
 	public void setStreet(String street) {
-		this.street = street;
+		data().setStreet(street);
 	}
 
 	public String getExteriorNumber() {
-		return exteriorNumber;
+		return data == null ? null : data.getExteriorNumber();
 	}
 
 	public void setExteriorNumber(String exteriorNumber) {
-		this.exteriorNumber = exteriorNumber;
+		data().setExteriorNumber(exteriorNumber);
 	}
 
 	public String getInteriorNumber() {
-		return interiorNumber;
+		return data == null ? null : data.getInteriorNumber();
 	}
 
 	public void setInteriorNumber(String interiorNumber) {
-		this.interiorNumber = interiorNumber;
+		data().setInteriorNumber(interiorNumber);
 	}
 
 	public String getNeighborhood() {
-		return neighborhood;
+		return data == null ? null : data.getNeighborhood();
 	}
 
 	public void setNeighborhood(String neighborhood) {
-		this.neighborhood = neighborhood;
+		data().setNeighborhood(neighborhood);
 	}
 
 	public String getLocality() {
-		return locality;
+		return data == null ? null : data.getLocality();
 	}
 
 	public void setLocality(String locality) {
-		this.locality = locality;
+		data().setLocality(locality);
 	}
 
 	public String getPostalCode() {
-		return postalCode;
+		return data == null ? null : data.getPostalCode();
 	}
 
 	public void setPostalCode(String postalCode) {
-		this.postalCode = postalCode;
+		data().setPostalCode(postalCode);
 	}
 
 	public UUID getStateId() {
-		return stateId;
+		return data == null ? null : data.getStateId();
 	}
 
 	public void setStateId(UUID stateId) {
-		this.stateId = stateId;
+		data().setStateId(stateId);
 	}
 
 	public UUID getMunicipalityId() {
-		return municipalityId;
+		return data == null ? null : data.getMunicipalityId();
 	}
 
 	public void setMunicipalityId(UUID municipalityId) {
-		this.municipalityId = municipalityId;
+		data().setMunicipalityId(municipalityId);
 	}
 
 	public String getForeignState() {
-		return foreignState;
+		return data == null ? null : data.getForeignState();
 	}
 
 	public void setForeignState(String foreignState) {
-		this.foreignState = foreignState;
+		data().setForeignState(foreignState);
 	}
 
 	public String getForeignMunicipality() {
-		return foreignMunicipality;
+		return data == null ? null : data.getForeignMunicipality();
 	}
 
 	public void setForeignMunicipality(String foreignMunicipality) {
-		this.foreignMunicipality = foreignMunicipality;
+		data().setForeignMunicipality(foreignMunicipality);
+	}
+
+	private AddressData data() {
+		if (data == null) {
+			data = new AddressData();
+		}
+		return data;
 	}
 
 	@Override

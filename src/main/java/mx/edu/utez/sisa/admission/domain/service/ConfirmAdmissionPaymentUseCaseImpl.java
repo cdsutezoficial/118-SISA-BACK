@@ -6,10 +6,13 @@ import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Isolation;
@@ -68,6 +71,8 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 	/** F1: the place a cash payment takes is checked under the same lock as the checkout's. */
 	private final AdmissionQuotaPort admissionQuotaPort;
 
+	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
+
 	private final Clock clock;
 
 	private final int checkoutHoldMinutes;
@@ -75,7 +80,8 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
 			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications,
-			AdmissionQuotaPort admissionQuotaPort, Clock clock, int checkoutHoldMinutes) {
+			AdmissionQuotaPort admissionQuotaPort, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			Clock clock, int checkoutHoldMinutes) {
 		this.notifications = notifications;
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.clock = clock;
@@ -83,6 +89,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
+		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 	}
 
 	@Override
@@ -115,6 +122,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		// A difference does not compete for a place: a paid candidate already holds one.
 		if (candidate.getProgramChangePaymentId() == null) {
 			requirePlace(candidate);
+			requireNoOtherValidCandidateInPeriod(candidate);
 		}
 		ConfirmPaymentResult result = settle(candidate, charge, null, false, null, collectorId, collectorName);
 		if (expectedAmount == null || result.amount().compareTo(expectedAmount) != 0) {
@@ -154,6 +162,25 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 	}
 
 	/**
+	 * One valid candidacy per CURP per period, also at the cash desk: checked before
+	 * the money is taken, so the cashier never receives it for a ficha that cannot count.
+	 */
+	private void requireNoOtherValidCandidateInPeriod(Candidate candidate) {
+		if (candidateRepository.existsAnotherValidInPeriod(candidate.getCurp(), periodIdOf(candidate),
+				candidate.getId())) {
+			throw new CandidateAlreadyExistsException(
+					"Este CURP ya tiene una candidatura válida en este proceso de admisión.");
+		}
+	}
+
+	private UUID periodIdOf(Candidate candidate) {
+		return programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
+				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
+				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
+	}
+
+	/**
 	 * Same transaction: the finance charge and the candidate are settled together, or
 	 * neither is. The receipt goes on the abono.
 	 */
@@ -176,7 +203,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 			// Paid in full: the new career's charge is the ficha from now on.
 			candidate.adoptFichaPayment(charge.financePaymentId());
 		} else {
-			candidate.markPaid();
+			candidate.markPaid(periodIdOf(candidate));
 		}
 		candidateRepository.save(candidate);
 

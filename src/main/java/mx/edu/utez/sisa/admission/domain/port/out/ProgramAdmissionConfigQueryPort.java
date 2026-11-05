@@ -15,8 +15,7 @@ import java.util.UUID;
  * {@code admission} validates the applicant's chosen program window by
  * looking up the config this way rather than importing
  * {@code academic_config}'s repository port directly (same "own minimal
- * access" rationale as {@code CandidatePersonRepository} / academic_config's
- * {@code PersonLookupJpaRepository}).
+ * access" rationale as academic_config's {@code PersonLookupJpaRepository}).
  *
  * <p>The cap is not resolved here: {@code maxCandidates} comes across on the
  * projection, but the occupied-place count it is compared against is taken by
@@ -73,15 +72,15 @@ public interface ProgramAdmissionConfigQueryPort {
 	 *                      count behind it lives in {@code admission}.
 	 */
 	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
-			String divisionName, ProgramModality modality, String periodName, Instant opensAt, Instant closesAt,
-			int maxCandidates, UUID periodId, UUID targetGenerationId) {
+			String divisionName, ProgramModality modality, UUID periodId, String periodName, Instant opensAt,
+			Instant closesAt, int maxCandidates, UUID targetGenerationId) {
 
-		/** Without period and generation ids (F5): callers that do not raise a charge. */
+		/** Without the target generation (F5): callers that do not raise a charge. */
 		public AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
-				String divisionName, ProgramModality modality, String periodName, Instant opensAt, Instant closesAt,
-				int maxCandidates) {
-			this(id, status, programId, programName, divisionName, modality, periodName, opensAt, closesAt,
-					maxCandidates, null, null);
+				String divisionName, ProgramModality modality, UUID periodId, String periodName, Instant opensAt,
+				Instant closesAt, int maxCandidates) {
+			this(id, status, programId, programName, divisionName, modality, periodId, periodName, opensAt, closesAt,
+					maxCandidates, null);
 		}
 	}
 }

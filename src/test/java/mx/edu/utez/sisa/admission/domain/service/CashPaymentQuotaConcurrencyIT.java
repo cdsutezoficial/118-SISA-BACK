@@ -28,6 +28,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.AdmissionQuotaAdapter;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateRepositoryAdapter;
@@ -172,8 +173,13 @@ class CashPaymentQuotaConcurrencyIT {
 	}
 
 	private UUID saveCandidateWithPendingFicha(UUID admissionConfigId) {
-		Candidate candidate = candidateJpaRepository.save(new Candidate(UUID.randomUUID(), admissionConfigId,
-				"ADM-2026-" + (100000 + (int) (Math.random() * 899999)), false, true, null));
+		Candidate candidate = new Candidate(admissionConfigId,
+				"ADM-2026-" + (100000 + (int) (Math.random() * 899999)), false, true, null);
+		// Cada uno con su CURP: la regla de una candidatura por periodo no entra aquí.
+		candidate.setCurp("CURP" + UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase());
+		candidate.setFirstName("Prueba");
+		candidate.setLastName1("Concurrencia");
+		candidate = candidateJpaRepository.save(candidate);
 		Payment charge = paymentJpaRepository.save(new Payment(candidate.getId(), null, "FICHA-ING", null, null, null,
 				null, null, null, PaymentStatus.PENDING, PaymentOrigin.ADMISSION,
 				TODAY.plusDays(5).atStartOfDay(ZONE).toInstant(), NOW));
@@ -212,9 +218,14 @@ class CashPaymentQuotaConcurrencyIT {
 		ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 				FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository,
 				AdmissionQuotaPort admissionQuotaPort, Clock clock) {
+			ProgramAdmissionConfigQueryPort configs = Mockito.mock(ProgramAdmissionConfigQueryPort.class);
+			UUID periodId = UUID.randomUUID();
+			Mockito.when(configs.findById(ArgumentMatchers.any())).thenAnswer(call -> Optional.of(
+					new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(call.getArgument(0), null, null, null,
+							null, null, periodId, null, null, null, 0)));
 			return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
 					checkoutAttemptRepository, Mockito.mock(CandidateNotificationPort.class), admissionQuotaPort,
-					clock, 60);
+					configs, clock, 60);
 		}
 	}
 }
