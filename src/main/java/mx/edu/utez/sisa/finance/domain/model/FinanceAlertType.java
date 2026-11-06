@@ -7,8 +7,5 @@ public enum FinanceAlertType {
 	AUTHORIZED_NOT_CAPTURED,
 
 	/** A late capture found the career full; the money became saldo a favor (E4). */
-	PAID_WITHOUT_QUOTA,
-
-	/** A capture settled nothing (a second capture, or a cancelled charge); kept as saldo a favor (E1). */
-	OVERPAYMENT
+	PAID_WITHOUT_QUOTA
 }

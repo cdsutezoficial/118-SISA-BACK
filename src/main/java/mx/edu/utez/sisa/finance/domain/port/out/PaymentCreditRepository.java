@@ -60,6 +60,4 @@ public interface PaymentCreditRepository {
 	/** The overpayment booked for a gateway order, if any. */
 	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
 
-	/** Every overpayment (a credit tied to a gateway order), newest first. */
-	List<PaymentCredit> findOverpayments();
 }

@@ -105,7 +105,6 @@ public class FinanceAlertMailer implements FinanceAlertNotifier {
 		return switch (alert.getType()) {
 			case AUTHORIZED_NOT_CAPTURED -> "Monto autorizado sin cobrar";
 			case PAID_WITHOUT_QUOTA -> "Pago recibido sin cupo";
-			case OVERPAYMENT -> "Pago que no liquidó ningún cargo";
 		};
 	}
 

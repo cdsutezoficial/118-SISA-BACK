@@ -2,7 +2,6 @@ package mx.edu.utez.sisa.finance.infrastructure.web;
 
 import jakarta.validation.Valid;
 import mx.edu.utez.sisa.finance.domain.model.BenefitStatus;
-import mx.edu.utez.sisa.finance.domain.port.in.ListOverpaymentsUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.BenefitView;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreateBenefitUseCase;
@@ -13,8 +12,6 @@ import mx.edu.utez.sisa.finance.domain.port.in.ListBenefitsUseCase.BenefitFilter
 import mx.edu.utez.sisa.finance.domain.port.in.UpdateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.UpdateBenefitUseCase.UpdateBenefitCommand;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentCreditRepository;
-import mx.edu.utez.sisa.finance.infrastructure.web.dto.OverpaymentListResponse;
-import mx.edu.utez.sisa.finance.infrastructure.web.dto.OverpaymentResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.BenefitDetailResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.BenefitListResponse;
 import mx.edu.utez.sisa.finance.infrastructure.web.dto.CreateBenefitRequest;
@@ -67,13 +64,10 @@ public class BenefitController {
 
 	private final QuoteDebtUseCase quoteDebtUseCase;
 
-	private final ListOverpaymentsUseCase listOverpaymentsUseCase;
-
 	public BenefitController(CreateBenefitUseCase createBenefitUseCase, UpdateBenefitUseCase updateBenefitUseCase,
 			CancelBenefitUseCase cancelBenefitUseCase, ListBenefitsUseCase listBenefitsUseCase,
 			GetDiscountReportUseCase getDiscountReportUseCase, PaymentCreditRepository paymentCreditRepository,
-			QuoteDebtUseCase quoteDebtUseCase, ListOverpaymentsUseCase listOverpaymentsUseCase) {
-		this.listOverpaymentsUseCase = listOverpaymentsUseCase;
+			QuoteDebtUseCase quoteDebtUseCase) {
 		this.quoteDebtUseCase = quoteDebtUseCase;
 		this.createBenefitUseCase = createBenefitUseCase;
 		this.updateBenefitUseCase = updateBenefitUseCase;
@@ -139,18 +133,6 @@ public class BenefitController {
 				: paymentCreditRepository.findByStudentId(studentId)).stream()
 				.map(FinanceResponseMapper::toCredit).toList();
 		return ResponseEntity.ok(new CreditListResponse(items, items.size()));
-	}
-
-	/**
-	 * Money the gateway captured without settling anything (E1): a second
-	 * capture of a paid charge, or a capture on a cancelled one. Each is already
-	 * saldo a favor of its owner; this is the list Finanzas reviews.
-	 */
-	@GetMapping("/credits/overpayments")
-	public ResponseEntity<OverpaymentListResponse> listOverpayments() {
-		List<OverpaymentResponse> items = listOverpaymentsUseCase.list().stream().map(OverpaymentResponse::from)
-				.toList();
-		return ResponseEntity.ok(new OverpaymentListResponse(items, items.size()));
 	}
 
 	@GetMapping("/discounts/report")

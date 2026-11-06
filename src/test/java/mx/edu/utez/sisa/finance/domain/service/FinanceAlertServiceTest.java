@@ -90,7 +90,7 @@ class FinanceAlertServiceTest {
 
 	@Test
 	void resolvingRecordsWhoWhenAndTheNote() {
-		FinanceAlert alert = new FinanceAlert(FinanceAlertType.OVERPAYMENT, null, null, "O-1", null, null, null,
+		FinanceAlert alert = new FinanceAlert(FinanceAlertType.PAID_WITHOUT_QUOTA, null, null, "O-1", null, null, null,
 				NOW.minusSeconds(60));
 		UUID id = UUID.randomUUID();
 		UUID user = UUID.randomUUID();

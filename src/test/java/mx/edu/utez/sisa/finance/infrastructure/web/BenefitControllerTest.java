@@ -1,7 +1,6 @@
 package mx.edu.utez.sisa.finance.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import mx.edu.utez.sisa.finance.domain.port.in.ListOverpaymentsUseCase;
 import mx.edu.utez.sisa.finance.domain.model.BenefitMode;
 import mx.edu.utez.sisa.finance.domain.model.BenefitStatus;
 import mx.edu.utez.sisa.finance.domain.model.CreditStatus;
@@ -56,9 +55,6 @@ class BenefitControllerTest {
 
 	@Autowired
 	private ObjectMapper objectMapper;
-
-	@MockitoBean
-	private ListOverpaymentsUseCase listOverpaymentsUseCase;
 
 	@MockitoBean
 	private CreateBenefitUseCase createBenefitUseCase;

@@ -52,6 +52,4 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 			  AND c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.curp = :curp)
 			ORDER BY c.createdAt ASC""")
 	List<PaymentCredit> findAvailableByCurp(@Param("curp") String curp);
-
-	List<PaymentCredit> findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
 }

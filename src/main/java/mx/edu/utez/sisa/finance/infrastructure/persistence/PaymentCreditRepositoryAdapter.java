@@ -90,11 +90,6 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByExternalOrderId(externalOrderId);
 	}
 
-	@Override
-	public List<PaymentCredit> findOverpayments() {
-		return jpaRepository.findByExternalOrderIdIsNotNullOrderByCreatedAtDesc();
-	}
-
 	private Optional<String> curpOfCandidate(UUID candidateId) {
 		return candidateId == null ? Optional.empty()
 				: candidateJpaRepository.findById(candidateId).map(candidate -> candidate.getCurp())

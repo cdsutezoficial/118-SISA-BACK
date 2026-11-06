@@ -71,15 +71,12 @@ class PendingCheckoutGuardTest {
 	@Mock
 	private ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
-	@Mock
-	private mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort;
-
 	private PendingCheckoutGuard guard;
 
 	@BeforeEach
 	void setUp() {
 		guard = new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
-				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, CLOCK, HOLD_MINUTES, financeAlertPort);
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, CLOCK, HOLD_MINUTES);
 	}
 
 	@Test

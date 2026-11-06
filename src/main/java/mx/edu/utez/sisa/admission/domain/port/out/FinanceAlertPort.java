@@ -15,8 +15,6 @@ public interface FinanceAlertPort {
 		/** Authorized at the bank for more than three days and never captured. */
 		AUTHORIZED_NOT_CAPTURED,
 		/** Captured after the hold, with the career already full: kept as saldo a favor. */
-		PAID_WITHOUT_QUOTA,
-		/** Captured without settling anything: kept as saldo a favor. */
-		OVERPAYMENT
+		PAID_WITHOUT_QUOTA
 	}
 }

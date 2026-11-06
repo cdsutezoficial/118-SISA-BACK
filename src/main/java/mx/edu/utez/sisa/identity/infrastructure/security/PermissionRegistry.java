@@ -174,7 +174,6 @@ public final class PermissionRegistry {
 			e("GET", "/finance/alerts", "FINANCE_ALERTS_READ"),
 			e("PATCH", "/finance/alerts/*/resolve", "FINANCE_ALERTS_RESOLVE"),
 			e("GET", "/finance/credits", "PAYMENTS_READ"),
-			e("GET", "/finance/credits/overpayments", "PAYMENTS_READ"),
 			e("GET", "/finance/discounts/report", "BENEFITS_REPORT"),
 			e("POST", "/finance/payments/*/entries", "PAYMENTS_SETTLE"),
 			e("POST", "/finance/payments/*/exempt", "BENEFITS_CREATE"),

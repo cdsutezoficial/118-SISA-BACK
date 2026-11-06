@@ -12,7 +12,6 @@ import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
-import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
@@ -72,7 +71,6 @@ public class PendingCheckoutGuard {
 
 	private final Clock clock;
 
-	private final FinanceAlertPort financeAlertPort;
 
 	/** Minutes a checkout session can still be paid in (same as the quota hold). */
 	private final int checkoutHoldMinutes;
@@ -81,8 +79,7 @@ public class PendingCheckoutGuard {
 			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
-			int checkoutHoldMinutes, FinanceAlertPort financeAlertPort) {
-		this.financeAlertPort = financeAlertPort;
+			int checkoutHoldMinutes) {
 		this.clock = clock;
 		this.checkoutHoldMinutes = checkoutHoldMinutes;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -233,12 +230,9 @@ public class PendingCheckoutGuard {
 			}
 			return true;
 		}
-		if (fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(),
-				answer.totalCapturedAmount())) {
-			financeAlertPort.raise(FinanceAlertPort.Kind.OVERPAYMENT, candidate.getId(), attempt.getPaymentId(),
-					attempt.getOrderId(), answer.totalCapturedAmount(),
-					"Una sesión anterior cobró un pago que ya no se debía. Quedó como saldo a favor de la persona.");
-		}
+		// The saldo goes to the person and shows on the candidate's Pagos tab; no alert.
+		fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(),
+				answer.totalCapturedAmount());
 		checkoutSlotClaimer.closeAttempt(attempt.getOrderId(), CheckoutAttemptCloseReason.CAPTURED);
 		return false;
 	}

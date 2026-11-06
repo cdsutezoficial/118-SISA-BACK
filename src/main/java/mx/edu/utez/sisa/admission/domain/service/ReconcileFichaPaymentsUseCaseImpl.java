@@ -373,10 +373,6 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 				answer.totalCapturedAmount())) {
 			log.warn("Excedente de la ficha {}: la orden {} capturó {} sin liquidar nada; queda como saldo a favor",
 					candidateId, attempt.getOrderId(), answer.totalCapturedAmount());
-			financeAlertPort.raise(FinanceAlertPort.Kind.OVERPAYMENT, candidateId, attempt.getPaymentId(),
-					attempt.getOrderId(), answer.totalCapturedAmount(),
-					"El banco cobró un pago que no liquidó ningún cargo (segundo cobro o cargo cancelado). "
-							+ "Quedó como saldo a favor de la persona.");
 		}
 	}
 

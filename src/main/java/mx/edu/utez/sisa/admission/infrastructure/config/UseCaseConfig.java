@@ -390,11 +390,9 @@ public class UseCaseConfig {
 			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
 			CheckoutSlotClaimer checkoutSlotClaimer,
 			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
-			FinanceAlertPort financeAlertPort) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
-				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes,
-				financeAlertPort);
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */
