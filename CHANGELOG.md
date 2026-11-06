@@ -4,6 +4,25 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-11-06] Descuento solo sobre el cargo vigente tras un cambio de carrera
+
+Rama: `fix/descuento-cargo-reemplazado`. Plan: `118-SISA-CLAUDE/docs/design/pendientes/pagos/2026-10-30-correcciones-ficha-cambio-carrera.md` (§7).
+
+### Qué cambió
+
+- **El cargo que un cambio de carrera dejó atrás ya no admite descuento.** El dinero de ese
+  cargo pasó al cargo nuevo como saldo a favor; descontarlo lo devolvía otra vez. Crear
+  (`POST /finance/benefits` con `paymentId`) o editar un descuento ahí responde 409:
+  "Este cargo se reemplazó por el cambio de carrera; aplica el descuento a la diferencia."
+  Si ya no queda diferencia: "…aplica el descuento al cargo de la carrera nueva."
+- `ReplacedChargeGuard` lee el historial `candidate_program_change` (`was_paid` y
+  `new_payment_id`) por `ChargeReplacementQueryPort` y sigue la cadena A → B → C hasta el
+  último cargo.
+- El descuento retroactivo por concepto (sin `paymentId`) también salta el cargo reemplazado.
+- Sin cambios de esquema. El front no cambia: ya muestra el mensaje del 409.
+
+---
+
 ## [2026-11-05] El esquema lo construyen las migraciones de Flyway
 
 Rama: `feat/flyway-migraciones`. Plan: `docs/plans/2026-10-30-flyway-migrations.md`.

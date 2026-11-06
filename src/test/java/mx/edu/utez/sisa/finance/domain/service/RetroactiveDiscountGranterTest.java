@@ -17,7 +17,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,6 +40,14 @@ class RetroactiveDiscountGranterTest {
 	private PaymentCreditRepository paymentCreditRepository;
 
 	private final UUID candidateId = UUID.randomUUID();
+
+	/** Charge replaced by a career change → the charge that replaced it. */
+	private final Map<UUID, UUID> replacements = new HashMap<>();
+
+	private RetroactiveDiscountGranter granter() {
+		return new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter(),
+				new ReplacedChargeGuard(id -> Optional.ofNullable(replacements.get(id)), paymentRepository));
+	}
 
 	private Payment paidCharge() {
 		Payment charge = new Payment(candidateId, null, "FICHA-ING", null, null, UUID.randomUUID(),
@@ -61,8 +71,7 @@ class RetroactiveDiscountGranterTest {
 		Payment charge = paidCharge();
 		when(paymentRepository.findById(charge.getId())).thenReturn(Optional.of(charge));
 		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-		RetroactiveDiscountGranter granter = new RetroactiveDiscountGranter(paymentRepository,
-				paymentCreditRepository, new PaymentQuoter());
+		RetroactiveDiscountGranter granter = granter();
 
 		List<PaymentCredit> credits = granter.grant(halfOff(charge.getId()), Instant.now());
 
@@ -79,7 +88,7 @@ class RetroactiveDiscountGranterTest {
 		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		PaymentBenefit discount = halfOff(charge.getId());
 
-		new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter())
+		granter()
 				.grant(discount, Instant.now());
 
 		assertThat(charge.getBenefitId()).isEqualTo(discount.getId());
@@ -94,8 +103,7 @@ class RetroactiveDiscountGranterTest {
 		Payment charge = paidCharge();
 		when(paymentRepository.findById(charge.getId())).thenReturn(Optional.of(charge));
 		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-		RetroactiveDiscountGranter granter = new RetroactiveDiscountGranter(paymentRepository,
-				paymentCreditRepository, new PaymentQuoter());
+		RetroactiveDiscountGranter granter = granter();
 		granter.grant(halfOff(charge.getId()), Instant.now());
 
 		// Otro 50 % no devuelve nada nuevo; uno menor tampoco.
@@ -112,10 +120,32 @@ class RetroactiveDiscountGranterTest {
 				PaymentStatus.PENDING, PaymentOrigin.ADMISSION, null, Instant.parse("2026-10-01T00:00:00Z"));
 		ReflectionTestUtils.setField(open, "id", UUID.randomUUID());
 		when(paymentRepository.findById(open.getId())).thenReturn(Optional.of(open));
-		RetroactiveDiscountGranter granter = new RetroactiveDiscountGranter(paymentRepository,
-				paymentCreditRepository, new PaymentQuoter());
+		RetroactiveDiscountGranter granter = granter();
 
 		assertThat(granter.grant(halfOff(open.getId()), Instant.now())).isEmpty();
 		verify(paymentCreditRepository, never()).save(any());
+	}
+
+	/**
+	 * A discount for the concept (no charge picked) reaches every paid charge of
+	 * the person, but not the one a career change replaced: its money already
+	 * moved to the new charge, so discounting it again would pay it twice.
+	 */
+	@Test
+	void aConceptDiscountSkipsTheChargeACareerChangeReplaced() {
+		Payment replaced = paidCharge();
+		Payment current = paidCharge();
+		replacements.put(replaced.getId(), current.getId());
+		when(paymentRepository.findByCandidateIdAndConceptCode(candidateId, "FICHA-ING"))
+				.thenReturn(List.of(replaced, current));
+		when(paymentCreditRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		List<PaymentCredit> credits = granter().grant(halfOff(null), Instant.now());
+
+		assertThat(credits).hasSize(1);
+		assertThat(credits.get(0).getOriginPaymentId()).isEqualTo(current.getId());
+		assertThat(replaced.getBenefitId()).isNull();
+		assertThat(replaced.getAmountDue()).isEqualByComparingTo("1120.00");
+		verify(paymentRepository, never()).save(replaced);
 	}
 }

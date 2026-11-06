@@ -26,12 +26,15 @@ public class UpdateBenefitUseCaseImpl implements UpdateBenefitUseCase {
 
 	private final PaymentRepository paymentRepository;
 
+	private final ReplacedChargeGuard replacedChargeGuard;
+
 	private final Clock clock;
 
 	public UpdateBenefitUseCaseImpl(PaymentBenefitRepository paymentBenefitRepository,
-			PaymentRepository paymentRepository, Clock clock) {
+			PaymentRepository paymentRepository, ReplacedChargeGuard replacedChargeGuard, Clock clock) {
 		this.paymentBenefitRepository = paymentBenefitRepository;
 		this.paymentRepository = paymentRepository;
+		this.replacedChargeGuard = replacedChargeGuard;
 		this.clock = clock;
 	}
 
@@ -51,6 +54,9 @@ public class UpdateBenefitUseCaseImpl implements UpdateBenefitUseCase {
 		if (paymentRepository.isBenefitSettled(benefit.getId())) {
 			throw new BenefitNotEditableException("El descuento ya se aplicó a un pago; no se puede editar.");
 		}
+		// A charge a career change replaced is history: the discount belongs on
+		// the charge being collected now.
+		replacedChargeGuard.requireCurrent(benefit.getPaymentId());
 		// A discount granted on a charge follows that charge: once it is paid (or
 		// has abonos) the price is history and the discount with it.
 		if (benefit.getPaymentId() != null && paymentRepository.findById(benefit.getPaymentId())
