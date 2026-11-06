@@ -58,8 +58,8 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 	 */
 	@Override
 	public List<PaymentCredit> findByCandidateId(UUID candidateId) {
-		return curpOfCandidate(candidateId).map(jpaRepository::findByCurp)
-				.orElseGet(() -> jpaRepository.findByCandidateIdOrderByCreatedAtDesc(candidateId));
+		return candidateId == null ? List.of()
+				: jpaRepository.findByCandidateIdInOrderByCreatedAtDesc(fichasOfPerson(candidateId));
 	}
 
 	@Override
@@ -70,9 +70,9 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 	/** The available saldo of the person behind this candidate, whichever ficha produced it. */
 	@Override
 	public List<PaymentCredit> findAvailableByCandidateId(UUID candidateId) {
-		return curpOfCandidate(candidateId).map(jpaRepository::findAvailableByCurp)
-				.orElseGet(() -> jpaRepository.findByCandidateIdAndStatusOrderByCreatedAtAsc(candidateId,
-						CreditStatus.AVAILABLE));
+		return candidateId == null ? List.of()
+				: jpaRepository.findByCandidateIdInAndStatusOrderByCreatedAtAsc(fichasOfPerson(candidateId),
+						CreditStatus.AVAILABLE);
 	}
 
 	@Override
@@ -90,9 +90,18 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 		return jpaRepository.findByExternalOrderId(externalOrderId);
 	}
 
-	private Optional<String> curpOfCandidate(UUID candidateId) {
-		return candidateId == null ? Optional.empty()
-				: candidateJpaRepository.findById(candidateId).map(candidate -> candidate.getCurp())
-						.filter(curp -> !curp.isBlank());
+
+	/**
+	 * The candidate records of the person behind this one: every ficha with the same
+	 * CURP, or just this one when it has none. Read through finance's own lookup over
+	 * the candidate table, like {@link AnchorQueryAdapter}.
+	 */
+	private List<UUID> fichasOfPerson(UUID candidateId) {
+		List<UUID> ids = candidateJpaRepository.findById(candidateId)
+				.map(candidate -> candidate.getCurp())
+				.filter(curp -> curp != null && !curp.isBlank())
+				.map(candidateJpaRepository::findIdsByCurp)
+				.orElse(List.of());
+		return ids.isEmpty() ? List.of(candidateId) : ids;
 	}
 }

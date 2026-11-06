@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,21 +36,11 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 
 	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
 
-	/**
-	 * Every credit of a person, matched by {@code personId} or, for rows saved
-	 * before that column existed, by any candidate record of that person.
-	 */
-	@Query("""
-			SELECT c FROM PaymentCredit c
-			WHERE c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.curp = :curp)
-			ORDER BY c.createdAt DESC""")
-	List<PaymentCredit> findByCurp(@Param("curp") String curp);
+	/** Every credit of these candidate records (the fichas of one person), newest first. */
+	List<PaymentCredit> findByCandidateIdInOrderByCreatedAtDesc(Collection<UUID> candidateIds);
 
-	/** The {@code AVAILABLE} credits of a person, oldest first (same matching). */
-	@Query("""
-			SELECT c FROM PaymentCredit c
-			WHERE c.status = mx.edu.utez.sisa.finance.domain.model.CreditStatus.AVAILABLE
-			  AND c.candidateId IN (SELECT k.id FROM Candidate k WHERE k.curp = :curp)
-			ORDER BY c.createdAt ASC""")
-	List<PaymentCredit> findAvailableByCurp(@Param("curp") String curp);
+	/** The credits in {@code status} of these candidate records, oldest first. */
+	List<PaymentCredit> findByCandidateIdInAndStatusOrderByCreatedAtAsc(Collection<UUID> candidateIds,
+			CreditStatus status);
+
 }

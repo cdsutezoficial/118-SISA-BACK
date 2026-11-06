@@ -2,7 +2,10 @@ package mx.edu.utez.sisa.finance.infrastructure.persistence;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -17,4 +20,8 @@ import java.util.UUID;
  * for its cross-context reads.
  */
 public interface FinanceCandidateJpaRepository extends JpaRepository<Candidate, UUID> {
+
+	/** The candidate records that carry this CURP: the fichas of one person (D9). */
+	@Query("SELECT k.id FROM Candidate k WHERE k.curp = :curp")
+	List<UUID> findIdsByCurp(@Param("curp") String curp);
 }
