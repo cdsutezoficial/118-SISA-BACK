@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -46,14 +45,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * surfaces when Hibernate parses the query and the database executes it. Both
  * happen here.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * There is no embedded test database configured, so {@code ddl-auto=create-drop}
- * runs against whatever {@code DB_URL} names — the local MySQL development
- * database by default — dropping and rebuilding it from the entities. Point
- * {@code DB_URL} at a throwaway database when running this locally.
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class ProgramAdmissionConfigOptionsQueryIT {
 
 	private static final Instant NOW = Instant.parse("2026-09-25T18:00:00Z");

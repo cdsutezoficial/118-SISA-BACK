@@ -29,16 +29,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * against a persistent database would produce — does not create duplicates.
  *
  * <p>Runs against a dedicated temporary MySQL schema ({@code sisa_seed_test},
- * {@code ddl-auto=create-drop}) instead of the developer's everyday
- * {@code sisa} database, so existing development data cannot trip the
+ * rebuilt by Flyway at context start) instead of the shared {@code sisa_it}
+ * test database, so data left by other test contexts cannot trip the
  * role-based idempotency checks. The idempotency path is exercised by
  * invoking the already wired bean's {@code run()} a second time directly
  * (same rationale as the former {@code AdminSeedIT}).
  */
 @SpringBootTest(properties = {
 		"sisa.security.bootstrap.test.password=SeedItPass!1",
-		"spring.datasource.url=jdbc:mysql://localhost:3306/sisa_seed_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-		"spring.jpa.hibernate.ddl-auto=create-drop" })
+		"spring.datasource.url=jdbc:mysql://localhost:3306/sisa_seed_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" })
 class TestAccountsSeedRunnerIT {
 
 	/**

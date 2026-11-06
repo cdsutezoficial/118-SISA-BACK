@@ -9,7 +9,6 @@ import mx.edu.utez.sisa.shared.model.AcademicLevel;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,19 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * still finds it — is only observable when the predicates are actually parsed and
  * executed.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * {@code ddl-auto=create-drop} means whatever database {@code DB_URL} names is
- * dropped and rebuilt from the entities, and the data in it is not recovered
- * from a dump. Point {@code DB_URL} at a throwaway database when running this
- * locally:
- *
- * <pre>
- * mvn verify -Dit.test=PaymentConceptWindowQueryIT \
- *     -DDB_URL='jdbc:mysql://localhost:3306/sisa_it?createDatabaseIfNotExist=true&amp;serverTimezone=UTC'
- * </pre>
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class PaymentConceptWindowQueryIT {
 
 	private static final LocalDate ON_DATE = LocalDate.of(2026, 9, 25);

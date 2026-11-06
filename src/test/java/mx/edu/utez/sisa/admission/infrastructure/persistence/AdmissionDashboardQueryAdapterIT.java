@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -35,12 +34,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * entre candidato, configuración, carrera y periodo, el {@code GROUP BY} y el
  * orden del periodo más reciente) solo lo valida Hibernate al ejecutarlo.
  *
- * <h2>Aviso: esta clase recrea el esquema al que apunta</h2>
- * Correrla solo con {@code DB_URL} apuntando a {@code sisa_it}.
+ * <p>El esquema se reconstruye con las migraciones de Flyway al arrancar el contexto,
+ * sobre la base local desechable que exige {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(AdmissionDashboardQueryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class AdmissionDashboardQueryAdapterIT {
 
 	@Autowired

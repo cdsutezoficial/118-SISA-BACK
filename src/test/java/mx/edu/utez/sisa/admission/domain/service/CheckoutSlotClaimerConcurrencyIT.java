@@ -45,7 +45,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,18 +76,12 @@ import org.springframework.transaction.annotation.Transactional;
  * every thread its own connection and lets each {@code REQUIRES_NEW} claim commit
  * for real, so the second thread is genuinely reading committed data.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * There is no embedded test database, so {@code ddl-auto=create-drop} runs against
- * whatever {@code DB_URL} names. Point it at a throwaway database:
- *
- * <pre>
- * $env:DB_URL = "jdbc:mysql://localhost:3306/sisa_it?createDatabaseIfNotExist=true&amp;useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
- * </pre>
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import({ CheckoutSlotClaimer.class, AdmissionQuotaAdapter.class, CandidateRepositoryAdapter.class,
 		CheckoutAttemptRepositoryAdapter.class, CheckoutSlotClaimerConcurrencyIT.FixedClock.class })
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CheckoutSlotClaimerConcurrencyIT {
 

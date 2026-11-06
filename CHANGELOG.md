@@ -4,6 +4,43 @@ Todos los cambios relevantes del backend se documentan aquí en orden cronológi
 
 ---
 
+## [2026-11-05] El esquema lo construyen las migraciones de Flyway
+
+Rama: `feat/flyway-migraciones`. Plan: `docs/plans/2026-10-30-flyway-migrations.md`.
+Guía para el equipo: `docs/guias/migraciones.md`.
+
+### Qué cambió
+
+- **Flyway** (`flyway-core` + `flyway-mysql`) aplica `src/main/resources/db/migration` al
+  arrancar. `V1__esquema_inicial.sql` contiene las 45 entidades (46 tablas) de `develop`
+  `03639e3`, generado desde una base vacía.
+- **`spring.jpa.hibernate.ddl-auto=validate` fijo.** Se retira `DB_DDL_AUTO`: ya no existe
+  forma de volver a `update` desde un `.env`, incluido el de Jenkins.
+- **Base compartida de desarrollo:** `FLYWAY_OUT_OF_ORDER=true` y
+  `FLYWAY_IGNORE_MIGRATION_PATTERNS=*:missing,*:future` en el `.env` para que la migración de
+  la rama de otro no impida arrancar. Sin ellas (QA, beta, prod), Flyway es estricto.
+- **Enums como `VARCHAR`:** `SisaMySQLDialect` reemplaza el `ENUM('A','B')` nativo de MySQL
+  que Hibernate 6 generaba en los 38 campos `@Enumerated(STRING)`. Agregar un valor a un enum
+  ya no requiere migración.
+- **Pruebas:** ya no usan `DB_URL` ni `ddl-auto=create-drop`. Cada contexto reconstruye el
+  esquema con las mismas migraciones (`clean` + `migrate`) sobre `SISA_IT_DB_URL`
+  (por defecto `localhost:3306/sisa_it`), y `IntegrationTestDatabaseGuard` impide correrlas
+  contra cualquier base que no sea local y terminada en `_it`/`_test`.
+- Se elimina `db/recrear-esquema.ps1`.
+
+### Qué tiene que hacer cada quien
+
+- **Una sola vez, en cada base existente** (local, compartida, QA): vaciarla. Flyway no
+  arranca sobre tablas creadas por el viejo `update` ("non-empty schema without schema
+  history table"). No hay datos que conservar.
+- Agregar las dos variables `FLYWAY_*` al `.env` si apuntas a la base compartida.
+- Para `./mvnw verify`: tener MySQL local; la base `sisa_it` se crea sola.
+- **Infraestructura:** en el archivo de entorno de Jenkins quitar `DB_DDL_AUTO` (ya no tiene
+  efecto), no definir `FLYWAY_*` ni `SPRING_JPA_HIBERNATE_DDL_AUTO`, y vaciar la base de QA
+  antes del primer despliegue.
+
+---
+
 ## [2026-11-05] Tablero de Admisión con datos reales
 
 Rama: `feat/dashboard-admision`.

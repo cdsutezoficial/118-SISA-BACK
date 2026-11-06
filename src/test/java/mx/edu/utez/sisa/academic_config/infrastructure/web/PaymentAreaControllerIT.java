@@ -377,7 +377,7 @@ class PaymentAreaControllerIT {
 	 * sobre el alfabeto de 36 hay 46 656 combinaciones, y con ~40 fixtures en
 	 * esta clase la probabilidad de que dos choquen en una misma ejecución es de
 	 * alrededor del 1.7 %. Un contador es único por construcción, y como la base
-	 * se recrea entre ejecuciones ({@code ddl-auto=create-drop}) no hace falta
+	 * se recrea entre ejecuciones (Flyway {@code clean} + {@code migrate}) no hace falta
 	 * que dos ejecuciones distintas se distinguieran.
 	 *
 	 * <p>El {@code floorMod} recorta a los 3 dígitos de base36 que caben. Con las

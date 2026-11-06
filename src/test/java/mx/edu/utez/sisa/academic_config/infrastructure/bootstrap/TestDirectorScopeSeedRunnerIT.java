@@ -32,8 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(properties = {
 		"sisa.security.bootstrap.test.password=SeedItPass!1",
-		"spring.datasource.url=jdbc:mysql://localhost:3306/sisa_seed_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-		"spring.jpa.hibernate.ddl-auto=create-drop" })
+		"spring.datasource.url=jdbc:mysql://localhost:3306/sisa_seed_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" })
 class TestDirectorScopeSeedRunnerIT {
 
 	private static final String DIRECTOR_USERNAME = "director@utez.edu.mx";
