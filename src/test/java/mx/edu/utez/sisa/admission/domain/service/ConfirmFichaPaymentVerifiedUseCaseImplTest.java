@@ -11,7 +11,6 @@ import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
-import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.FichaPaidTwiceException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -84,16 +83,14 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	@Mock
 	private CheckoutSlotClaimer checkoutSlotClaimer;
 
-	@Mock
-	private FinanceAlertPort financeAlertPort;
-
 	private ConfirmFichaPaymentVerifiedUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
+		// The real settler over the same mocks: the lock-and-decide half is part of what is tested.
 		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer,
-				financeAlertPort);
+				evoPaymentsGateway, checkoutAttemptRepository, checkoutSlotClaimer,
+				new CapturedPaymentSettler(fichaPaymentPort, confirmAdmissionPaymentUseCase));
 		// A capture inside its hold, or with room left: the usual case.
 		Mockito.lenient().when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(true);
 	}
@@ -149,7 +146,7 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 	/**
 	 * E1, two orders captured 0.26 s apart: the second waits on the charge's lock and
-	 * finds it paid by the first. Its capture becomes saldo a favor, with an alert,
+	 * finds it paid by the first. Its capture becomes saldo a favor of the person,
 	 * instead of a second abono with the same receipt.
 	 */
 	@Test
@@ -164,8 +161,6 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(FichaPaidTwiceException.class).hasMessageContaining("saldo a favor");
 
-		verify(financeAlertPort).raise(eq(FinanceAlertPort.Kind.OVERPAYMENT), eq(CANDIDATE_ID), eq(CHARGE_ID),
-				eq(ORDER_ID), eq(QUOTED), any());
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
 		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
@@ -182,8 +177,6 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isExactlyInstanceOf(CandidateAlreadyPaidException.class);
-
-		verify(financeAlertPort, never()).raise(any(), any(), any(), any(), any(), any());
 	}
 
 	@Test

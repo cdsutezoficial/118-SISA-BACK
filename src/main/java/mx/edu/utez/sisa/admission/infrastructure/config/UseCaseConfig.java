@@ -51,6 +51,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.service.AccessFichaPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.CapturedPaymentSettler;
 import mx.edu.utez.sisa.admission.domain.service.CheckoutSlotClaimer;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
@@ -275,12 +276,17 @@ public class UseCaseConfig {
 	public ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway,
-			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
 			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer,
-			FinanceAlertPort financeAlertPort) {
+			CapturedPaymentSettler capturedPaymentSettler) {
 		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer,
-				financeAlertPort);
+				evoPaymentsGateway, checkoutAttemptRepository, checkoutSlotClaimer, capturedPaymentSettler);
+	}
+
+	/** The locked half of confirming a capture; its own bean so the transaction is proxied. */
+	@Bean
+	public CapturedPaymentSettler capturedPaymentSettler(FichaPaymentPort fichaPaymentPort,
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase) {
+		return new CapturedPaymentSettler(fichaPaymentPort, confirmAdmissionPaymentUseCase);
 	}
 
 	/**
