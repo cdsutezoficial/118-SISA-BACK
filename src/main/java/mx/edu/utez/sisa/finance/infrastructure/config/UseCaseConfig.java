@@ -22,6 +22,7 @@ import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RaiseDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.SettleDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.out.AnchorQueryPort;
+import mx.edu.utez.sisa.finance.domain.port.out.ChargeReplacementQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.ConceptQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.ConceptRateQueryPort;
 import mx.edu.utez.sisa.finance.domain.port.out.PaymentBenefitRepository;
@@ -45,6 +46,7 @@ import mx.edu.utez.sisa.finance.domain.service.QuoteBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.QuotePaymentUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.RegisterExemptionUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.RegisterPaymentEntryUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.ReplacedChargeGuard;
 import mx.edu.utez.sisa.finance.domain.service.RetroactiveDiscountGranter;
 import mx.edu.utez.sisa.finance.domain.service.UpdateBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CancelDebtUseCaseImpl;
@@ -193,23 +195,33 @@ public class UseCaseConfig {
 	}
 
 	@Bean
+	public ReplacedChargeGuard replacedChargeGuard(ChargeReplacementQueryPort chargeReplacementQueryPort,
+			PaymentRepository paymentRepository) {
+		return new ReplacedChargeGuard(chargeReplacementQueryPort, paymentRepository);
+	}
+
+	@Bean
 	public RetroactiveDiscountGranter retroactiveDiscountGranter(PaymentRepository paymentRepository,
-			PaymentCreditRepository paymentCreditRepository, PaymentQuoter paymentQuoter) {
-		return new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, paymentQuoter);
+			PaymentCreditRepository paymentCreditRepository, PaymentQuoter paymentQuoter,
+			ReplacedChargeGuard replacedChargeGuard) {
+		return new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, paymentQuoter,
+				replacedChargeGuard);
 	}
 
 	@Bean
 	public CreateBenefitUseCase createBenefitUseCase(AnchorQueryPort anchorQueryPort,
 			PaymentBenefitRepository paymentBenefitRepository, PaymentRepository paymentRepository,
-			RetroactiveDiscountGranter retroactiveDiscountGranter, Clock clock) {
+			RetroactiveDiscountGranter retroactiveDiscountGranter, ReplacedChargeGuard replacedChargeGuard,
+			Clock clock) {
 		return new CreateBenefitUseCaseImpl(anchorQueryPort, paymentBenefitRepository, paymentRepository,
-				retroactiveDiscountGranter, clock);
+				retroactiveDiscountGranter, replacedChargeGuard, clock);
 	}
 
 	@Bean
 	public UpdateBenefitUseCase updateBenefitUseCase(PaymentBenefitRepository paymentBenefitRepository,
-			PaymentRepository paymentRepository, Clock clock) {
-		return new UpdateBenefitUseCaseImpl(paymentBenefitRepository, paymentRepository, clock);
+			PaymentRepository paymentRepository, ReplacedChargeGuard replacedChargeGuard, Clock clock) {
+		return new UpdateBenefitUseCaseImpl(paymentBenefitRepository, paymentRepository, replacedChargeGuard,
+				clock);
 	}
 
 	@Bean

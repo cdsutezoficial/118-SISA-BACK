@@ -23,7 +23,8 @@ import java.util.List;
  * <p>Kept separate from {@code CreateBenefitUseCaseImpl} so the "grant" write
  * and the "refund as credit" write are two named things, and the retroactive
  * rule can be tested on its own. A payment that already carried this very
- * discount is skipped, so re-saving a discount cannot mint credit twice.
+ * discount is skipped, so re-saving a discount cannot mint credit twice, and
+ * so is a paid charge that a career change replaced (its money already moved).
  */
 public class RetroactiveDiscountGranter {
 
@@ -33,11 +34,15 @@ public class RetroactiveDiscountGranter {
 
 	private final PaymentQuoter paymentQuoter;
 
+	private final ReplacedChargeGuard replacedChargeGuard;
+
 	public RetroactiveDiscountGranter(PaymentRepository paymentRepository,
-			PaymentCreditRepository paymentCreditRepository, PaymentQuoter paymentQuoter) {
+			PaymentCreditRepository paymentCreditRepository, PaymentQuoter paymentQuoter,
+			ReplacedChargeGuard replacedChargeGuard) {
 		this.paymentRepository = paymentRepository;
 		this.paymentCreditRepository = paymentCreditRepository;
 		this.paymentQuoter = paymentQuoter;
+		this.replacedChargeGuard = replacedChargeGuard;
 	}
 
 	/**
@@ -62,6 +67,11 @@ public class RetroactiveDiscountGranter {
 				continue;
 			}
 			if (benefit.getId() != null && benefit.getId().equals(payment.getBenefitId())) {
+				continue;
+			}
+			// A paid charge a career change replaced already handed its money to
+			// the new charge; discounting it again would pay that money twice.
+			if (replacedChargeGuard.isReplaced(payment.getId())) {
 				continue;
 			}
 			BigDecimal newDue = paymentQuoter.quote(payment.getOriginalAmount(), benefit).due();

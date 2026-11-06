@@ -37,14 +37,18 @@ public class CreateBenefitUseCaseImpl implements CreateBenefitUseCase {
 
 	private final RetroactiveDiscountGranter retroactiveDiscountGranter;
 
+	private final ReplacedChargeGuard replacedChargeGuard;
+
 	private final Clock clock;
 
 	public CreateBenefitUseCaseImpl(AnchorQueryPort anchorQueryPort, PaymentBenefitRepository paymentBenefitRepository,
-			PaymentRepository paymentRepository, RetroactiveDiscountGranter retroactiveDiscountGranter, Clock clock) {
+			PaymentRepository paymentRepository, RetroactiveDiscountGranter retroactiveDiscountGranter,
+			ReplacedChargeGuard replacedChargeGuard, Clock clock) {
 		this.anchorQueryPort = anchorQueryPort;
 		this.paymentBenefitRepository = paymentBenefitRepository;
 		this.paymentRepository = paymentRepository;
 		this.retroactiveDiscountGranter = retroactiveDiscountGranter;
+		this.replacedChargeGuard = replacedChargeGuard;
 		this.clock = clock;
 	}
 
@@ -76,7 +80,8 @@ public class CreateBenefitUseCaseImpl implements CreateBenefitUseCase {
 	 * the concept are the charge's own — whatever the request carried for them
 	 * is ignored, so a discount can never land on a concept the charge is not.
 	 * A cancelled charge cannot take a discount; a charge already paid can
-	 * (it turns into saldo a favor, R12).
+	 * (it turns into saldo a favor, R12), unless a career change replaced it:
+	 * then only the charge being collected takes it.
 	 */
 	private BenefitView createOnCharge(CreateBenefitCommand command) {
 		Payment charge = paymentRepository.findById(command.paymentId())
@@ -84,6 +89,7 @@ public class CreateBenefitUseCaseImpl implements CreateBenefitUseCase {
 		if (charge.getStatus() == PaymentStatus.CANCELLED) {
 			throw new InvalidBenefitDataException("No se puede aplicar un descuento a un cargo cancelado.");
 		}
+		replacedChargeGuard.requireCurrent(charge.getId());
 		if (charge.getStatus() == PaymentStatus.EXEMPT) {
 			throw new BenefitNotEditableException("El cargo ya está exento; no admite otro descuento.");
 		}

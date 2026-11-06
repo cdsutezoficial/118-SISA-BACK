@@ -471,7 +471,8 @@ class ChangeChargeProgramUseCaseImplTest {
 
 	private void grantRetroactively(Payment ficha, PaymentBenefit discount) {
 		benefits.add(discount);
-		new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter())
+		new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter(),
+				new ReplacedChargeGuard(id -> Optional.empty(), paymentRepository))
 				.grant(discount, Instant.parse("2026-10-25T00:00:00Z"));
 	}
 

@@ -1,6 +1,8 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import mx.edu.utez.sisa.finance.domain.model.BenefitMode;
 import mx.edu.utez.sisa.finance.domain.model.BenefitStatus;
 import mx.edu.utez.sisa.finance.domain.model.Payment;
@@ -57,12 +59,16 @@ class CreateBenefitUseCaseImplTest {
 
 	private CreateBenefitUseCaseImpl useCase;
 
+	/** Charge replaced by a career change → the charge that replaced it. */
+	private final Map<UUID, UUID> replacements = new HashMap<>();
+
 	private UUID candidateId;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new CreateBenefitUseCaseImpl(anchorQueryPort, paymentBenefitRepository, paymentRepository,
-				retroactiveDiscountGranter, CLOCK);
+				retroactiveDiscountGranter,
+				new ReplacedChargeGuard(id -> Optional.ofNullable(replacements.get(id)), paymentRepository), CLOCK);
 		candidateId = UUID.randomUUID();
 	}
 
@@ -185,6 +191,72 @@ class CreateBenefitUseCaseImplTest {
 
 		verify(retroactiveDiscountGranter).grant(any(PaymentBenefit.class), any());
 		assertThat(view.status()).isEqualTo(BenefitStatus.USED);
+	}
+
+	/**
+	 * A paid ficha whose career was changed is history: the money moved to the
+	 * new charge. A discount there would mint saldo a favor a second time, so it
+	 * is refused and points to the difference still to pay.
+	 */
+	@Test
+	void aChargeReplacedByACareerChangeSendsTheDiscountToTheDifference() {
+		Payment replaced = charge(PaymentStatus.PAID);
+		Payment difference = charge(PaymentStatus.PENDING);
+		replacements.put(replaced.getId(), difference.getId());
+		when(paymentRepository.findById(replaced.getId())).thenReturn(Optional.of(replaced));
+		when(paymentRepository.findById(difference.getId())).thenReturn(Optional.of(difference));
+
+		assertThatThrownBy(() -> useCase.createBenefit(onCharge(replaced)))
+				.isInstanceOf(BenefitNotEditableException.class)
+				.hasMessage(ReplacedChargeGuard.APPLY_TO_DIFFERENCE);
+		verify(paymentBenefitRepository, never()).save(any());
+		verify(retroactiveDiscountGranter, never()).grant(any(), any());
+	}
+
+	/** With nothing left to pay, the new career's charge is the one to discount. */
+	@Test
+	void aChargeReplacedWithNoDifferenceSendsTheDiscountToTheNewCharge() {
+		Payment replaced = charge(PaymentStatus.PAID);
+		Payment newCharge = charge(PaymentStatus.PAID);
+		replacements.put(replaced.getId(), newCharge.getId());
+		when(paymentRepository.findById(replaced.getId())).thenReturn(Optional.of(replaced));
+		when(paymentRepository.findById(newCharge.getId())).thenReturn(Optional.of(newCharge));
+
+		assertThatThrownBy(() -> useCase.createBenefit(onCharge(replaced)))
+				.isInstanceOf(BenefitNotEditableException.class)
+				.hasMessage(ReplacedChargeGuard.APPLY_TO_NEW_CHARGE);
+		verify(paymentBenefitRepository, never()).save(any());
+	}
+
+	/** A → B → C: what counts is the last charge, here a difference still open. */
+	@Test
+	void aChainOfCareerChangesLooksAtTheLastCharge() {
+		Payment first = charge(PaymentStatus.PAID);
+		Payment second = charge(PaymentStatus.PAID);
+		Payment difference = charge(PaymentStatus.PENDING);
+		replacements.put(first.getId(), second.getId());
+		replacements.put(second.getId(), difference.getId());
+		when(paymentRepository.findById(first.getId())).thenReturn(Optional.of(first));
+		when(paymentRepository.findById(difference.getId())).thenReturn(Optional.of(difference));
+
+		assertThatThrownBy(() -> useCase.createBenefit(onCharge(first)))
+				.isInstanceOf(BenefitNotEditableException.class)
+				.hasMessage(ReplacedChargeGuard.APPLY_TO_DIFFERENCE);
+	}
+
+	/** The charge being collected (the difference) still takes the discount. */
+	@Test
+	void theDifferenceItselfTakesTheDiscount() {
+		Payment replaced = charge(PaymentStatus.PAID);
+		Payment difference = charge(PaymentStatus.PENDING);
+		replacements.put(replaced.getId(), difference.getId());
+		when(paymentRepository.findById(difference.getId())).thenReturn(Optional.of(difference));
+		when(paymentBenefitRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		BenefitView view = useCase.createBenefit(onCharge(difference));
+
+		assertThat(view.paymentId()).isEqualTo(difference.getId());
+		verify(retroactiveDiscountGranter).grant(any(PaymentBenefit.class), any());
 	}
 
 	private CreateBenefitCommand command(BenefitMode mode, BigDecimal percent, BigDecimal amount) {
