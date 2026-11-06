@@ -32,8 +32,7 @@ import java.util.UUID;
  * <p>{@code externalOrderId} is set only on an <b>overpayment</b>: money the
  * gateway captured on an order that settled nothing (a second capture of the
  * same ficha, or a capture on a charge that was cancelled). It is unique, so a
- * re-run of the reconciliation cannot book the same order twice, and it is how
- * Finanzas lists those cases.
+ * re-run of the reconciliation cannot book the same order twice.
  *
  * <p>The saldo belongs to the person, not to the candidate record or the
  * concept (D9). A second ficha of the same person is a new candidate, and it
