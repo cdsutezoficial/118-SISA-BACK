@@ -25,4 +25,7 @@ public interface PaymentEntryRepository {
 
 	/** Whether some abono was already booked from this gateway order. */
 	boolean existsByExternalOrderId(String externalOrderId);
+
+	/** Whether an abono already carries this receipt number. */
+	boolean existsByReceiptNumber(String receiptNumber);
 }

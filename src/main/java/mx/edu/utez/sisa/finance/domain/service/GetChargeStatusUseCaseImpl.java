@@ -32,6 +32,12 @@ public class GetChargeStatusUseCaseImpl implements GetChargeStatusUseCase {
 	}
 
 	@Override
+	@Transactional(readOnly = true)
+	public boolean receiptInUse(String receiptNumber) {
+		return paymentEntryRepository.existsByReceiptNumber(receiptNumber);
+	}
+
+	@Override
 	@Transactional
 	public Optional<ChargeStatus> findForUpdate(UUID paymentId) {
 		if (paymentId == null) {

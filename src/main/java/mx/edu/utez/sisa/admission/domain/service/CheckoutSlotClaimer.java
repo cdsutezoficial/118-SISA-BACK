@@ -3,8 +3,6 @@ package mx.edu.utez.sisa.admission.domain.service;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
@@ -60,6 +58,8 @@ public class CheckoutSlotClaimer {
 	/** Minutes an open checkout attempt holds a quota place. */
 	private final int checkoutHoldMinutes;
 
+	private final ReceiptNumbers receipts;
+
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
 			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
@@ -74,6 +74,7 @@ public class CheckoutSlotClaimer {
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.clock = clock;
 		this.checkoutHoldMinutes = checkoutHoldMinutes;
+		this.receipts = new ReceiptNumbers(fichaPaymentPort, clock);
 	}
 
 	/**
@@ -156,7 +157,7 @@ public class CheckoutSlotClaimer {
 
 		BigDecimal paidSoFar = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
 		if (useCredit && fichaPaymentPort.availableOwnCredit(candidateId).signum() > 0) {
-			String receipt = creditReceipt(candidate.getFolio());
+			String receipt = receipts.credit(candidate.getFolio(), false);
 			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(charge.financePaymentId(), receipt);
 			if (use.settled()) {
 				candidate.markPaid(periodId);
@@ -205,7 +206,7 @@ public class CheckoutSlotClaimer {
 		if (fichaPaymentPort.availableOwnCredit(candidateId).signum() <= 0) {
 			return null;
 		}
-		String receipt = creditReceipt(candidate.getFolio()) + "-C";
+		String receipt = receipts.credit(candidate.getFolio(), true);
 		FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(differencePaymentId, receipt);
 		if (use.settled()) {
 			FichaPaymentPort.FichaCharge previous = candidate.getFichaPaymentId() == null ? null
@@ -227,12 +228,6 @@ public class CheckoutSlotClaimer {
 				candidate.getFolio(), candidate.getStatus(), reference, use.applied(), Instant.now(clock), receipt,
 				use.amountPaid(), before, previous == null ? null : previous.receiptNumber(),
 				previous == null ? null : previous.paidAt(), programChange));
-	}
-
-	/** {@code SAF-{yyyyMMdd}-{folioSeq}}: a ficha paid with saldo a favor. */
-	private String creditReceipt(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		return String.format("SAF-%s-%s", LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE), seq);
 	}
 
 	/**
@@ -268,7 +263,7 @@ public class CheckoutSlotClaimer {
 				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
-		String receipt = exemptionReceipt(candidate.getFolio());
+		String receipt = receipts.exemption(candidate.getFolio());
 		fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(price.financePaymentId(), price.charged(),
 				false, null, receipt, charge.referenceNumber(), null, EXEMPTION_COLLECTOR));
 		candidate.markPaid(periodId);
@@ -278,16 +273,6 @@ public class CheckoutSlotClaimer {
 				candidate.getFolio(), candidate.getStatus(), charge.referenceNumber(), BigDecimal.ZERO,
 				Instant.now(clock), receipt));
 		return receipt;
-	}
-
-	/**
-	 * {@code EXE-{yyyyMMdd}-{folioSeq}} — the discount-backed "receipt", distinct
-	 * in prefix from the {@code REC-} a bank payment mints.
-	 */
-	private String exemptionReceipt(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("EXE-%s-%s", today, seq);
 	}
 
 	/**

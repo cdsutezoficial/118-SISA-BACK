@@ -97,6 +97,11 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	}
 
 	@Override
+	public boolean receiptInUse(String receiptNumber) {
+		return getChargeStatusUseCase.receiptInUse(receiptNumber);
+	}
+
+	@Override
 	public Optional<FichaCharge> lockCharge(UUID financePaymentId) {
 		return getChargeStatusUseCase.findForUpdate(financePaymentId).map(FichaPaymentAdapter::toCharge);
 	}

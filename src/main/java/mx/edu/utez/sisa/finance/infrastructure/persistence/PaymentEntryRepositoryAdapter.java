@@ -44,4 +44,9 @@ public class PaymentEntryRepositoryAdapter implements PaymentEntryRepository {
 	public boolean existsByExternalOrderId(String externalOrderId) {
 		return jpaRepository.existsByExternalOrderId(externalOrderId);
 	}
+
+	@Override
+	public boolean existsByReceiptNumber(String receiptNumber) {
+		return jpaRepository.existsByReceiptNumber(receiptNumber);
+	}
 }

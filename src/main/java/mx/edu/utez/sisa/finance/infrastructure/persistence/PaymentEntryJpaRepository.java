@@ -26,4 +26,6 @@ public interface PaymentEntryJpaRepository extends JpaRepository<PaymentEntry, U
 	BigDecimal sumAmountByPaymentId(@Param("paymentId") UUID paymentId);
 
 	boolean existsByExternalOrderId(String externalOrderId);
+
+	boolean existsByReceiptNumber(String receiptNumber);
 }

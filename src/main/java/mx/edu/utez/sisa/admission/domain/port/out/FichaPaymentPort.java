@@ -54,6 +54,9 @@ public interface FichaPaymentPort {
 	 */
 	Optional<FichaCharge> lockCharge(UUID financePaymentId);
 
+	/** Whether an abono already carries this receipt number. */
+	boolean receiptInUse(String receiptNumber);
+
 	/** The charge priced live; nothing is written. */
 	FichaQuote quote(UUID financePaymentId);
 

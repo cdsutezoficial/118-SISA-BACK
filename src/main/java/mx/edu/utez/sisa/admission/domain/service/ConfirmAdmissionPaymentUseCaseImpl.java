@@ -21,8 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 /**
@@ -42,15 +40,13 @@ import java.util.UUID;
  * repeat-confirmation, not a new transition.</li>
  * </ol>
  *
- * <p>The receipt number ({@code REC-{yyyyMMdd}-{folioSeq}}) is generated here.
- * It deliberately does <em>not</em> follow the payment reference: that one is
- * {@code REF-{folio}} (decisión 11.1), because a reference has to be recomputable
- * from the ficha alone, while a receipt is minted once at payment time and
- * stamped on an email and a PDF. It still reads {@code LocalDate.now()} from the
- * server's default zone, which the reference no longer does — not worth a format
- * change on strings already printed and mailed, but not something to copy
- * anywhere new. Email dispatch is the web layer's concern (best-effort
- * notification, never part of this transaction).
+ * <p>The receipt number ({@code REC-{yyyyMMdd}-{folioSeq}}, see {@link ReceiptNumbers})
+ * is generated here. It deliberately does <em>not</em> follow the payment reference:
+ * that one is {@code REF-{folio}} (decisión 11.1), because a reference has to be
+ * recomputable from the ficha alone, while a receipt is minted once at payment time and
+ * stamped on an email and a PDF. The date comes from the admission clock, and a number
+ * already used that day gets a {@code -2}, {@code -3} suffix. The receipt mail is sent
+ * after the commit (best-effort, never part of this transaction).
  */
 public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPaymentUseCase {
 
@@ -77,6 +73,8 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 	private final int checkoutHoldMinutes;
 
+	private final ReceiptNumbers receipts;
+
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
 			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications,
@@ -90,6 +88,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.receipts = new ReceiptNumbers(fichaPaymentPort, clock);
 	}
 
 	@Override
@@ -128,8 +127,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 		// The saldo a favor goes first; the cash is only what it leaves.
 		if (useCredit && fichaPaymentPort.availableCredit(candidateId).signum() > 0) {
-			String creditReceipt = generateReceipt(candidate.getFolio()).replace("REC-", "SAF-")
-					+ (programChange ? "-C" : "");
+			String creditReceipt = receipts.credit(candidate.getFolio(), programChange);
 			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCreditAtCashier(charge.financePaymentId(),
 					creditReceipt, collectorId);
 			if (use.settled()) {
@@ -232,7 +230,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 			FichaPaymentPort.ChargedAmounts charged, boolean online, String orderId, UUID collectorId,
 			String collectorName) {
 		boolean programChange = candidate.getProgramChangePaymentId() != null;
-		String receipt = generateReceipt(candidate.getFolio()) + (programChange ? "-C" : "");
+		String receipt = receipts.money(candidate.getFolio(), programChange);
 		FichaPaymentPort.SettledFicha settled = fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(
 				charge.financePaymentId(), charged, online, orderId, receipt, charge.referenceNumber(), collectorId,
 				collectorName));
@@ -258,7 +256,7 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 		BigDecimal total = settled.amountPaid();
 		BigDecimal paidNow = total.subtract(before).max(BigDecimal.ZERO);
 		ConfirmPaymentResult result = new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(),
-				candidate.getStatus(), charge.referenceNumber(), paidNow, paid.paidAt() != null ? paid.paidAt() : Instant.now(),
+				candidate.getStatus(), charge.referenceNumber(), paidNow, paid.paidAt() != null ? paid.paidAt() : Instant.now(clock),
 				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, total, before,
 				previousCharge == null ? null : previousCharge.receiptNumber(),
 				previousCharge == null ? null : previousCharge.paidAt(), programChange);
@@ -277,10 +275,4 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 				attempt.getDiscountAmount(), attempt.getAmount(), attempt.getBenefitId());
 	}
 
-	/** {@code REC-{yyyyMMdd}-{folioSeq}} — minted at payment time; see the class javadoc. */
-	private static String generateReceipt(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("REC-%s-%s", today, seq);
-	}
 }

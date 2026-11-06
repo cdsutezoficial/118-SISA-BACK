@@ -24,6 +24,9 @@ public interface GetChargeStatusUseCase {
 	 */
 	Optional<ChargeStatus> findForUpdate(UUID paymentId);
 
+	/** Whether any abono already carries this receipt number (receipts are official, never repeated). */
+	boolean receiptInUse(String receiptNumber);
+
 	/**
 	 * @param paidAt        when the last abono (or exemption entry) was booked;
 	 *                      {@code null} while nothing was received
