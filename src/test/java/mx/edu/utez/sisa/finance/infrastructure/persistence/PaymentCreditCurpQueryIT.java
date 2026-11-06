@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -21,12 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * fichas. Real DB, because the matching is JPQL across {@code payment_credit}
  * and {@code candidate}.
  *
- * <h2>Warning: this class recreates the schema it points at</h2>
- * Run it only with {@code DB_URL} pointing at {@code sisa_it}.
+ * <p>The schema is rebuilt from the Flyway migrations when the context starts,
+ * on the local disposable database enforced by {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(PaymentCreditRepositoryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class PaymentCreditCurpQueryIT {
 
 	@Autowired
