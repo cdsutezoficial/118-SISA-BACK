@@ -136,12 +136,12 @@ class HighSchoolTypeControllerIT {
 		String token = tokenFor(RoleType.ADMIN);
 
 		mockMvc.perform(post("/high-school-types").header("Authorization", "Bearer " + token)
-				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Bachillerato Dup"))))
+				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Bachillerato Mayus"))))
 				.andExpect(status().isCreated());
 
 		mockMvc.perform(post("/high-school-types").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new CreateBody("  bachillerato dup  "))))
+				.content(objectMapper.writeValueAsString(new CreateBody("  bachillerato mayus  "))))
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("HIGH_SCHOOL_TYPE_NAME_DUPLICATE"));
 	}
 

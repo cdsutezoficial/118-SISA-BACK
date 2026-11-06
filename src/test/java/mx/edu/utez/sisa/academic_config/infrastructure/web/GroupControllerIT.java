@@ -283,8 +283,8 @@ class GroupControllerIT {
 		mockMvc.perform(put("/groups/{id}", groupId).header("Authorization", "Bearer " + token)
 				.contentType("application/json")
 				.content(objectMapper
-						.writeValueAsString(new UpdateBody(generationId, periodId, planLevelId, "3JJ", 40, Shift.AFTERNOON))))
-				.andExpect(status().isOk()).andExpect(jsonPath("$.code").value("3JJ"))
+						.writeValueAsString(new UpdateBody(generationId, periodId, planLevelId, "3Z", 40, Shift.AFTERNOON))))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.code").value("3Z"))
 				.andExpect(jsonPath("$.maxCapacity").value(40)).andExpect(jsonPath("$.shift").value("AFTERNOON"));
 	}
 

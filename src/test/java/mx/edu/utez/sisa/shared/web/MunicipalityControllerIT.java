@@ -58,11 +58,13 @@ class MunicipalityControllerIT {
 	}
 
 	@Test
-	void unauthenticatedListReturns401() throws Exception {
+	void anonymousCanList() throws Exception {
+		// Publico a proposito: el asistente de registro sin sesion resuelve el municipio
+		// (ver SecurityFilterConfig).
 		UUID morelosId = stateRepository.findAll().stream().filter(state -> state.getInegiCode().equals("17"))
 				.findFirst().orElseThrow().getId();
 
-		mockMvc.perform(get("/municipalities").param("stateId", morelosId.toString()))
-				.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
+		mockMvc.perform(get("/municipalities").param("stateId", morelosId.toString())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(36));
 	}
 }

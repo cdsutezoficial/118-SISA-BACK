@@ -138,12 +138,12 @@ class OutreachChannelControllerIT {
 		String token = tokenFor(RoleType.ADMIN);
 
 		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
-				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Instagram Dup"))))
+				.contentType("application/json").content(objectMapper.writeValueAsString(new CreateBody("Instagram Mayus"))))
 				.andExpect(status().isCreated());
 
 		mockMvc.perform(post("/outreach-channels").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new CreateBody("  instagram dup  "))))
+				.content(objectMapper.writeValueAsString(new CreateBody("  instagram mayus  "))))
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("OUTREACH_CHANNEL_NAME_DUPLICATE"));
 	}
 
