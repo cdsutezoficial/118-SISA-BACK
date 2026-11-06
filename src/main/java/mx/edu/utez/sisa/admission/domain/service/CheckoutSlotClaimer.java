@@ -155,7 +155,7 @@ public class CheckoutSlotClaimer {
 		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
 
 		BigDecimal paidSoFar = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
-		if (useCredit && fichaPaymentPort.availableCredit(candidateId).signum() > 0) {
+		if (useCredit && fichaPaymentPort.availableOwnCredit(candidateId).signum() > 0) {
 			String receipt = creditReceipt(candidate.getFolio());
 			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(charge.financePaymentId(), receipt);
 			if (use.settled()) {
@@ -202,7 +202,7 @@ public class CheckoutSlotClaimer {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public FichaPaymentPort.CreditUse payDifferenceWithCredit(UUID candidateId, UUID differencePaymentId) {
 		Candidate candidate = requireCandidate(candidateId);
-		if (fichaPaymentPort.availableCredit(candidateId).signum() <= 0) {
+		if (fichaPaymentPort.availableOwnCredit(candidateId).signum() <= 0) {
 			return null;
 		}
 		String receipt = creditReceipt(candidate.getFolio()) + "-C";

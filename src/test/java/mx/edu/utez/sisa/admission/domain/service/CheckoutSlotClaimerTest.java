@@ -210,7 +210,7 @@ class CheckoutSlotClaimerTest {
 
 	@Test
 	void saldoThatCoversTheFichaPaysItWithoutAnAttempt() {
-		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("800.00"));
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("800.00"));
 		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
 				CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, true));
 
@@ -226,7 +226,7 @@ class CheckoutSlotClaimerTest {
 
 	@Test
 	void saldoThatFallsShortLeavesOnlyTheRestForEvo() {
-		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("200.00"));
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("200.00"));
 		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
 				new BigDecimal("200.00"), CHECKOUT_AMOUNT, new BigDecimal("200.00"), false));
 
@@ -253,7 +253,7 @@ class CheckoutSlotClaimerTest {
 
 	@Test
 	void withoutSaldoTheAttemptKeepsItsSnapshot() {
-		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
 
 		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
 
@@ -269,7 +269,7 @@ class CheckoutSlotClaimerTest {
 		UUID difference = UUID.randomUUID();
 		candidate.markPaid();
 		candidate.awaitProgramChangePayment(difference);
-		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("500.00"));
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("500.00"));
 		when(fichaPaymentPort.applyCredit(eq(difference), any())).thenReturn(new FichaPaymentPort.CreditUse(
 				new BigDecimal("50.00"), new BigDecimal("1800.00"), new BigDecimal("1800.00"), true));
 
@@ -283,7 +283,7 @@ class CheckoutSlotClaimerTest {
 
 	@Test
 	void withoutSaldoTheDifferenceIsLeftAsItWas() {
-		when(fichaPaymentPort.availableCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
 
 		assertThat(claimer.payDifferenceWithCredit(CANDIDATE_ID, UUID.randomUUID())).isNull();
 		verify(fichaPaymentPort, never()).applyCredit(any(), any());

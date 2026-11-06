@@ -87,6 +87,13 @@ public interface FichaPaymentPort {
 	BigDecimal availableCredit(UUID candidateId);
 
 	/**
+	 * The saldo a favor born on this very ficha. The public portal shows and uses only
+	 * this: it is opened with folio + CURP, so the person's saldo from other fichas is
+	 * used at caja or by Finanzas, who check who is paying.
+	 */
+	BigDecimal availableOwnCredit(UUID candidateId);
+
+	/**
 	 * Uses the person's saldo a favor on the charge, oldest first, up to what is
 	 * left to pay, with one {@code CREDIT} abono. Joins the caller's transaction.
 	 *

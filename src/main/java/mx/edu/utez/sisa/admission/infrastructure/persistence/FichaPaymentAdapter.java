@@ -155,6 +155,13 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	}
 
 	@Override
+	public BigDecimal availableOwnCredit(UUID candidateId) {
+		return listCreditsUseCase.listAvailableOwnByCandidate(candidateId).stream()
+				.map(ListCreditsUseCase.CreditView::amount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	@Override
 	public CreditUse applyCredit(UUID financePaymentId, String receiptNumber) {
 		return applyCredit(financePaymentId, PaymentChannel.PORTAL, null, receiptNumber);
 	}

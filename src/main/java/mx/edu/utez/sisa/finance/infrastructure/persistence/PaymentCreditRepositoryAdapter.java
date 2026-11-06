@@ -76,6 +76,11 @@ public class PaymentCreditRepositoryAdapter implements PaymentCreditRepository {
 	}
 
 	@Override
+	public List<PaymentCredit> findAvailableOwnByCandidateId(UUID candidateId) {
+		return jpaRepository.findByCandidateIdAndStatusOrderByCreatedAtAsc(candidateId, CreditStatus.AVAILABLE);
+	}
+
+	@Override
 	public List<PaymentCredit> findAvailableByStudentId(UUID studentId) {
 		return jpaRepository.findByStudentIdAndStatusOrderByCreatedAtAsc(studentId, CreditStatus.AVAILABLE);
 	}

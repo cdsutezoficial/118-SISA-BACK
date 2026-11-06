@@ -75,7 +75,7 @@ class ApplyCreditToPaymentUseCaseImplTest {
 		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
 		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO)
 				.thenReturn(new BigDecimal("150.00"));
-		when(paymentCreditRepository.findAvailableByCandidateId(candidateId)).thenReturn(List.of(credit));
+		when(paymentCreditRepository.findAvailableOwnByCandidateId(candidateId)).thenReturn(List.of(credit));
 		when(paymentCreditRepository.findByIdForUpdate(credit.getId())).thenReturn(Optional.of(credit));
 		when(settlementDecider.decide(any(), any())).thenReturn(PaymentStatus.PARTIAL);
 		when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -88,12 +88,46 @@ class ApplyCreditToPaymentUseCaseImplTest {
 		verify(paymentEntryRepository).save(any());
 	}
 
+	/** The portal is opened with folio + CURP: it never reaches saldo of another ficha with the same CURP. */
+	@Test
+	void portalUsesOnlyTheSaldoOfItsOwnFicha() {
+		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.PENDING);
+		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
+		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO);
+		when(paymentCreditRepository.findAvailableOwnByCandidateId(candidateId)).thenReturn(List.of());
+
+		assertThatThrownBy(() -> useCase
+				.applyCredit(new ApplyCreditCommand(payment.getId(), PaymentChannel.PORTAL, UUID.randomUUID())))
+				.isInstanceOf(CreditNotApplicableException.class);
+		verify(paymentCreditRepository, never()).findAvailableByCandidateId(any());
+	}
+
+	/** Caja checks who is paying, so it uses the saldo of every ficha of the person (D9). */
+	@Test
+	void cashierUsesTheSaldoOfThePerson() {
+		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.PENDING);
+		PaymentCredit credit = credit(new BigDecimal("300.00"));
+		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
+		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO)
+				.thenReturn(new BigDecimal("300.00"));
+		when(paymentCreditRepository.findAvailableByCandidateId(candidateId)).thenReturn(List.of(credit));
+		when(paymentCreditRepository.findByIdForUpdate(credit.getId())).thenReturn(Optional.of(credit));
+		when(settlementDecider.decide(any(), any())).thenReturn(PaymentStatus.PAID);
+		when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CreditApplicationResult result = useCase
+				.applyCredit(new ApplyCreditCommand(payment.getId(), PaymentChannel.CASHIER, UUID.randomUUID()));
+
+		assertThat(result.creditApplied()).isEqualByComparingTo("300.00");
+		verify(paymentCreditRepository, never()).findAvailableOwnByCandidateId(any());
+	}
+
 	@Test
 	void rejectsWhenNoCreditAvailable() {
 		Payment payment = payment(new BigDecimal("300.00"), PaymentStatus.PENDING);
 		when(paymentRepository.findByIdForUpdate(payment.getId())).thenReturn(Optional.of(payment));
 		when(paymentEntryRepository.sumAmountByPaymentId(payment.getId())).thenReturn(ZERO);
-		when(paymentCreditRepository.findAvailableByCandidateId(candidateId)).thenReturn(List.of());
+		when(paymentCreditRepository.findAvailableOwnByCandidateId(candidateId)).thenReturn(List.of());
 
 		assertThatThrownBy(() -> useCase
 				.applyCredit(new ApplyCreditCommand(payment.getId(), PaymentChannel.PORTAL, UUID.randomUUID())))

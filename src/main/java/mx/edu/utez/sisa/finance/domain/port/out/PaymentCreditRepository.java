@@ -44,6 +44,15 @@ public interface PaymentCreditRepository {
 	List<PaymentCredit> findAvailableByCandidateId(UUID candidateId);
 
 	/**
+	 * The {@code AVAILABLE} credits born on this very ficha, oldest first. The public
+	 * portal uses only these: it is opened with folio + CURP, so pooling by CURP there
+	 * would let anyone who registers a ficha with someone else's CURP spend their saldo.
+	 * Staff (caja, Finanzas) see the person in front of them and use
+	 * {@link #findAvailableByCandidateId}.
+	 */
+	List<PaymentCredit> findAvailableOwnByCandidateId(UUID candidateId);
+
+	/**
 	 * The {@code AVAILABLE} credits of a student, oldest first.
 	 */
 	List<PaymentCredit> findAvailableByStudentId(UUID studentId);
