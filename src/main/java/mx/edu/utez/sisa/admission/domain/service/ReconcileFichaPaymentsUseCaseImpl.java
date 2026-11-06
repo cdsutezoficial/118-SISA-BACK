@@ -1,9 +1,14 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -12,10 +17,12 @@ import org.slf4j.LoggerFactory;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 
@@ -83,15 +90,33 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 
 	private final ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
+	/** How long an authorization may wait for its capture before Finanzas is alerted (E4). */
+	static final Duration AUTHORIZED_ALERT_AFTER = Duration.ofDays(3);
+
+	private final Clock clock;
+
+	private final FinanceAlertPort financeAlertPort;
+
+	/**
+	 * D10: an attempt the bank has nothing for (no capture, no authorization) and older
+	 * than this is an abandoned session. Same value as the checkout hold, so the place
+	 * and the attempt end together.
+	 */
+	private final Duration abandonAfter;
+
 	public ReconcileFichaPaymentsUseCaseImpl(CheckoutAttemptRepository checkoutAttemptRepository,
 			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
-			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			int abandonAfterMinutes, FinanceAlertPort financeAlertPort) {
+		this.financeAlertPort = financeAlertPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 		this.confirmFichaPaymentVerifiedUseCase = confirmFichaPaymentVerifiedUseCase;
+		this.clock = clock;
+		this.abandonAfter = Duration.ofMinutes(abandonAfterMinutes);
 	}
 
 	@Override
@@ -160,32 +185,51 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	 * <p>A failed lookup fails the whole group. Not a nearby line: the missing answer is
 	 * precisely the one that would tell us whether this ficha's money is already hers.
 	 */
-	private Map<CheckoutAttempt, OrderSettlementDecider.Verdict> askBankAboutEveryAttempt(
+	private Map<CheckoutAttempt, EvoPaymentsGatewayPort.EvoOrderStatus> askBankAboutEveryAttempt(
 			List<CheckoutAttempt> attempts) {
-		Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts = new LinkedHashMap<>();
+		Map<CheckoutAttempt, EvoPaymentsGatewayPort.EvoOrderStatus> answers = new LinkedHashMap<>();
 		for (CheckoutAttempt attempt : attempts) {
-			verdicts.put(attempt,
-					OrderSettlementDecider.decide(evoPaymentsGateway.retrieveOrder(attempt.getOrderId())));
+			answers.put(attempt, evoPaymentsGateway.retrieveOrder(attempt.getOrderId()));
 		}
-		return verdicts;
+		return answers;
 	}
 
 	/**
 	 * Phase 2: act on the fold.
 	 *
-	 * <p>The ficha is read once, here, and its claim travels with the decision. An
-	 * already-paid ficha is settled on the answers alone — nothing about her place is
-	 * touched, ever.
+	 * <p>Every charge the group's attempts point at is read once, here. A candidate can
+	 * hold attempts of more than one charge — the paid ficha and the difference a career
+	 * change left — so "is it paid?" is asked of each attempt's own charge, never of
+	 * whichever row the query returned first. An already-paid ficha is settled on the
+	 * answers alone — nothing about her place is touched, ever.
 	 */
 	private void settleFicha(UUID candidateId, List<CheckoutAttempt> attempts, Counters counters) {
-		Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts = askBankAboutEveryAttempt(attempts);
+		Map<CheckoutAttempt, EvoPaymentsGatewayPort.EvoOrderStatus> answers = askBankAboutEveryAttempt(attempts);
+		Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts = new LinkedHashMap<>();
+		Map<CheckoutAttempt, CheckoutAttemptCloseReason> closeReasons = new HashMap<>();
+		Instant now = Instant.now(clock);
+		answers.forEach((attempt, answer) -> {
+			OrderSettlementDecider.Verdict verdict = OrderSettlementDecider.decide(answer);
+			if (verdict == OrderSettlementDecider.Verdict.HELD_UNKNOWN && isAbandoned(attempt, answer, now)) {
+				// D10: the bank took nothing and the hold is over. That is a session
+				// nobody finished, not a payment in flight, so it ends like a refusal.
+				verdict = OrderSettlementDecider.Verdict.RELEASEABLE;
+				closeReasons.put(attempt, CheckoutAttemptCloseReason.ORDER_EXPIRED);
+			}
+			alertIfAuthorizedTooLong(candidateId, attempt, answer, now);
+			verdicts.put(attempt, verdict);
+		});
 
-		boolean alreadyPaid = fichaPaymentPort.findCharge(attempts.get(0).getPaymentId())
-				.map(FichaPaymentPort.FichaCharge::isPaid).orElse(false);
+		Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges = new HashMap<>();
+		for (CheckoutAttempt attempt : attempts) {
+			charges.computeIfAbsent(attempt.getPaymentId(), fichaPaymentPort::findCharge);
+		}
+		boolean holdsPaidCharge = charges.values().stream().flatMap(Optional::stream)
+				.anyMatch(FichaPaymentPort.FichaCharge::isPaid);
 
 		switch (OrderSettlementDecider.decideFicha(new ArrayList<>(verdicts.values()))) {
-			case CAPTURED -> captureWon(candidateId, attempts, verdicts, counters, alreadyPaid);
-			case RELEASEABLE -> releaseIsSafe(alreadyPaid, attempts, counters);
+			case CAPTURED -> captureWon(candidateId, attempts, answers, verdicts, closeReasons, charges, counters);
+			case RELEASEABLE -> releaseIsSafe(holdsPaidCharge, attempts, closeReasons, counters);
 			case HELD_UNKNOWN -> counters.held(attempts.size());
 		}
 	}
@@ -204,14 +248,21 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	 * rows; leaving them open would have tomorrow's run asking about money this one has
 	 * already settled. One is refused and one captured, so one row is {@code REJECTED}
 	 * and one is {@code CAPTURED}, and both are true.
+	 *
+	 * <p>A capture that settles nothing — its charge was already paid, by a sibling or
+	 * earlier, or was cancelled — is money the bank holds and the ficha does not need. It
+	 * becomes saldo a favor of the person, tied to its order, before the row is closed
+	 * (E1). Finance books it once per order and skips the order that paid the charge.
 	 */
 	private void captureWon(UUID candidateId, List<CheckoutAttempt> attempts,
-			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts, Counters counters,
-			boolean alreadyPaid) {
-		CheckoutAttempt capturing = capturingAttempt(attempts, verdicts);
+			Map<CheckoutAttempt, EvoPaymentsGatewayPort.EvoOrderStatus> answers,
+			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts,
+			Map<CheckoutAttempt, CheckoutAttemptCloseReason> closeReasons,
+			Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges, Counters counters) {
+		CheckoutAttempt capturing = capturingAttempt(attempts, verdicts, charges);
 		boolean settledHere = false;
 
-		if (!alreadyPaid && capturing != null) {
+		if (capturing != null) {
 			try {
 				confirmFichaPaymentVerifiedUseCase.confirm(candidateId, capturing.getOrderId());
 				settledHere = true;
@@ -227,21 +278,39 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 						capturing.getOrderId());
 				settledHere = true;
 				counters.captured();
+			} catch (AdmissionPaidWithoutQuotaException ex) {
+				// E4: a late capture found the career full. The confirmation already turned
+				// the money into saldo a favor and closed the attempt; that is the outcome,
+				// not a failure to retry tomorrow.
+				log.warn("Captura tardía sin cupo en la ficha {}: {}", candidateId, ex.getMessage());
+				settledHere = true;
+				counters.closed(1);
 			}
 		}
 
 		for (CheckoutAttempt attempt : attempts) {
 			OrderSettlementDecider.Verdict verdict = verdicts.get(attempt);
 			if (verdict == OrderSettlementDecider.Verdict.CAPTURED) {
-				if (!settledHere) {
-					// Either the ficha was already paid, or no open row could carry the
-					// confirmation. Nothing settles it this run, so the capturing row simply
-					// records what the bank said — unless it is already closed, which
-					// closeAttempt leaves alone.
+				if (attempt == capturing && settledHere) {
+					continue; // the confirmation closed it
+				}
+				if (!attempt.isOpen()) {
+					continue; // already accounted for by whoever closed it
+				}
+				boolean paidBySibling = settledHere && attempt.getPaymentId().equals(capturing.getPaymentId());
+				if (isPaid(charges, attempt) || paidBySibling || isCancelled(charges, attempt)) {
+					bookOverpayment(candidateId, attempt, answers.get(attempt));
 					closeAttempt(attempt, CheckoutAttemptCloseReason.CAPTURED, counters);
+				} else {
+					// Money on a charge that cannot be read, or still owed while another
+					// capture is the one being confirmed. Closing the row would make the
+					// money invisible, so it stays open to be asked about again.
+					log.warn("Captura sin aplicar en la ficha {}: orden {} del cargo {}", candidateId,
+							attempt.getOrderId(), attempt.getPaymentId());
+					counters.held(1);
 				}
 			} else if (verdict == OrderSettlementDecider.Verdict.RELEASEABLE) {
-				closeAttempt(attempt, CheckoutAttemptCloseReason.REJECTED, counters);
+				closeAttempt(attempt, refusalReason(closeReasons, attempt), counters);
 			} else {
 				// Still unanswered. It stays open, and the next run reads it as part of a
 				// paid ficha, where closing it needs no further question.
@@ -259,34 +328,90 @@ public class ReconcileFichaPaymentsUseCaseImpl implements ReconcileFichaPayments
 	 * group, so it keeps holding its place — the same guarantee the old compare-and-set
 	 * on the claim gave.
 	 */
-	private void releaseIsSafe(boolean alreadyPaid, List<CheckoutAttempt> attempts, Counters counters) {
+	private void releaseIsSafe(boolean alreadyPaid, List<CheckoutAttempt> attempts,
+			Map<CheckoutAttempt, CheckoutAttemptCloseReason> closeReasons, Counters counters) {
 		// The open attempts are what hold the place, so closing them is the release.
 		// Only the rows this run asked about are closed: an attempt opened after the
 		// query is not in this group and keeps holding its place.
-				closeAll(attempts, CheckoutAttemptCloseReason.REJECTED, counters);
+		for (CheckoutAttempt attempt : attempts) {
+			closeAttempt(attempt, refusalReason(closeReasons, attempt), counters);
+		}
 		if (!alreadyPaid) {
 			counters.released();
 		}
 	}
 
 	/**
-	 * The attempt to hand to the confirmation: one the bank says captured, and one nobody
-	 * has settled yet.
+	 * The attempt to hand to the confirmation: one the bank says captured, one nobody
+	 * has settled yet, and one whose own charge is still waiting for that money.
 	 *
-	 * <p>Both halves are load-bearing. Without the first, an already-paid ficha would be
+	 * <p>All three are load-bearing. Without the first, an already-paid ficha would be
 	 * re-confirmed. Without the second, a capture whose row the browser closed a moment
 	 * ago would be thrown at a confirmation that only accepts an open attempt, and the
 	 * run would log a failure for a payment that had already been settled correctly.
+	 * Without the third, a capture on the paid ficha would hide a capture on the
+	 * difference a career change left.
 	 */
 	private CheckoutAttempt capturingAttempt(List<CheckoutAttempt> attempts,
-			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts) {
+			Map<CheckoutAttempt, OrderSettlementDecider.Verdict> verdicts,
+			Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges) {
 		return attempts.stream().filter(attempt -> verdicts.get(attempt) == OrderSettlementDecider.Verdict.CAPTURED)
-				.filter(CheckoutAttempt::isOpen).findFirst().orElse(null);
+				.filter(CheckoutAttempt::isOpen)
+				.filter(attempt -> charges.get(attempt.getPaymentId())
+						.map(charge -> !charge.isPaid() && !charge.cancelled()).orElse(false))
+				.findFirst().orElse(null);
 	}
 
-	private void closeAll(List<CheckoutAttempt> attempts, CheckoutAttemptCloseReason reason, Counters counters) {
-		for (CheckoutAttempt attempt : attempts) {
-			closeAttempt(attempt, reason, counters);
+	/**
+	 * Books what this order captured as saldo a favor. Finance answers {@code false} for
+	 * the order that paid the charge (it already has its abono), which is the browser
+	 * having settled it a moment ago, not money left over.
+	 */
+	private void bookOverpayment(UUID candidateId, CheckoutAttempt attempt,
+			EvoPaymentsGatewayPort.EvoOrderStatus answer) {
+		if (fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(),
+				answer.totalCapturedAmount())) {
+			log.warn("Excedente de la ficha {}: la orden {} capturó {} sin liquidar nada; queda como saldo a favor",
+					candidateId, attempt.getOrderId(), answer.totalCapturedAmount());
+		}
+	}
+
+	private static boolean isCancelled(Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges,
+			CheckoutAttempt attempt) {
+		return charges.get(attempt.getPaymentId()).map(FichaPaymentPort.FichaCharge::cancelled).orElse(false);
+	}
+
+	private static boolean isPaid(Map<UUID, Optional<FichaPaymentPort.FichaCharge>> charges,
+			CheckoutAttempt attempt) {
+		return charges.get(attempt.getPaymentId()).map(FichaPaymentPort.FichaCharge::isPaid).orElse(false);
+	}
+
+	private static CheckoutAttemptCloseReason refusalReason(
+			Map<CheckoutAttempt, CheckoutAttemptCloseReason> closeReasons, CheckoutAttempt attempt) {
+		return closeReasons.getOrDefault(attempt, CheckoutAttemptCloseReason.REJECTED);
+	}
+
+	/** D10: nothing taken at the bank and older than the hold. */
+	private boolean isAbandoned(CheckoutAttempt attempt, EvoPaymentsGatewayPort.EvoOrderStatus answer, Instant now) {
+		return OrderSettlementDecider.tookNothing(answer)
+				&& !attempt.getCreatedAt().isAfter(now.minus(abandonAfter));
+	}
+
+	/**
+	 * E4: an authorization the bank has not captured is waited on, never closed, but not
+	 * silently forever. Past three days it is an error line for Finanzas to review by hand.
+	 */
+	private void alertIfAuthorizedTooLong(UUID candidateId, CheckoutAttempt attempt,
+			EvoPaymentsGatewayPort.EvoOrderStatus answer, Instant now) {
+		if (OrderSettlementDecider.authorizedNotCaptured(answer)
+				&& attempt.getCreatedAt().isBefore(now.minus(AUTHORIZED_ALERT_AFTER))) {
+			log.error("ALERTA FINANZAS: la orden {} de la ficha {} tiene {} autorizado sin cobrar desde {}. "
+					+ "Revisar a mano con el banco.", attempt.getOrderId(), candidateId,
+					answer.totalAuthorizedAmount(), attempt.getCreatedAt());
+			financeAlertPort.raise(FinanceAlertPort.Kind.AUTHORIZED_NOT_CAPTURED, candidateId, attempt.getPaymentId(),
+					attempt.getOrderId(), answer.totalAuthorizedAmount(),
+					"El banco autorizó el monto y no lo ha cobrado desde " + attempt.getCreatedAt()
+							+ ". Revisar con el banco si se cobra o se libera.");
 		}
 	}
 

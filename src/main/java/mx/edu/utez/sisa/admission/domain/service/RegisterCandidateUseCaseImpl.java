@@ -156,7 +156,8 @@ public class RegisterCandidateUseCaseImpl implements RegisterCandidateUseCase {
 		String reference = generateReference(savedCandidate.getFolio());
 		UUID chargeId = fichaPaymentPort.raiseFichaDebt(new FichaPaymentPort.RaiseFichaDebtCommand(
 				savedCandidate.getId(), concept.code(), config.programId(),
-				deadline.atTime(LocalTime.MAX).atZone(clock.getZone()).toInstant(), reference));
+				deadline.atTime(LocalTime.MAX).atZone(clock.getZone()).toInstant(), reference, config.periodId(),
+				config.targetGenerationId()));
 		savedCandidate.linkFichaPayment(chargeId);
 		savedCandidate = candidateRepository.save(savedCandidate);
 		BigDecimal amount = fichaPaymentPort.quote(chargeId).amountDue();

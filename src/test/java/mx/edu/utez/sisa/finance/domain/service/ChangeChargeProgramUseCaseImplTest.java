@@ -186,6 +186,35 @@ class ChangeChargeProgramUseCaseImplTest {
 	}
 
 	@Test
+	void reassignMovesTheChargeToTheNewCareersPeriodAndGeneration() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1650.00");
+		Payment ficha = header();
+		UUID period = UUID.randomUUID();
+		UUID generation = UUID.randomUUID();
+
+		useCase.reassign(ficha.getId(), "FICHA_LIC", NEW_PROGRAM, period, generation);
+
+		assertThat(ficha.getPeriodId()).isEqualTo(period);
+		assertThat(ficha.getGenerationId()).isEqualTo(generation);
+	}
+
+	@Test
+	void rebillPutsTheNewChargeInTheNewCareersPeriodAndGeneration() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1750.00");
+		Payment ficha = paid("1420.00", "1420.00");
+		UUID period = UUID.randomUUID();
+		UUID generation = UUID.randomUUID();
+		RebillCommand base = command(ficha.getId());
+
+		RebillOutcome outcome = useCase.rebill(new RebillCommand(base.fromPaymentId(), base.conceptCode(),
+				base.programId(), base.dueAt(), base.reference(), base.actingUserId(), period, generation));
+
+		Payment charge = payments.get(outcome.paymentId());
+		assertThat(charge.getPeriodId()).isEqualTo(period);
+		assertThat(charge.getGenerationId()).isEqualTo(generation);
+	}
+
+	@Test
 	void aPaidChargeCannotBeReassigned() {
 		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1650.00");
 		Payment ficha = paid("1420.00", "1420.00");
@@ -240,19 +269,131 @@ class ChangeChargeProgramUseCaseImplTest {
 	}
 
 	@Test
-	void paidWithAFullDiscountPaysTheWholeNewTariff() {
+	void paidWithAFullDiscountKeepsItOnTheNewCareer() {
 		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1650.00");
-		// Pagó $0 con el 100 %: el descuento ya se usó y no pasa a la carrera nueva.
+		// Exenta con el 100 %: el descuento es de la persona y viaja (D6).
 		Payment ficha = paid("1120.00", "0.00");
-		benefits.add(benefit(ficha.getId(), "FICHA_ING", BenefitMode.FULL, null));
+		PaymentBenefit full = benefit(ficha.getId(), "FICHA_ING", BenefitMode.FULL, null);
+		benefits.add(full);
 
 		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
 
 		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("0.00");
-		assertThat(outcome.toPay()).isEqualByComparingTo("1650.00");
-		assertThat(outcome.status()).isEqualTo(PaymentStatus.PENDING);
+		assertThat(outcome.newAmount()).isEqualByComparingTo("0.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("0.00");
+		assertThat(outcome.status()).isEqualTo(PaymentStatus.EXEMPT);
 		assertThat(credits).isEmpty();
-		assertThat(payments.get(outcome.paymentId()).getBenefitId()).isNull();
+		Payment charge = payments.get(outcome.paymentId());
+		assertThat(charge.getOriginalAmount()).isEqualByComparingTo("1650.00");
+		assertThat(charge.getBenefitId()).isEqualTo(full.getId());
+		assertThat(full.getPaymentId()).isEqualTo(charge.getId());
+	}
+
+	// ── E2: el descuento viaja a la carrera nueva (D6) ───────────────────────
+	// Ficha ING $1,750, carrera nueva $1,850, descuento de $250.
+
+	@Test
+	void unpaidChargeTakesTheDiscountToTheNewTariff() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1850.00");
+		Payment ficha = header();
+		benefits.add(amountOff(ficha.getId(), "250.00"));
+
+		DebtQuote preview = useCase.previewReassign(ficha.getId(), "FICHA_LIC", NEW_PROGRAM);
+
+		assertThat(preview.amountDue()).isEqualByComparingTo("1600.00");
+	}
+
+	@Test
+	void discountUsedBeforePayingIsRequotedOnTheNewTariff() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1850.00");
+		PaymentBenefit discount = amountOff(null, "250.00");
+		Payment ficha = paid("1750.00", "1500.00", "1500.00", discount.getId());
+		discount.linkToPayment(ficha.getId());
+		benefits.add(discount);
+
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		assertThat(outcome.newAmount()).isEqualByComparingTo("1600.00");
+		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1500.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("100.00");
+		assertThat(outcome.status()).isEqualTo(PaymentStatus.PARTIAL);
+		Payment charge = payments.get(outcome.paymentId());
+		assertThat(charge.getOriginalAmount()).isEqualByComparingTo("1850.00");
+		assertThat(charge.getAmountDue()).isEqualByComparingTo("1600.00");
+		assertThat(charge.getBenefitId()).isEqualTo(discount.getId());
+		assertThat(discount.getPaymentId()).isEqualTo(charge.getId());
+		// El cargo pagado guarda su historia: su descuento sigue anotado.
+		assertThat(ficha.getBenefitId()).isEqualTo(discount.getId());
+	}
+
+	@Test
+	void retroactiveDiscountMovesOnlyMoneyAndTheSaldoIsNotCountedTwice() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1850.00");
+		Payment ficha = paid("1750.00", "1750.00");
+		grantRetroactively(ficha, amountOff(ficha.getId(), "250.00"));
+
+		RebillOutcome preview = useCase.previewRebill(ficha.getId(), "FICHA_LIC", NEW_PROGRAM);
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		// Pagó 1,750 y el descuento ya devolvió 250 como saldo: viajan 1,500. Los 250
+		// siguen siendo suyos y no se tocan; puede usarlos al pagar la diferencia.
+		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1500.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("250.00");
+		assertThat(outcome.newAmount()).isEqualByComparingTo("1600.00");
+		assertThat(outcome.tariff()).isEqualByComparingTo("1850.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("100.00");
+		assertThat(outcome.creditLeft()).isEqualByComparingTo("0.00");
+		assertThat(outcome.status()).isEqualTo(PaymentStatus.PARTIAL);
+		assertThat(credits.stream().filter(PaymentCredit::isAvailable).map(PaymentCredit::getAmount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("250.00");
+		assertThat(preview).usingRecursiveComparison().ignoringFields("paymentId").isEqualTo(outcome);
+	}
+
+	@Test
+	void retroactiveSaldoAlreadySpentLeavesTheDifferenceToPay() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1850.00");
+		Payment ficha = paid("1750.00", "1750.00");
+		grantRetroactively(ficha, amountOff(ficha.getId(), "250.00"));
+		credits.forEach(credit -> credit.applyTo(UUID.randomUUID()));
+
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1500.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("0.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("100.00");
+		assertThat(outcome.status()).isEqualTo(PaymentStatus.PARTIAL);
+	}
+
+	@Test
+	void aPercentDiscountIsRequotedOnTheNewTariff() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1850.00");
+		Payment ficha = paid("1750.00", "1750.00");
+		grantRetroactively(ficha, benefit(ficha.getId(), "FICHA_ING", BenefitMode.PERCENT, new BigDecimal("10")));
+
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		// 10 % retroactivo: 175 de saldo (intacto), viajan 1,575. Nueva: 1,850 − 185 = 1,665.
+		assertThat(outcome.newAmount()).isEqualByComparingTo("1665.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("90.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("175.00");
+	}
+
+	@Test
+	void saldoThePersonAlreadyHadIsNotSpentByTheChange() {
+		rate(NEW_CONCEPT_ID, NEW_PROGRAM, "1800.00");
+		credits.add(new PaymentCredit(CANDIDATE_ID, null, UUID.randomUUID(), null, new BigDecimal("500.00"),
+				Instant.parse("2026-10-01T00:00:00Z")));
+		ReflectionTestUtils.setField(credits.get(0), "id", UUID.randomUUID());
+		Payment ficha = paid("1250.00", "1250.00");
+
+		RebillOutcome outcome = useCase.rebill(command(ficha.getId()));
+
+		assertThat(outcome.alreadyPaid()).isEqualByComparingTo("1250.00");
+		assertThat(outcome.otherCredit()).isEqualByComparingTo("500.00");
+		assertThat(outcome.creditApplied()).isEqualByComparingTo("1250.00");
+		assertThat(outcome.toPay()).isEqualByComparingTo("550.00");
+		assertThat(credits.get(0).isAvailable()).isTrue();
+		assertThat(credits.get(0).getAmount()).isEqualByComparingTo("500.00");
 	}
 
 	@Test
@@ -326,6 +467,29 @@ class ChangeChargeProgramUseCaseImplTest {
 		payment.assignReference("REF-ADM-2026-000001");
 		payment.settle(paidValue, paidValue.signum() == 0 ? PaymentStatus.EXEMPT : PaymentStatus.PAID);
 		return paymentRepository.save(payment);
+	}
+
+	private void grantRetroactively(Payment ficha, PaymentBenefit discount) {
+		benefits.add(discount);
+		new RetroactiveDiscountGranter(paymentRepository, paymentCreditRepository, new PaymentQuoter())
+				.grant(discount, Instant.parse("2026-10-25T00:00:00Z"));
+	}
+
+	private Payment paid(String tariff, String due, String paidAmount, UUID benefitId) {
+		Payment payment = new Payment(CANDIDATE_ID, null, "FICHA_ING", null, null, OLD_PROGRAM,
+				new BigDecimal(tariff), new BigDecimal(due), benefitId, PaymentStatus.PENDING, PaymentOrigin.ADMISSION,
+				Instant.parse("2026-11-07T05:59:59Z"), Instant.parse("2026-10-20T00:00:00Z"));
+		payment.assignReference("REF-ADM-2026-000001");
+		payment.settle(new BigDecimal(paidAmount), PaymentStatus.PAID);
+		return paymentRepository.save(payment);
+	}
+
+	private PaymentBenefit amountOff(UUID paymentId, String amount) {
+		PaymentBenefit benefit = new PaymentBenefit(paymentId, CANDIDATE_ID, null, "FICHA_ING", null, null,
+				BenefitMode.AMOUNT, null, new BigDecimal(amount), LocalDate.of(2026, 1, 1), null, "Beca",
+				UUID.randomUUID(), "SE", Instant.parse("2026-10-01T00:00:00Z"));
+		ReflectionTestUtils.setField(benefit, "id", UUID.randomUUID());
+		return benefit;
 	}
 
 	private PaymentBenefit benefit(UUID paymentId, String conceptCode, BenefitMode mode, BigDecimal percent) {

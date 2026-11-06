@@ -116,6 +116,24 @@ public final class OrderSettlementDecider {
 	}
 
 	/**
+	 * The bank holds money for this order that it has not captured: an authorization
+	 * waiting on a capture. Never abandoned, however old.
+	 */
+	public static boolean authorizedNotCaptured(EvoPaymentsGatewayPort.EvoOrderStatus status) {
+		return !status.capturedAny() && status.totalAuthorizedAmount() != null
+				&& status.totalAuthorizedAmount().signum() > 0;
+	}
+
+	/**
+	 * An unanswered order that took nothing: no capture and no authorization (D10). Once it
+	 * is older than the hold it is an abandoned session, closed as {@code ORDER_EXPIRED}.
+	 * Only meaningful for a {@link Verdict#HELD_UNKNOWN} order.
+	 */
+	public static boolean tookNothing(EvoPaymentsGatewayPort.EvoOrderStatus status) {
+		return !status.capturedAny() && !authorizedNotCaptured(status);
+	}
+
+	/**
 	 * What one {@code Retrieve Order} means for the quota.
 	 *
 	 * <p>{@link #RELEASEABLE} and {@link #CAPTURED} are terminal for the attempt. {@link

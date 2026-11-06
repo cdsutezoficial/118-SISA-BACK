@@ -10,6 +10,7 @@ import mx.edu.utez.sisa.finance.shared.exception.InvalidBenefitDataException;
 import mx.edu.utez.sisa.finance.shared.exception.InvalidEntryAmountException;
 import mx.edu.utez.sisa.finance.shared.exception.InvalidPaymentDataException;
 import mx.edu.utez.sisa.finance.shared.exception.NoRateAvailableException;
+import mx.edu.utez.sisa.finance.shared.exception.FinanceAlertNotFoundException;
 import mx.edu.utez.sisa.finance.shared.exception.PaymentNotFoundException;
 import mx.edu.utez.sisa.finance.shared.exception.PaymentNotPayableException;
 import mx.edu.utez.sisa.finance.shared.exception.PersonNotFoundException;
@@ -40,6 +41,7 @@ import java.time.Instant;
 public class GlobalExceptionHandler {
 
 	public static final String CODE_PAYMENT_NOT_FOUND = "PAYMENT_NOT_FOUND";
+	public static final String CODE_ALERT_NOT_FOUND = "FINANCE_ALERT_NOT_FOUND";
 	public static final String CODE_CONCEPT_NOT_FOUND = "CONCEPT_NOT_FOUND";
 	public static final String CODE_PERSON_NOT_FOUND = "PERSON_NOT_FOUND";
 	public static final String CODE_CONCEPT_UNAVAILABLE = "CONCEPT_UNAVAILABLE";
@@ -51,6 +53,12 @@ public class GlobalExceptionHandler {
 	public static final String CODE_INVALID_BENEFIT_DATA = "INVALID_BENEFIT_DATA";
 	public static final String CODE_BENEFIT_NOT_EDITABLE = "BENEFIT_NOT_EDITABLE";
 	public static final String CODE_CREDIT_NOT_APPLICABLE = "CREDIT_NOT_APPLICABLE";
+
+	@ExceptionHandler(FinanceAlertNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleAlertNotFound(FinanceAlertNotFoundException ex,
+			HttpServletRequest request) {
+		return build(HttpStatus.NOT_FOUND, CODE_ALERT_NOT_FOUND, "No se encontró la alerta solicitada.", request);
+	}
 
 	@ExceptionHandler(PaymentNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handlePaymentNotFound(PaymentNotFoundException ex,

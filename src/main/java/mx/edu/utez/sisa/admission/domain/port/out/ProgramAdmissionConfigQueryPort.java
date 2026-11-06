@@ -73,6 +73,14 @@ public interface ProgramAdmissionConfigQueryPort {
 	 */
 	record AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
 			String divisionName, ProgramModality modality, UUID periodId, String periodName, Instant opensAt,
-			Instant closesAt, int maxCandidates) {
+			Instant closesAt, int maxCandidates, UUID targetGenerationId) {
+
+		/** Without the target generation (F5): callers that do not raise a charge. */
+		public AdmissionConfigInfo(UUID id, ProgramAdmissionConfigStatus status, UUID programId, String programName,
+				String divisionName, ProgramModality modality, UUID periodId, String periodName, Instant opensAt,
+				Instant closesAt, int maxCandidates) {
+			this(id, status, programId, programName, divisionName, modality, periodId, periodName, opensAt, closesAt,
+					maxCandidates, null);
+		}
 	}
 }

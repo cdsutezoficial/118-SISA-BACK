@@ -7,16 +7,17 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaidTwiceException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.annotation.Transactional;
-
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -65,26 +66,32 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 
 	private final EvoPaymentsGatewayPort evoPaymentsGateway;
 
-	private final ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase;
-
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
 	private final CheckoutSlotClaimer checkoutSlotClaimer;
 
+	private final CapturedPaymentSettler capturedPaymentSettler;
+
 	public ConfirmFichaPaymentVerifiedUseCaseImpl(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort, EvoPaymentsGatewayPort evoPaymentsGateway,
-			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
-			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer,
+			CapturedPaymentSettler capturedPaymentSettler) {
+		this.capturedPaymentSettler = capturedPaymentSettler;
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.evoPaymentsGateway = evoPaymentsGateway;
-		this.confirmAdmissionPaymentUseCase = confirmAdmissionPaymentUseCase;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.checkoutSlotClaimer = checkoutSlotClaimer;
 	}
 
+	/**
+	 * <p>Not transactional on purpose: the bank is asked first, with no transaction or
+	 * lock open, and only the booking runs in {@link CapturedPaymentSettler}, a short
+	 * transaction that locks the charge. E1, two orders of one ficha captured seconds
+	 * apart: both reach the settler, the second waits on the lock, finds the ficha paid
+	 * and its capture becomes saldo a favor ({@link FichaPaidTwiceException}).
+	 */
 	@Override
-	@Transactional
 	public ConfirmPaymentResult confirm(UUID candidateId, String orderId) {
 		Candidate candidate = candidateRepository.findById(candidateId)
 				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
@@ -94,6 +101,7 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 						"El candidato no tiene ficha de pago: " + candidateId));
 
 		if (charge.isPaid()) {
+			creditCaptureOnPaidFicha(candidateId, candidate, charge, orderId);
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
@@ -105,7 +113,7 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 					"El identificador del pedido es obligatorio para confirmar el pago.");
 		}
 
-		CheckoutAttempt attempt = requireOwnOpenAttempt(candidateId, orderId);
+		CheckoutAttempt attempt = requireOwnOpenAttempt(candidateId, candidate, orderId);
 
 		// The ATTEMPT's order is the source of truth, not the ficha's: `orderId` on the
 		// payment is overwritten by every retry, so after a second checkout the first
@@ -124,11 +132,25 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 
 		warnIfUnderpaid(candidate.getFolio(), attempt, status);
 
+		// E4: a capture that outlived its hold no longer holds a place. If the career filled
+		// up meanwhile, the money is the person's saldo a favor, not an admission.
+		if (!checkoutSlotClaimer.placeForLateCapture(candidateId, attempt, status.totalCapturedAmount())) {
+			log.warn("Captura tardía de {} por {} sin cupo en la carrera: queda como saldo a favor (orden {}).",
+					candidate.getFolio(), status.totalCapturedAmount(), orderId);
+			throw new AdmissionPaidWithoutQuotaException("Tu pago llegó cuando ya no quedaban lugares en la carrera. "
+					+ "El monto quedó como saldo a favor a tu nombre; acude a Finanzas para revisarlo.");
+		}
+
 		// The captured attempt's own snapshot is what gets booked: a later
 		// checkout may have re-quoted the ficha with a different discount.
-		ConfirmPaymentResult result = confirmAdmissionPaymentUseCase.confirm(candidateId, orderId);
+		CapturedPaymentSettler.Outcome outcome = capturedPaymentSettler.settle(candidateId,
+				charge.financePaymentId(), orderId, status.totalCapturedAmount());
 		checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.CAPTURED);
-		return result;
+		if (outcome.wasAlreadyPaid()) {
+			// Another capture paid the ficha while the bank was being asked about this one.
+			throw paidTwice(candidate, orderId, status.totalCapturedAmount(), outcome.creditBooked());
+		}
+		return outcome.result();
 	}
 
 	/**
@@ -148,12 +170,66 @@ public class ConfirmFichaPaymentVerifiedUseCaseImpl implements ConfirmFichaPayme
 	 * otherwise, and only with money the bank confirms they paid. Requiring the attempt
 	 * to still be <em>open</em> is what keeps this from re-confirming: a closed attempt
 	 * has already been accounted for.
+	 *
+	 * <p>The attempt must also belong to the charge being collected today. After a
+	 * career change that is the difference, and a capture on the old ficha's charge must
+	 * not settle it.
 	 */
-	private CheckoutAttempt requireOwnOpenAttempt(UUID candidateId, String orderId) {
+	/**
+	 * The ficha is paid, and this order is one of its attempts that the bank captured
+	 * too: the money is the person's saldo a favor, booked now instead of waiting for
+	 * the nightly reconciliation. Finance skips the order that paid the charge, so
+	 * re-confirming the order that paid is still just "already paid".
+	 *
+	 * @throws FichaPaidTwiceException when this order's capture was booked as saldo
+	 */
+	private void creditCaptureOnPaidFicha(UUID candidateId, Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			String orderId) {
+		if (orderId == null || orderId.isBlank()) {
+			return;
+		}
+		CheckoutAttempt attempt = checkoutAttemptRepository.findByOrderId(orderId)
+				.filter(a -> candidateId.equals(a.getCandidateId()) && a.isOpen()
+						&& charge.financePaymentId().equals(a.getPaymentId()))
+				.orElse(null);
+		if (attempt == null) {
+			return;
+		}
+		EvoPaymentsGatewayPort.EvoOrderStatus status = evoPaymentsGateway.retrieveOrder(orderId);
+		if (OrderSettlementDecider.decide(status) != OrderSettlementDecider.Verdict.CAPTURED) {
+			return;
+		}
+		boolean booked = fichaPaymentPort.registerOverpayment(charge.financePaymentId(), orderId,
+				status.totalCapturedAmount());
+		checkoutSlotClaimer.closeAttempt(orderId, CheckoutAttemptCloseReason.CAPTURED);
+		if (booked) {
+			throw paidTwice(candidate, orderId, status.totalCapturedAmount(), true);
+		}
+	}
+
+	/**
+	 * The ficha was already paid when this order's capture arrived. If the capture was booked
+	 * as saldo a favor the person is told so; if this order is the one that paid, it is just
+	 * "already paid".
+	 */
+	private CandidateAlreadyPaidException paidTwice(Candidate candidate, String orderId, BigDecimal captured,
+			boolean creditBooked) {
+		if (!creditBooked) {
+			return new CandidateAlreadyPaidException(
+					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
+		}
+		log.warn("La ficha {} ya estaba pagada y la orden {} cobró {}: queda como saldo a favor.",
+				candidate.getFolio(), orderId, captured);
+		return new FichaPaidTwiceException("Tu ficha ya estaba pagada con otro pago. Este cobro de $" + captured
+				+ " quedó como saldo a favor a tu nombre; acude a Finanzas si quieres la devolución.");
+	}
+
+	private CheckoutAttempt requireOwnOpenAttempt(UUID candidateId, Candidate candidate, String orderId) {
 		CheckoutAttempt attempt = checkoutAttemptRepository.findByOrderId(orderId)
 				.orElseThrow(() -> new InvalidPaymentVerificationException(
 						"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo."));
-		if (!candidateId.equals(attempt.getCandidateId()) || !attempt.isOpen()) {
+		if (!candidateId.equals(attempt.getCandidateId()) || !attempt.isOpen()
+				|| !candidate.collectingPaymentId().equals(attempt.getPaymentId())) {
 			throw new InvalidPaymentVerificationException(
 					"El identificador del pedido no corresponde a esta ficha, inténtalo de nuevo.");
 		}

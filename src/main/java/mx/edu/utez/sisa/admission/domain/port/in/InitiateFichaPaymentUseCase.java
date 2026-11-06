@@ -28,15 +28,31 @@ public interface InitiateFichaPaymentUseCase {
 	 *                    default {@code returnUrl} is used, so a caller can
 	 *                    never turn this into an open redirect.
 	 */
-	InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath);
+	default InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath) {
+		return initiateCheckout(candidateId, returnPath, false);
+	}
+
+	/**
+	 * @param useCredit the person chose to pay with their saldo a favor (F9):
+	 *                  it is used first, and EVO is asked only for the rest —
+	 *                  or not at all when the saldo covers the ficha
+	 */
+	InitiateCheckoutResult initiateCheckout(UUID candidateId, String returnPath, boolean useCredit);
 
 	/**
 	 * @param exempt {@code true} when a {@code FULL} discount settled the ficha at
 	 *               {@code $0} with no gateway session: {@code orderId},
 	 *               {@code sessionId}, {@code merchant} and {@code successIndicator}
 	 *               are all {@code null} and the front must not open the checkout.
+	 * @param paidWithCredit {@code true} when the person's saldo a favor paid the
+	 *               whole ficha: same as {@code exempt} for the front, no session.
 	 */
 	record InitiateCheckoutResult(UUID candidateId, String orderId, String sessionId, String merchant,
-			String successIndicator, String checkoutJsUrl, boolean exempt) {
+			String successIndicator, String checkoutJsUrl, boolean exempt, boolean paidWithCredit) {
+
+		public InitiateCheckoutResult(UUID candidateId, String orderId, String sessionId, String merchant,
+				String successIndicator, String checkoutJsUrl, boolean exempt) {
+			this(candidateId, orderId, sessionId, merchant, successIndicator, checkoutJsUrl, exempt, false);
+		}
 	}
 }

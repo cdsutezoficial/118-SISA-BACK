@@ -1,0 +1,13 @@
+{{titulo}} — Ficha de Admisión UTEZ
+==============================================
+
+{{subtitulo}}
+
+  Tu folio .................. {{folio}}
+  Carrera ................... {{carrera}}
+{{filas}}
+Hola {{nombre}}, {{mensaje}}
+{{enlace}}
+--
+Universidad Tecnológica de la Zona de UTEZ
+SISA — Sistema Integral de Servicios Académicos

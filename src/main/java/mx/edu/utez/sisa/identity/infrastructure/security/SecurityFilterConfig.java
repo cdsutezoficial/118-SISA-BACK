@@ -248,7 +248,11 @@ public class SecurityFilterConfig {
 						.requestMatchers(HttpMethod.GET, "/admission/dashboard")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION")
 						.requestMatchers(HttpMethod.GET, "/candidates")
-						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS")
+						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES", "DIRECTOR_DIVISION", "PERSONAL_FINANZAS", "CAJA")
+						// F1: cobro en efectivo en caja. Ruta propia de personal: no
+						// comparte prefijo con el checkout público (/payments/...).
+						.requestMatchers("/candidates/*/cash-payment")
+						.hasAnyRole("ADMIN", "PERSONAL_FINANZAS", "CAJA")
 						// Staff candidate detail. Two segments deep, so the public
 						// "/candidates/*" matcher above does not reach it either.
 						.requestMatchers(HttpMethod.GET, "/candidates/*/detail", "/candidates/*/account")
@@ -348,6 +352,8 @@ public class SecurityFilterConfig {
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.GET, "/groups", "/groups/**")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
+						// Log de auditoría: solo ADMIN (RN-AUD-004).
+						.requestMatchers(HttpMethod.GET, "/audit-log").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/config-academica/statistics")
 						.hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")
 						.requestMatchers(HttpMethod.POST, "/groups").hasAnyRole("ADMIN", "SERVICIOS_ESCOLARES")

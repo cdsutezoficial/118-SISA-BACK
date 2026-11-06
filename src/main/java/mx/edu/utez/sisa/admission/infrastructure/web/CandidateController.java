@@ -29,7 +29,6 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Selecc
 import mx.edu.utez.sisa.admission.domain.port.in.ReleaseFichaPaymentSlotUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.GetCandidateFichaUseCase.FichaData;
-import mx.edu.utez.sisa.admission.infrastructure.notification.CandidateFichaMailService;
 import mx.edu.utez.sisa.admission.infrastructure.pdf.CandidateFichaPdfService;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateEditFormResponse;
 import mx.edu.utez.sisa.admission.infrastructure.web.dto.CandidateFichaResponse;
@@ -128,7 +127,6 @@ public class CandidateController {
 
 	private final ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
-	private final CandidateFichaMailService fichaMailService;
 
 	private final CandidateFichaPdfService fichaPdfService;
 
@@ -145,7 +143,6 @@ public class CandidateController {
 			GetCandidateEditFormUseCase getCandidateEditFormUseCase, UpdateCandidateUseCase updateCandidateUseCase,
 			ChangeCandidateProgramUseCase changeCandidateProgramUseCase,
 			GetCandidateAccountUseCase getCandidateAccountUseCase,
-			CandidateFichaMailService fichaMailService,
 			CandidateFichaPdfService fichaPdfService, PaymentAccessRateLimiter paymentAccessRateLimiter,
 			LlaveMxVerificationTicketService verificationTicketService,
 			@Value("${sisa.admission.candidate.llave-mx-required:false}") boolean llaveMxRequired) {
@@ -160,7 +157,6 @@ public class CandidateController {
 		this.getCandidateEditFormUseCase = getCandidateEditFormUseCase;
 		this.updateCandidateUseCase = updateCandidateUseCase;
 		this.changeCandidateProgramUseCase = changeCandidateProgramUseCase;
-		this.fichaMailService = fichaMailService;
 		this.fichaPdfService = fichaPdfService;
 		this.paymentAccessRateLimiter = paymentAccessRateLimiter;
 		this.verificationTicketService = verificationTicketService;
@@ -337,17 +333,10 @@ public class CandidateController {
 	@PostMapping("/{id}/payments/confirm")
 	public ResponseEntity<PaymentConfirmationResponse> confirmPayment(@PathVariable UUID id,
 			@Valid @RequestBody VerifyFichaPaymentRequest request) {
+		// The receipt mail is sent by the confirmation itself, after it commits (F3), so
+		// the nightly reconciliation's confirmations get one too.
 		ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult result = confirmFichaPaymentVerifiedUseCase
 				.confirm(id, request.orderId());
-		FichaData ficha = getCandidateFichaUseCase.get(id);
-		if (ficha != null && ficha.email() != null && !ficha.email().isBlank()) {
-			// `paidAt` del resultado, no el reloj: el comprobante tiene que llevar
-			// la fecha en que el gateway confirmó, no la de hoy. Antes se pasaba
-			// `deadline`, que el correo nunca usó.
-			fichaMailService.sendPaymentConfirmation(ficha.email(), fullName(ficha), ficha.folio(),
-					ficha.programName(), result.amount(), result.referenceNumber(), result.paidAt(),
-					result.receiptNumber());
-		}
 		return ResponseEntity.ok(PaymentConfirmationResponse.from(result));
 	}
 
@@ -368,8 +357,9 @@ public class CandidateController {
 	public ResponseEntity<CheckoutInitiationResponse> initiateCheckout(@PathVariable UUID id,
 			@Valid @RequestBody(required = false) CheckoutInitiationRequest request) {
 		String returnPath = request == null ? null : request.returnPath();
-		return ResponseEntity
-				.ok(CheckoutInitiationResponse.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath)));
+		boolean useCredit = request != null && Boolean.TRUE.equals(request.useCredit());
+		return ResponseEntity.ok(CheckoutInitiationResponse
+				.from(initiateFichaPaymentUseCase.initiateCheckout(id, returnPath, useCredit)));
 	}
 
 	/**
@@ -620,9 +610,4 @@ public class CandidateController {
 				item.programId(), item.programName(), item.status(), item.registeredAt());
 	}
 
-	private static String fullName(FichaData ficha) {
-		return (ficha.firstName() == null ? "" : ficha.firstName()) + " "
-				+ (ficha.lastName1() == null ? "" : ficha.lastName1()) + " "
-				+ (ficha.lastName2() == null ? "" : ficha.lastName2());
-	}
 }

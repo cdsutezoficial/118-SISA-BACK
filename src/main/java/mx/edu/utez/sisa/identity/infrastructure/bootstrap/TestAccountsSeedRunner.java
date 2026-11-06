@@ -61,6 +61,7 @@ public class TestAccountsSeedRunner implements ApplicationRunner {
 			new TestAccount(RoleType.ADMIN, "admin@utez.edu.mx"),
 			new TestAccount(RoleType.SERVICIOS_ESCOLARES, "servicios.escolares@utez.edu.mx"),
 			new TestAccount(RoleType.PERSONAL_FINANZAS, "finanzas@utez.edu.mx"),
+			new TestAccount(RoleType.CAJA, "caja@utez.edu.mx"),
 			new TestAccount(RoleType.DIRECTOR_DIVISION, "director@utez.edu.mx"));
 
 	private final UserRepository userRepository;

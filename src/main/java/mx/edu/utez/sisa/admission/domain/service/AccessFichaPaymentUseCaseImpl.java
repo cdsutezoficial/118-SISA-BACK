@@ -9,6 +9,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPor
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Locale;
@@ -122,7 +123,9 @@ public class AccessFichaPaymentUseCaseImpl implements AccessFichaPaymentUseCase 
 				// only meaningful once PAID; null keeps "Pendiente" screens honest
 				alreadyPaid ? payment.paidAt() : null, alreadyPaid, paymentClosesOn, paymentDeadline,
 				candidate.getStatus(), paymentExpired, price.originalAmount(), price.discountAmount(),
-				price.discountReason(), programChangeDue(candidate, config));
+				price.discountReason(), programChangeDue(candidate, config),
+				fichaPaymentPort.availableOwnCredit(candidate.getId()),
+				payment.isPartlyPaid() ? payment.amountPaid() : BigDecimal.ZERO);
 	}
 
 	private ProgramChangeDue programChangeDue(Candidate candidate,

@@ -89,13 +89,33 @@ public interface AccessFichaPaymentUseCase {
 	 * put a second copy of the window rule in TypeScript, which is exactly how the
 	 * portal and the engine start answering differently.
 	 */
+	/**
+	 * @param availableCredit saldo a favor the person has (F9), shown always; they
+	 *                        can choose to use it on the ficha or on a difference
+	 * @param creditApplied   saldo already used on this unpaid ficha: the rest,
+	 *                        {@code amount − creditApplied}, is what is left
+	 */
 	record PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
 			String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
 			String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
 			LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
 			BigDecimal originalAmount, BigDecimal discountAmount, String discountReason,
-			ProgramChangeDue programChange) {
+			ProgramChangeDue programChange, BigDecimal availableCredit, BigDecimal creditApplied) {
 
+		/**
+		 * Without the saldo a favor (F9) fields: none to use, none used.
+		 */
+		public PaymentAccess(UUID candidateId, String folio, String nombre, String programName, BigDecimal amount,
+				String referenceNumber, LocalDate registrationDeadline, AdmissionPaymentStatus paymentStatus,
+				String receiptNumber, Instant paidAt, boolean alreadyPaid, LocalDate paymentClosesOn,
+				LocalDate paymentDeadline, CandidateStatus candidateStatus, boolean paymentExpired,
+				BigDecimal originalAmount, BigDecimal discountAmount, String discountReason,
+				ProgramChangeDue programChange) {
+			this(candidateId, folio, nombre, programName, amount, referenceNumber, registrationDeadline, paymentStatus,
+					receiptNumber, paidAt, alreadyPaid, paymentClosesOn, paymentDeadline, candidateStatus,
+					paymentExpired, originalAmount, discountAmount, discountReason, programChange, BigDecimal.ZERO,
+					BigDecimal.ZERO);
+		}
 	}
 
 	/**

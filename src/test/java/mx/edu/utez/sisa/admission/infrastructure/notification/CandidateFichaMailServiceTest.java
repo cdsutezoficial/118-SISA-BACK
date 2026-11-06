@@ -373,4 +373,72 @@ class CandidateFichaMailServiceTest {
 		assertThat(new ClassPathResource("templates/ficha-pago-confirmacion.html").exists()).isTrue();
 		assertThat(new ClassPathResource("templates/ficha-pago-confirmacion.txt").exists()).isTrue();
 	}
+
+	// --- E6 / F3 ---------------------------------------------------------------
+
+	/** E6: a difference shows the total, what was paid before and what was paid now. */
+	@Test
+	void aDifferenceReceiptIsDividedByCharge() {
+		service().sendPaymentConfirmation(TO, "Ana Torres", FOLIO, "Ing. en TIC", new BigDecimal("100.00"),
+				"REF-2026-000001-C1", PAID_AT, "REC-20260926-000001-C",
+				new CandidateFichaMailService.Breakdown(new BigDecimal("1850.00"), new BigDecimal("1750.00"),
+						"REC-20260920-000001", Instant.parse("2026-09-20T18:00:00Z"), true));
+
+		MimeMessage message = captured();
+		assertThat(textParts(message)).isNotEmpty().allSatisfy(part -> assertThat(part)
+				.contains("Total de la carrera")
+				.contains("1850.00")
+				.contains("Pagado anteriormente")
+				.contains("1750.00")
+				.contains("REC-20260920-000001")
+				.contains("Pagado en este momento")
+				.contains("100.00")
+				.contains("diferencia")
+				.doesNotContain("{{"));
+		try {
+			assertThat(message.getSubject()).startsWith("Pago de la diferencia por cambio de carrera");
+		} catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	@Test
+	void aWholePaymentHasNoBreakdownLines() {
+		send(service(), "Ana Torres");
+
+		assertThat(textParts(captured())).allSatisfy(part -> assertThat(part)
+				.contains("Monto pagado")
+				.doesNotContain("Pagado anteriormente"));
+	}
+
+	/** F3: the applicant learns of a difference, with amount, deadline and portal link. */
+	@Test
+	void aDifferenceNoticeCarriesAmountDeadlineAndLink() {
+		service().sendProgramChangeDifference(TO, "Ana Torres", FOLIO, "Ing. en TIC", new BigDecimal("1850.00"),
+				new BigDecimal("1750.00"), new BigDecimal("100.00"), Instant.parse("2026-11-14T05:59:59Z"),
+				"https://sisa.utez.edu.mx/SGA/portal/ficha/pago");
+
+		assertThat(textParts(captured())).isNotEmpty().allSatisfy(part -> assertThat(part)
+				.contains("Por pagar")
+				.contains("100.00")
+				.contains("Fecha límite")
+				.contains("https://sisa.utez.edu.mx/SGA/portal/ficha/pago")
+				.doesNotContain("{{"));
+	}
+
+	@Test
+	void aCreditNoticeCarriesTheAmount() {
+		service().sendCreditLeft(TO, "Ana Torres", FOLIO, "Ing. en TIC", new BigDecimal("400.00"));
+
+		assertThat(textParts(captured())).isNotEmpty().allSatisfy(part -> assertThat(part)
+				.contains("Saldo a favor")
+				.contains("400.00")
+				.doesNotContain("{{"));
+	}
+
+	@Test
+	void theNoticeTemplatesAreOnTheClasspath() {
+		assertThat(new ClassPathResource("templates/ficha-aviso.html").exists()).isTrue();
+		assertThat(new ClassPathResource("templates/ficha-aviso.txt").exists()).isTrue();
+	}
 }

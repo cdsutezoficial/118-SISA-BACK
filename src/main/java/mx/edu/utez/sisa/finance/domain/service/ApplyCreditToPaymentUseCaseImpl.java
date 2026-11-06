@@ -1,6 +1,7 @@
 package mx.edu.utez.sisa.finance.domain.service;
 
 import mx.edu.utez.sisa.finance.domain.model.Payment;
+import mx.edu.utez.sisa.finance.domain.model.PaymentChannel;
 import mx.edu.utez.sisa.finance.domain.model.PaymentCredit;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntry;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntryMethod;
@@ -88,9 +89,7 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 
 		BigDecimal applied = BigDecimal.ZERO.setScale(2);
 		List<UUID> appliedCreditIds = new ArrayList<>();
-		List<PaymentCredit> credits = (payment.getCandidateId() != null
-				? paymentCreditRepository.findAvailableByCandidateId(payment.getCandidateId())
-				: paymentCreditRepository.findAvailableByStudentId(payment.getStudentId())).stream()
+		List<PaymentCredit> credits = creditsFor(payment, command.channel()).stream()
 				.sorted(Comparator.comparing(PaymentCredit::getCreatedAt)).toList();
 		for (PaymentCredit candidate : credits) {
 			if (remaining.signum() <= 0) {
@@ -120,7 +119,8 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 		}
 
 		PaymentEntry entry = new PaymentEntry(payment.getId(), applied, PaymentEntryMethod.CREDIT, command.channel(),
-				null, null, null, null, null, false, command.actingUserId(), null, Instant.now(clock), null);
+				null, null, null, null, command.receiptNumber(), false, command.actingUserId(), null,
+				Instant.now(clock), null);
 		paymentEntryRepository.save(entry);
 
 		BigDecimal paidAfter = paymentEntryRepository.sumAmountByPaymentId(payment.getId());
@@ -132,5 +132,19 @@ public class ApplyCreditToPaymentUseCaseImpl implements ApplyCreditToPaymentUseC
 				: BenefitSummaries.from(paymentBenefitRepository.findById(saved.getBenefitId()).orElse(null));
 		return new CreditApplicationResult(CreatePaymentUseCaseImpl.toResult(saved, benefit), applied,
 				appliedCreditIds);
+	}
+
+	/**
+	 * From the portal only the saldo born on this ficha: the portal is opened with folio +
+	 * CURP, and a ficha registered with someone else's CURP must not reach their saldo.
+	 * Staff channels (caja, Finanzas) check the person and use all of their saldo (D9).
+	 */
+	private List<PaymentCredit> creditsFor(Payment payment, PaymentChannel channel) {
+		if (payment.getCandidateId() == null) {
+			return paymentCreditRepository.findAvailableByStudentId(payment.getStudentId());
+		}
+		return channel == PaymentChannel.PORTAL
+				? paymentCreditRepository.findAvailableOwnByCandidateId(payment.getCandidateId())
+				: paymentCreditRepository.findAvailableByCandidateId(payment.getCandidateId());
 	}
 }

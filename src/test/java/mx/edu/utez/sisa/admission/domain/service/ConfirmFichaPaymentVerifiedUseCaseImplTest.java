@@ -10,7 +10,9 @@ import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
+import mx.edu.utez.sisa.admission.shared.exception.FichaPaidTwiceException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.InvalidPaymentVerificationException;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,8 +87,12 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 	@BeforeEach
 	void setUp() {
+		// The real settler over the same mocks: the lock-and-decide half is part of what is tested.
 		useCase = new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
+				evoPaymentsGateway, checkoutAttemptRepository, checkoutSlotClaimer,
+				new CapturedPaymentSettler(fichaPaymentPort, confirmAdmissionPaymentUseCase));
+		// A capture inside its hold, or with room left: the usual case.
+		Mockito.lenient().when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(true);
 	}
 
 	private static Candidate candidate() {
@@ -118,6 +125,58 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 	private void givenCandidateAndPayment(FichaPaymentPort.FichaCharge payment) {
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment));
+	}
+
+	/**
+	 * E4: the capture outlived its hold and the career filled up. The claimer has already
+	 * kept the money as saldo a favor and closed the attempt; the ficha is not marked paid.
+	 */
+	@Test
+	void aLateCaptureWithoutAPlaceIsRefusedAndNotMarkedPaid() {
+		givenCandidateAndPayment(pendingFichaWithThisAttempt());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(checkoutSlotClaimer.placeForLateCapture(any(), any(), any())).thenReturn(false);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(AdmissionPaidWithoutQuotaException.class);
+
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
+		verify(checkoutSlotClaimer, never()).closeAttempt(any(), any());
+	}
+
+	/**
+	 * E1, two orders captured 0.26 s apart: the second waits on the charge's lock and
+	 * finds it paid by the first. Its capture becomes saldo a favor of the person,
+	 * instead of a second abono with the same receipt.
+	 */
+	@Test
+	void aSecondOrderCapturedOnAPaidFichaBecomesSaldoAFavor() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.lockCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.paidCharge(CHARGE_ID)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(true);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(FichaPaidTwiceException.class).hasMessageContaining("saldo a favor");
+
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
+	}
+
+	/** Re-confirming the order that paid: finance skips it, so it is just "already paid". */
+	@Test
+	void reConfirmingTheOrderThatPaidIsOnlyAlreadyPaid() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID)).thenReturn(Optional.of(payment()));
+		when(fichaPaymentPort.lockCharge(CHARGE_ID)).thenReturn(Optional.of(FichaTestData.paidCharge(CHARGE_ID)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(capturedStatus());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(false);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isExactlyInstanceOf(CandidateAlreadyPaidException.class);
 	}
 
 	@Test
@@ -354,5 +413,26 @@ class ConfirmFichaPaymentVerifiedUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
 				.isInstanceOf(CandidateNotFoundException.class);
+	}
+
+	/**
+	 * E3: the attempt must belong to the charge being collected today. After a career
+	 * change the candidate owes a difference; a capture on an attempt of the old ficha
+	 * charge must not settle it.
+	 */
+	@Test
+	void anAttemptOfAChargeNoLongerCollectedIsRefused() {
+		UUID differenceChargeId = UUID.randomUUID();
+		Candidate candidate = candidate();
+		candidate.awaitProgramChangePayment(differenceChargeId);
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate));
+		when(fichaPaymentPort.findCharge(differenceChargeId))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(differenceChargeId)));
+		givenOpenAttempt(ORDER_ID, CANDIDATE_ID, QUOTED);
+
+		assertThatThrownBy(() -> useCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.isInstanceOf(InvalidPaymentVerificationException.class);
+		verify(evoPaymentsGateway, never()).retrieveOrder(any());
+		verify(confirmAdmissionPaymentUseCase, never()).confirm(any(), any());
 	}
 }

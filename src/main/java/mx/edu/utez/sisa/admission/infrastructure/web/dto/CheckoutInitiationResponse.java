@@ -14,12 +14,15 @@ import java.util.UUID;
  * <p>{@code exempt} is {@code true} when a {@code FULL} discount settled the
  * ficha at {@code $0} with no gateway session — the front must read it as "ya
  * pagada" and NOT open the checkout; every session field is {@code null}.
+ * {@code paidWithCredit} is the same for a ficha the person's saldo a favor
+ * paid in full.
  */
 public record CheckoutInitiationResponse(UUID candidateId, String orderId, String sessionId, String merchant,
-		String successIndicator, String checkoutJsUrl, boolean exempt) {
+		String successIndicator, String checkoutJsUrl, boolean exempt, boolean paidWithCredit) {
 
 	public static CheckoutInitiationResponse from(InitiateCheckoutResult result) {
 		return new CheckoutInitiationResponse(result.candidateId(), result.orderId(), result.sessionId(),
-				result.merchant(), result.successIndicator(), result.checkoutJsUrl(), result.exempt());
+				result.merchant(), result.successIndicator(), result.checkoutJsUrl(), result.exempt(),
+				result.paidWithCredit());
 	}
 }

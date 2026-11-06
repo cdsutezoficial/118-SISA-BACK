@@ -29,11 +29,26 @@ import java.util.UUID;
  * {@code appliedToPaymentId} is filled when the credit is consumed
  * ({@link #applyTo(UUID)}), linking the credit to the adeudo it settled.
  *
+ * <p>{@code externalOrderId} is set only on an <b>overpayment</b>: money the
+ * gateway captured on an order that settled nothing (a second capture of the
+ * same ficha, or a capture on a charge that was cancelled). It is unique, so a
+ * re-run of the reconciliation cannot book the same order twice, and it is how
+ * Finanzas lists those cases.
+ *
+ * <p>The saldo belongs to the person, not to the candidate record or the
+ * concept (D9). A second ficha of the same person is a new candidate, and it
+ * must still see and use this saldo: the repository gathers the credits of
+ * every candidate with the same CURP. {@code personId} is a leftover column
+ * from when candidates pointed to a {@code Person}; nothing fills it now.
+ *
  * <p>The row is never hard-deleted; a voided credit becomes
  * {@link CreditStatus#CANCELLED}.
  */
 @Entity
-@Table(name = "payment_credit", indexes = @Index(name = "ix_credit_anchor", columnList = "candidate_id, student_id"))
+@Table(name = "payment_credit", indexes = {
+		@Index(name = "ix_credit_anchor", columnList = "candidate_id, student_id"),
+		@Index(name = "ix_credit_person", columnList = "person_id, status"),
+		@Index(name = "ux_credit_external_order", columnList = "external_order_id", unique = true) })
 public class PaymentCredit {
 
 	@Id
@@ -65,6 +80,12 @@ public class PaymentCredit {
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
+	@Column(name = "external_order_id", length = 80)
+	private String externalOrderId;
+
+	@Column(name = "person_id")
+	private UUID personId;
+
 	protected PaymentCredit() {
 		// JPA
 	}
@@ -85,6 +106,20 @@ public class PaymentCredit {
 	}
 
 	/**
+	 * Money a gateway order captured without settling anything, kept as saldo a
+	 * favor of the charge's owner and tied to that order.
+	 */
+	public static PaymentCredit overpayment(UUID candidateId, UUID studentId, UUID originPaymentId,
+			String externalOrderId, BigDecimal amount, Instant createdAt) {
+		if (externalOrderId == null || externalOrderId.isBlank()) {
+			throw new IllegalArgumentException("externalOrderId is required for an overpayment");
+		}
+		PaymentCredit credit = new PaymentCredit(candidateId, studentId, originPaymentId, null, amount, createdAt);
+		credit.externalOrderId = externalOrderId;
+		return credit;
+	}
+
+	/**
 	 * Consumes the credit against an adeudo. The status guard (only
 	 * {@code AVAILABLE} credits can be applied) is enforced by
 	 * {@code ApplyCreditToPaymentUseCase}, so the entity stays a plain data
@@ -93,6 +128,10 @@ public class PaymentCredit {
 	public void applyTo(UUID paymentId) {
 		this.status = CreditStatus.APPLIED;
 		this.appliedToPaymentId = paymentId;
+	}
+
+	public UUID getPersonId() {
+		return personId;
 	}
 
 	public void cancel() {
@@ -167,5 +206,9 @@ public class PaymentCredit {
 	@Override
 	public int hashCode() {
 		return Objects.hashCode(id);
+	}
+
+	public String getExternalOrderId() {
+		return externalOrderId;
 	}
 }

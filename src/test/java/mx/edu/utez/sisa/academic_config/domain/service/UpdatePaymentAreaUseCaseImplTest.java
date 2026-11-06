@@ -144,14 +144,16 @@ class UpdatePaymentAreaUseCaseImplTest {
 	@Test
 	void updatePaymentArea_allowsKeepingOwnNameAndCodeWithDifferentCaseAndWhitespace() {
 		when(paymentAreaRepository.findById(areaId)).thenReturn(Optional.of(area));
-		when(paymentAreaRepository.findByName("Colegiaturas")).thenReturn(Optional.of(area));
+		// The name keeps the case the user typed (only whitespace is normalized); the
+		// lookup is case-insensitive in MySQL, so it finds this same area.
+		when(paymentAreaRepository.findByName("colegiaturas")).thenReturn(Optional.of(area));
 		when(paymentAreaRepository.findByCode("COL")).thenReturn(Optional.of(area));
 		when(paymentAreaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		PaymentAreaResult result = useCase
 				.updatePaymentArea(new UpdatePaymentAreaCommand(areaId, "  colegiaturas  ", " col ", "Descripcion 2"));
 
-		assertThat(result.name()).isEqualTo("Colegiaturas");
+		assertThat(result.name()).isEqualTo("colegiaturas");
 		assertThat(result.code()).isEqualTo("COL");
 	}
 

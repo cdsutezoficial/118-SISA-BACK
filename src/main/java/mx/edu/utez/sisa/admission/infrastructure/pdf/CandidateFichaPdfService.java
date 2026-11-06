@@ -194,7 +194,18 @@ public class CandidateFichaPdfService {
 				pagoRow(table, "Motivo del descuento", ficha.discountReason());
 			}
 		}
-		if (ficha.amount() != null) {
+		FichaData.PendingDifference difference = ficha.pendingDifference();
+		if (difference != null) {
+			// F6: a career change left money to pay. The ficha shows the new career's
+			// price and what is left, not the price of the ficha paid before.
+			pagoRow(table, "Costo de la carrera", difference.total());
+			pagoRow(table, "Pagado anteriormente", difference.alreadyPaid());
+			pagoRow(table, "Diferencia por pagar", difference.toPay());
+			pagoRow(table, "Referencia de la diferencia", difference.referenceNumber());
+			if (difference.dueAt() != null) {
+				pagoRow(table, "Fecha límite de la diferencia", difference.dueAt());
+			}
+		} else if (ficha.amount() != null) {
 			pagoRow(table, "Monto a pagar", ficha.amount());
 		}
 		pagoRow(table, "Referencia de pago", ficha.referenceNumber());

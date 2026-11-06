@@ -36,7 +36,7 @@ public interface AdmissionQuotaPort {
 	 * Places of the config taken by <em>other</em> candidates: fichas whose
 	 * charge is {@code PAID}/{@code EXEMPT}, plus fichas with a checkout attempt
 	 * still open that was started at or after {@code attemptsOpenedSince}
-	 * (now − 15 min). Call it while holding {@link #lockQuota}.
+	 * (now − the hold, 60 min). Call it while holding {@link #lockQuota}.
 	 *
 	 * @param candidateId the candidate asking, left out of the count so a retry
 	 *                    of their own checkout never competes with itself;

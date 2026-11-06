@@ -140,7 +140,12 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 		LocalDate processClosesOn = config == null ? registrationDeadline
 				: config.closesAt().atZone(clock.getZone()).toLocalDate();
 		LocalDate paymentDeadline = visiblePaymentDeadline(candidate, processClosesOn);
-		FichaDisplayPrice.Price price = price(config, payment);
+		// F6: with a career-change difference pending, the price is the new career's
+		// charge (fixed at the change), not the one of the ficha paid before.
+		FichaData.PendingDifference difference = pendingDifference(candidate);
+		FichaDisplayPrice.Price price = difference != null && fichaDisplayPrice != null
+				? fichaDisplayPrice.of(candidate.getProgramChangePaymentId(), null)
+				: price(config, payment);
 		return Optional.of(new FichaData(candidate.getId(), candidate.getFolio(),
 				candidate.getStatus(), candidate.getRegisteredAt(), candidate.getAdmissionConfigId(), programName,
 				config == null ? null : config.divisionName(), candidate.getCurp(),
@@ -185,7 +190,20 @@ public class GetCandidateFichaUseCaseImpl implements GetCandidateFichaUseCase {
 								resolveMunicipality(school.getSchoolMunicipalityId()), school.getForeignCountry(),
 								school.getSchoolCity(), school.getGpa(), school.getCct()),
 				inductionPayment, price.originalAmount(), price.discountAmount(), price.discountReason(),
-				price.conceptName()));
+				price.conceptName(), difference));
+	}
+
+	/** The difference a career change left, while it is still to pay; {@code null} otherwise. */
+	private FichaData.PendingDifference pendingDifference(Candidate candidate) {
+		if (candidate.getProgramChangePaymentId() == null) {
+			return null;
+		}
+		return fichaPaymentPort.findProgramChangeCharge(candidate.getProgramChangePaymentId())
+				.filter(charge -> !charge.paid() && !charge.cancelled() && charge.toPay().signum() > 0)
+				.map(charge -> new FichaData.PendingDifference(charge.newAmount(),
+						charge.newAmount().subtract(charge.toPay()), charge.toPay(), charge.referenceNumber(),
+						charge.dueAt()))
+				.orElse(null);
 	}
 
 	/**

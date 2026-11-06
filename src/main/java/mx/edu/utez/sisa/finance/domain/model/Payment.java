@@ -236,6 +236,33 @@ public class Payment {
 	}
 
 	/**
+	 * The money the charge keeps: what came in, capped at what it owes. Above
+	 * the amount due is what a retroactive discount returned as saldo a favor.
+	 */
+	public static BigDecimal moneyKept(Payment payment) {
+		BigDecimal paid = payment.getAmountPaid() == null ? BigDecimal.ZERO.setScale(2) : payment.getAmountPaid();
+		return payment.getAmountDue() == null ? paid : paid.min(payment.getAmountDue());
+	}
+
+	/**
+	 * Applies a discount that arrived after the charge was paid (R12): the charge
+	 * now shows the discount and the lower amount due, while {@code amountPaid}
+	 * keeps the money that actually came in — it must keep matching the abonos.
+	 * What was paid above the new amount due is the saldo a favor the caller
+	 * books.
+	 *
+	 * @throws IllegalStateException if the charge is not {@code PAID}
+	 */
+	public void applyRetroactiveDiscount(UUID benefitId, BigDecimal amountDue) {
+		if (this.status != PaymentStatus.PAID) {
+			throw new IllegalStateException(
+					"Solo un adeudo pagado recibe un descuento retroactivo: " + id + " está " + this.status);
+		}
+		this.benefitId = benefitId;
+		this.amountDue = amountDue;
+	}
+
+	/**
 	 * Whether the adeudo still accepts a new quote: it is still {@code PENDING}
 	 * (open, priced live) and nothing has been paid against it. A header-only
 	 * debt (no amounts yet) is always repriceable. {@code EXEMPT} is terminal:
@@ -270,12 +297,26 @@ public class Payment {
 	 * @throws IllegalStateException if the charge is no longer repriceable
 	 */
 	public void reassignProgram(String conceptCode, UUID programId) {
+		reassignProgram(conceptCode, programId, null, null);
+	}
+
+	/**
+	 * F5: also moves the charge to the new career's period and generation (R1). A
+	 * {@code null} keeps the current value.
+	 */
+	public void reassignProgram(String conceptCode, UUID programId, UUID periodId, UUID generationId) {
 		if (!isRepriceable()) {
 			throw new IllegalStateException(
 					"El adeudo " + id + " ya no se puede reasignar (estado " + status + ").");
 		}
 		this.conceptCode = conceptCode;
 		this.programId = programId;
+		if (periodId != null) {
+			this.periodId = periodId;
+		}
+		if (generationId != null) {
+			this.generationId = generationId;
+		}
 		this.originalAmount = null;
 		this.amountDue = null;
 		this.benefitId = null;

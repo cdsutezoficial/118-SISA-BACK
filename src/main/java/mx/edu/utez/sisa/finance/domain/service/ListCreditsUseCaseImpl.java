@@ -20,8 +20,19 @@ public class ListCreditsUseCaseImpl implements ListCreditsUseCase {
 	public List<CreditView> listByCandidate(UUID candidateId) {
 		return paymentCreditRepository.findByCandidateId(candidateId).stream()
 				.sorted(Comparator.comparing(PaymentCredit::getCreatedAt))
-				.map(credit -> new CreditView(credit.getId(), credit.getAmount(), credit.getStatus(),
-						credit.getOriginPaymentId(), credit.getAppliedToPaymentId(), credit.getCreatedAt()))
+				.map(ListCreditsUseCaseImpl::toView)
 				.toList();
+	}
+
+	@Override
+	public List<CreditView> listAvailableOwnByCandidate(UUID candidateId) {
+		return paymentCreditRepository.findAvailableOwnByCandidateId(candidateId).stream()
+				.map(ListCreditsUseCaseImpl::toView)
+				.toList();
+	}
+
+	private static CreditView toView(PaymentCredit credit) {
+		return new CreditView(credit.getId(), credit.getAmount(), credit.getStatus(), credit.getOriginPaymentId(),
+				credit.getAppliedToPaymentId(), credit.getCreatedAt());
 	}
 }

@@ -5,6 +5,7 @@ import mx.edu.utez.sisa.academic_config.domain.model.GroupStatus;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ChangeGroupStatusUseCase.ChangeStatusCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase;
+import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupsBulkUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase.CreateGroupCommand;
 import mx.edu.utez.sisa.academic_config.domain.port.in.CreateGroupUseCase.GroupResult;
 import mx.edu.utez.sisa.academic_config.domain.port.in.GetGroupUseCase;
@@ -12,6 +13,7 @@ import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.GroupSummary;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.ListGroupsQuery;
 import mx.edu.utez.sisa.academic_config.domain.port.in.ListGroupsUseCase.ListGroupsResult;
+import mx.edu.utez.sisa.academic_config.domain.port.in.PreviewGroupCodesUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase;
 import mx.edu.utez.sisa.academic_config.domain.port.in.UpdateGroupUseCase.UpdateGroupCommand;
 import mx.edu.utez.sisa.academic_config.shared.exception.DuplicateGroupCodeException;
@@ -76,6 +78,12 @@ class GroupControllerTest {
 
 	@MockitoBean
 	private ChangeGroupStatusUseCase changeGroupStatusUseCase;
+
+	@MockitoBean
+	private CreateGroupsBulkUseCase createGroupsBulkUseCase;
+
+	@MockitoBean
+	private PreviewGroupCodesUseCase previewGroupCodesUseCase;
 
 	@MockitoBean
 	private JwtService jwtService;

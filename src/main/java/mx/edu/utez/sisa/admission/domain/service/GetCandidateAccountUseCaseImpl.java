@@ -74,8 +74,9 @@ public class GetCandidateAccountUseCaseImpl implements GetCandidateAccountUseCas
 		List<CreditView> creditViews = credits.stream()
 				.sorted(Comparator.comparing(CandidateAccountPort.Credit::createdAt,
 						Comparator.nullsLast(Comparator.naturalOrder())).reversed())
-				.map(credit -> new CreditView(credit.amount(), credit.status(), references.get(credit.originPaymentId()),
-						credit.appliedToPaymentId() == null ? null : references.get(credit.appliedToPaymentId()),
+				.map(credit -> new CreditView(credit.amount(), credit.status(),
+						referenceOf(references, credit.originPaymentId(), credit.originReference()),
+						referenceOf(references, credit.appliedToPaymentId(), credit.appliedToReference()),
 						credit.createdAt()))
 				.toList();
 
@@ -115,5 +116,17 @@ public class GetCandidateAccountUseCaseImpl implements GetCandidateAccountUseCas
 		}
 		return cache.computeIfAbsent(configId, id -> programAdmissionConfigQueryPort.findById(id)
 				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::programName).orElse(null));
+	}
+
+	/**
+	 * La referencia del cargo: del estado de cuenta del candidato o, si el cargo es
+	 * de otra ficha de la misma persona (F9), la que trae el saldo.
+	 */
+	private static String referenceOf(Map<UUID, String> references, UUID paymentId, String fallback) {
+		if (paymentId == null) {
+			return null;
+		}
+		String reference = references.get(paymentId);
+		return reference != null ? reference : fallback;
 	}
 }

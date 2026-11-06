@@ -16,11 +16,13 @@ import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Inform
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.Ingresos;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.RegisterCandidateCommand;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase.SeleccionCarrera;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.HighSchoolTypeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.OutreachChannelRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.HighSchoolTypeNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.OutreachChannelNotFoundException;
@@ -37,12 +39,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,6 +81,9 @@ class UpdateCandidateUseCaseImplTest {
 	@Mock
 	private ChangeCandidateProgramUseCase changeCandidateProgramUseCase;
 
+	@Mock
+	private CandidateAuditPort candidateAuditPort;
+
 	private UpdateCandidateUseCaseImpl useCase;
 	private GetCandidateEditFormUseCaseImpl getEditForm;
 	private Candidate candidate;
@@ -84,7 +91,7 @@ class UpdateCandidateUseCaseImplTest {
 	@BeforeEach
 	void setUp() {
 		useCase = new UpdateCandidateUseCaseImpl(candidateRepository, outreachChannelRepository, highSchoolTypeRepository,
-				changeCandidateProgramUseCase);
+				changeCandidateProgramUseCase, candidateAuditPort);
 		getEditForm = new GetCandidateEditFormUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaPaymentPort, changeCandidateProgramUseCase);
 
@@ -118,6 +125,63 @@ class UpdateCandidateUseCaseImplTest {
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.REGISTERED);
 		assertThat(candidate.isLlaveMxVerified()).isTrue();
 		verify(candidateRepository).save(candidate);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void leavesWhoChangedWhatWithBeforeAndAfter() {
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan Carlos", CONFIG_ID, NEW_CHANNEL_ID),
+				ACTOR_ID);
+
+		org.mockito.ArgumentCaptor<List<CandidateAuditPort.Change>> changes = org.mockito.ArgumentCaptor
+				.forClass(List.class);
+		verify(candidateAuditPort).fichaEdited(eq(CANDIDATE_ID), eq(ACTOR_ID), changes.capture());
+		assertThat(changes.getValue()).contains(
+				new CandidateAuditPort.Change("curp", "PEGJ900101HMSRRN09", "PEGJ900101HMSRRN10"),
+				new CandidateAuditPort.Change("firstName", "Juan", "Juan Carlos"),
+				new CandidateAuditPort.Change("address.street", "Calle Juan", "Calle Juan Carlos"),
+				new CandidateAuditPort.Change("outreachChannelId", CHANNEL_ID.toString(), NEW_CHANNEL_ID.toString()));
+		assertThat(changes.getValue()).extracting(CandidateAuditPort.Change::field)
+				.doesNotContain("lastName1", "admissionConfigId");
+	}
+
+	@Test
+	void savingTheSameDataLeavesAnEmptyTrail() {
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN09", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
+
+		verify(candidateAuditPort).fichaEdited(CANDIDATE_ID, ACTOR_ID, List.of());
+	}
+
+	@Test
+	void aPaidFichaCannotTakeTheCurpOfAnotherValidCandidacyInItsPeriod() {
+		UUID period = UUID.randomUUID();
+		candidate.setValidPeriodId(period);
+		when(candidateRepository.existsAnotherValidInPeriod("OTRA900101HMSRRN01", period, CANDIDATE_ID))
+				.thenReturn(true);
+
+		assertThatThrownBy(() -> useCase.update(CANDIDATE_ID,
+				command("OTRA900101HMSRRN01", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID))
+				.isInstanceOf(CandidateAlreadyExistsException.class);
+		org.mockito.Mockito.verify(candidateRepository, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	void aPaidFichaMayTakeAFreeCurpOrKeepItsOwn() {
+		UUID period = UUID.randomUUID();
+		candidate.setValidPeriodId(period);
+
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
+		useCase.update(CANDIDATE_ID, command("PEGJ900101HMSRRN10", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
+
+		verify(candidateRepository).existsAnotherValidInPeriod("PEGJ900101HMSRRN10", period, CANDIDATE_ID);
+	}
+
+	@Test
+	void anUnpaidFichaDoesNotCheckThePeriod() {
+		useCase.update(CANDIDATE_ID, command("OTRA900101HMSRRN01", "Juan", CONFIG_ID, CHANNEL_ID), ACTOR_ID);
+
+		org.mockito.Mockito.verify(candidateRepository, org.mockito.Mockito.never())
+				.existsAnotherValidInPeriod(any(), any(), any());
 	}
 
 	@Test

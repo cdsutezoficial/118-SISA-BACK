@@ -2,19 +2,25 @@ package mx.edu.utez.sisa.admission.domain.service;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
+import mx.edu.utez.sisa.admission.shared.exception.CashAmountChangedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 /**
@@ -34,15 +40,13 @@ import java.util.UUID;
  * repeat-confirmation, not a new transition.</li>
  * </ol>
  *
- * <p>The receipt number ({@code REC-{yyyyMMdd}-{folioSeq}}) is generated here.
- * It deliberately does <em>not</em> follow the payment reference: that one is
- * {@code REF-{folio}} (decisión 11.1), because a reference has to be recomputable
- * from the ficha alone, while a receipt is minted once at payment time and
- * stamped on an email and a PDF. It still reads {@code LocalDate.now()} from the
- * server's default zone, which the reference no longer does — not worth a format
- * change on strings already printed and mailed, but not something to copy
- * anywhere new. Email dispatch is the web layer's concern (best-effort
- * notification, never part of this transaction).
+ * <p>The receipt number ({@code REC-{yyyyMMdd}-{folioSeq}}, see {@link ReceiptNumbers})
+ * is generated here. It deliberately does <em>not</em> follow the payment reference:
+ * that one is {@code REF-{folio}} (decisión 11.1), because a reference has to be
+ * recomputable from the ficha alone, while a receipt is minted once at payment time and
+ * stamped on an email and a PDF. The date comes from the admission clock, and a number
+ * already used that day gets a {@code -2}, {@code -3} suffix. The receipt mail is sent
+ * after the commit (best-effort, never part of this transaction).
  */
 public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPaymentUseCase {
 
@@ -58,59 +62,205 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 
 	private final CheckoutAttemptRepository checkoutAttemptRepository;
 
+	private final CandidateNotificationPort notifications;
+
+	/** F1: the place a cash payment takes is checked under the same lock as the checkout's. */
+	private final AdmissionQuotaPort admissionQuotaPort;
+
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
+	private final Clock clock;
+
+	private final int checkoutHoldMinutes;
+
+	private final ReceiptNumbers receipts;
+
 	public ConfirmAdmissionPaymentUseCaseImpl(CandidateRepository candidateRepository,
-			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			FichaPaymentPort fichaPaymentPort,
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort notifications,
+			AdmissionQuotaPort admissionQuotaPort, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			Clock clock, int checkoutHoldMinutes) {
+		this.notifications = notifications;
+		this.admissionQuotaPort = admissionQuotaPort;
+		this.clock = clock;
+		this.checkoutHoldMinutes = checkoutHoldMinutes;
 		this.candidateRepository = candidateRepository;
 		this.fichaPaymentPort = fichaPaymentPort;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
+		this.receipts = new ReceiptNumbers(fichaPaymentPort, clock);
 	}
 
 	@Override
 	@Transactional
 	public ConfirmPaymentResult confirm(UUID candidateId, String capturedOrderId) {
-		Candidate candidate = candidateRepository.findById(candidateId)
-				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
+		Candidate candidate = requireCandidate(candidateId);
+		FichaPaymentPort.FichaCharge charge = requireOwed(candidate);
 
-		// The difference a career change left to pay, when there is one; the ficha otherwise.
+		// The numbers booked are the captured attempt's, when there is one.
+		CheckoutAttempt attempt = capturedOrderId == null ? null
+				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
+		ConfirmPaymentResult result = settle(candidate, charge, chargedBy(attempt), attempt != null, capturedOrderId,
+				null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR);
+		// F3: here, not in the controller, so the reconciliation's confirmations send a
+		// receipt too. Delivered after this transaction commits.
+		notifications.paymentConfirmed(result);
+		return result;
+	}
+
+	/**
+	 * {@code READ_COMMITTED} for the same reason as {@code CheckoutSlotClaimer#claim}: the
+	 * count taken under the lock has to see places committed a moment ago.
+	 */
+	@Override
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public ConfirmPaymentResult confirmCash(UUID candidateId, BigDecimal expectedAmount, boolean useCredit,
+			UUID collectorId, String collectorName) {
+		Candidate candidate = requireCandidate(candidateId);
+		FichaPaymentPort.FichaCharge charge = requireOwed(candidate);
 		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		// A difference does not compete for a place: a paid candidate already holds one.
+		if (!programChange) {
+			requirePlace(candidate);
+			requireNoOtherValidCandidateInPeriod(candidate);
+		}
+
+		// The saldo a favor goes first; the cash is only what it leaves.
+		if (useCredit && fichaPaymentPort.availableCredit(candidateId).signum() > 0) {
+			String creditReceipt = receipts.credit(candidate.getFolio(), programChange);
+			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCreditAtCashier(charge.financePaymentId(),
+					creditReceipt, collectorId);
+			if (use.settled()) {
+				requireCash(expectedAmount, BigDecimal.ZERO);
+				ConfirmPaymentResult result = paidWithCredit(candidate, charge, use, creditReceipt);
+				notifications.paymentConfirmed(result);
+				return result;
+			}
+			// Partly paid now: the cash settles the rest of the same charge.
+			charge = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
+		}
+
+		ConfirmPaymentResult result = settle(candidate, charge, null, false, null, collectorId, collectorName);
+		requireCash(expectedAmount, result.amount());
+		notifications.paymentConfirmed(result);
+		return result;
+	}
+
+	/** Rolls the whole booking back when the cash is not what the cashier saw. */
+	private static void requireCash(BigDecimal expectedAmount, BigDecimal cash) {
+		if (expectedAmount == null || cash.compareTo(expectedAmount) != 0) {
+			throw new CashAmountChangedException("El monto a cobrar cambió: ahora son $" + cash
+					+ ". Vuelve a consultar la ficha antes de cobrar.");
+		}
+	}
+
+	/** The saldo a favor paid the whole charge: no cash, the charge is settled as it stands. */
+	private ConfirmPaymentResult paidWithCredit(Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			FichaPaymentPort.CreditUse use, String receipt) {
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		FichaPaymentPort.FichaCharge previousCharge = programChange && candidate.getFichaPaymentId() != null
+				? fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null)
+				: null;
+		if (programChange) {
+			candidate.adoptFichaPayment(charge.financePaymentId());
+		} else {
+			candidate.markPaid(periodIdOf(candidate));
+		}
+		candidateRepository.save(candidate);
+		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
+		BigDecimal before = use.amountPaid().subtract(use.applied()).max(BigDecimal.ZERO);
+		return new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
+				charge.referenceNumber(), use.applied(), paid.paidAt() != null ? paid.paidAt() : Instant.now(clock),
+				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, use.amountPaid(), before,
+				previousCharge == null ? null : previousCharge.receiptNumber(),
+				previousCharge == null ? null : previousCharge.paidAt(), programChange);
+	}
+
+	private Candidate requireCandidate(UUID candidateId) {
+		return candidateRepository.findById(candidateId)
+				.orElseThrow(() -> new CandidateNotFoundException("No existe el candidato: " + candidateId));
+	}
+
+	/** The difference a career change left to pay, when there is one; the ficha otherwise. */
+	private FichaPaymentPort.FichaCharge requireOwed(Candidate candidate) {
 		FichaPaymentPort.FichaCharge charge = FichaCharges.collecting(candidate, fichaPaymentPort)
 				.orElseThrow(() -> new CandidateNotFoundException(
-						"El candidato no tiene ficha de pago: " + candidateId));
+						"El candidato no tiene ficha de pago: " + candidate.getId()));
 		if (charge.isPaid()) {
 			throw new CandidateAlreadyPaidException(
 					"La ficha del candidato " + candidate.getFolio() + " ya estaba pagada.");
 		}
+		return charge;
+	}
 
-		// Same transaction: the finance charge and the candidate are settled
-		// together, or neither is. The numbers booked are the captured
-		// attempt's, when there is one; the receipt goes on the abono.
-		String receipt = generateReceipt(candidate.getFolio()) + (programChange ? "-C" : "");
-		CheckoutAttempt attempt = capturedOrderId == null ? null
-				: checkoutAttemptRepository.findByOrderId(capturedOrderId).orElse(null);
+	/** Same count as the checkout's claim: paid fichas plus open attempts still holding a place. */
+	private void requirePlace(Candidate candidate) {
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidate.getId(), FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes));
+		if (occupiedByOthers >= quota.maxCandidates()) {
+			throw new ProgramAdmissionConfigCapacityReachedException("El cupo de esta carrera se agotó.");
+		}
+	}
+
+	/**
+	 * One valid candidacy per CURP per period, also at the cash desk: checked before
+	 * the money is taken, so the cashier never receives it for a ficha that cannot count.
+	 */
+	private void requireNoOtherValidCandidateInPeriod(Candidate candidate) {
+		if (candidateRepository.existsAnotherValidInPeriod(candidate.getCurp(), periodIdOf(candidate),
+				candidate.getId())) {
+			throw new CandidateAlreadyExistsException(
+					"Este CURP ya tiene una candidatura válida en este proceso de admisión.");
+		}
+	}
+
+	private UUID periodIdOf(Candidate candidate) {
+		return programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
+				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
+				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
+						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
+	}
+
+	/**
+	 * Same transaction: the finance charge and the candidate are settled together, or
+	 * neither is. The receipt goes on the abono.
+	 */
+	private ConfirmPaymentResult settle(Candidate candidate, FichaPaymentPort.FichaCharge charge,
+			FichaPaymentPort.ChargedAmounts charged, boolean online, String orderId, UUID collectorId,
+			String collectorName) {
+		boolean programChange = candidate.getProgramChangePaymentId() != null;
+		String receipt = receipts.money(candidate.getFolio(), programChange);
 		FichaPaymentPort.SettledFicha settled = fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(
-				charge.financePaymentId(), chargedBy(attempt), attempt != null, capturedOrderId, receipt,
-				charge.referenceNumber(), null, attempt != null ? ONLINE_COLLECTOR : SYSTEM_COLLECTOR));
+				charge.financePaymentId(), charged, online, orderId, receipt, charge.referenceNumber(), collectorId,
+				collectorName));
+
+		// E6: the earlier charge the carried money came from, read before the
+		// difference replaces it as the ficha.
+		FichaPaymentPort.FichaCharge previousCharge = programChange && candidate.getFichaPaymentId() != null
+				? fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null)
+				: null;
 
 		if (programChange) {
 			// Paid in full: the new career's charge is the ficha from now on.
 			candidate.adoptFichaPayment(charge.financePaymentId());
 		} else {
-			UUID periodId = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
-					.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
-					.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
-							"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
-			candidate.markPaid(periodId);
+			candidate.markPaid(periodIdOf(candidate));
 		}
 		candidateRepository.save(candidate);
 
 		FichaPaymentPort.FichaCharge paid = fichaPaymentPort.findCharge(charge.financePaymentId()).orElse(charge);
-		return new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(), candidate.getStatus(),
-				charge.referenceNumber(), settled.amountPaid(), paid.paidAt() != null ? paid.paidAt() : Instant.now(),
-				paid.receiptNumber() != null ? paid.receiptNumber() : receipt);
+		// E6: `settled.amountPaid()` is everything the charge has received. What this
+		// operation paid is the part the charge did not have before it.
+		BigDecimal before = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
+		BigDecimal total = settled.amountPaid();
+		BigDecimal paidNow = total.subtract(before).max(BigDecimal.ZERO);
+		ConfirmPaymentResult result = new ConfirmPaymentResult(candidate.getId(), candidate.getFolio(),
+				candidate.getStatus(), charge.referenceNumber(), paidNow, paid.paidAt() != null ? paid.paidAt() : Instant.now(clock),
+				paid.receiptNumber() != null ? paid.receiptNumber() : receipt, total, before,
+				previousCharge == null ? null : previousCharge.receiptNumber(),
+				previousCharge == null ? null : previousCharge.paidAt(), programChange);
+		return result;
 	}
 
 	/**
@@ -125,10 +275,4 @@ public class ConfirmAdmissionPaymentUseCaseImpl implements ConfirmAdmissionPayme
 				attempt.getDiscountAmount(), attempt.getAmount(), attempt.getBenefitId());
 	}
 
-	/** {@code REC-{yyyyMMdd}-{folioSeq}} — minted at payment time; see the class javadoc. */
-	private static String generateReceipt(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("REC-%s-%s", today, seq);
-	}
 }

@@ -5,7 +5,11 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.finance.domain.model.PaymentChannel;
 import mx.edu.utez.sisa.finance.domain.model.PaymentEntryMethod;
 import mx.edu.utez.sisa.finance.domain.model.PaymentOrigin;
+import mx.edu.utez.sisa.finance.domain.model.CreditStatus;
+import mx.edu.utez.sisa.finance.domain.port.in.ApplyCreditToPaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.CreatePaymentUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.ListCreditsUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.ChangeChargeProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.model.AdmissionPaymentStatus;
 import mx.edu.utez.sisa.finance.domain.model.PaymentStatus;
@@ -13,6 +17,7 @@ import mx.edu.utez.sisa.finance.domain.port.in.FreezeDebtQuoteUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.GetChargeStatusUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.QuoteDebtUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.RaiseDebtUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.RegisterOverpaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.SettleDebtUseCase;
 import mx.edu.utez.sisa.finance.shared.exception.ConceptNotFoundException;
 import mx.edu.utez.sisa.finance.shared.exception.NoRateAvailableException;
@@ -54,10 +59,21 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 
 	private final ChangeChargeProgramUseCase changeChargeProgramUseCase;
 
+	private final RegisterOverpaymentUseCase registerOverpaymentUseCase;
+
+	private final ListCreditsUseCase listCreditsUseCase;
+
+	private final ApplyCreditToPaymentUseCase applyCreditToPaymentUseCase;
+
 	public FichaPaymentAdapter(RaiseDebtUseCase raiseDebtUseCase, QuoteDebtUseCase quoteDebtUseCase,
 			FreezeDebtQuoteUseCase freezeDebtQuoteUseCase, SettleDebtUseCase settleDebtUseCase,
 			CancelDebtUseCase cancelDebtUseCase, GetChargeStatusUseCase getChargeStatusUseCase,
-			ChangeChargeProgramUseCase changeChargeProgramUseCase) {
+			ChangeChargeProgramUseCase changeChargeProgramUseCase,
+			RegisterOverpaymentUseCase registerOverpaymentUseCase, ListCreditsUseCase listCreditsUseCase,
+			ApplyCreditToPaymentUseCase applyCreditToPaymentUseCase) {
+		this.listCreditsUseCase = listCreditsUseCase;
+		this.applyCreditToPaymentUseCase = applyCreditToPaymentUseCase;
+		this.registerOverpaymentUseCase = registerOverpaymentUseCase;
 		this.getChargeStatusUseCase = getChargeStatusUseCase;
 		this.changeChargeProgramUseCase = changeChargeProgramUseCase;
 		this.raiseDebtUseCase = raiseDebtUseCase;
@@ -70,7 +86,8 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	@Override
 	public UUID raiseFichaDebt(RaiseFichaDebtCommand command) {
 		return raiseDebtUseCase.raise(new RaiseDebtUseCase.RaiseDebtCommand(command.candidateId(), null,
-				command.conceptCode(), command.programId(), null, null, PaymentOrigin.ADMISSION,
+				command.conceptCode(), command.programId(), command.periodId(), command.generationId(),
+				PaymentOrigin.ADMISSION,
 				command.dueAt(), command.referenceNumber()));
 	}
 
@@ -79,12 +96,23 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 		return getChargeStatusUseCase.find(financePaymentId).map(FichaPaymentAdapter::toCharge);
 	}
 
+	@Override
+	public boolean receiptInUse(String receiptNumber) {
+		return getChargeStatusUseCase.receiptInUse(receiptNumber);
+	}
+
+	@Override
+	public Optional<FichaCharge> lockCharge(UUID financePaymentId) {
+		return getChargeStatusUseCase.findForUpdate(financePaymentId).map(FichaPaymentAdapter::toCharge);
+	}
+
 	private static FichaCharge toCharge(GetChargeStatusUseCase.ChargeStatus charge) {
 		boolean paid = charge.status() == PaymentStatus.PAID || charge.status() == PaymentStatus.EXEMPT;
 		return new FichaCharge(charge.paymentId(), charge.referenceNumber(),
 				paid ? AdmissionPaymentStatus.PAID : AdmissionPaymentStatus.PENDING,
 				charge.status() == PaymentStatus.CANCELLED, charge.dueAt(), charge.createdAt(),
-				paid ? charge.paidAt() : null, paid ? charge.receiptNumber() : null);
+				paid ? charge.paidAt() : null, paid ? charge.receiptNumber() : null,
+				charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid());
 	}
 
 	@Override
@@ -119,15 +147,57 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	}
 
 	@Override
+	public boolean registerOverpayment(UUID financePaymentId, String orderId, BigDecimal amount) {
+		return registerOverpaymentUseCase.register(financePaymentId, orderId, amount).isPresent();
+	}
+
+	@Override
+	public BigDecimal availableCredit(UUID candidateId) {
+		return listCreditsUseCase.listByCandidate(candidateId).stream()
+				.filter(credit -> credit.status() == CreditStatus.AVAILABLE)
+				.map(ListCreditsUseCase.CreditView::amount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	@Override
+	public BigDecimal availableOwnCredit(UUID candidateId) {
+		return listCreditsUseCase.listAvailableOwnByCandidate(candidateId).stream()
+				.map(ListCreditsUseCase.CreditView::amount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	@Override
+	public CreditUse applyCredit(UUID financePaymentId, String receiptNumber) {
+		return applyCredit(financePaymentId, PaymentChannel.PORTAL, null, receiptNumber);
+	}
+
+	@Override
+	public CreditUse applyCreditAtCashier(UUID financePaymentId, String receiptNumber, UUID collectorId) {
+		return applyCredit(financePaymentId, PaymentChannel.CASHIER, collectorId, receiptNumber);
+	}
+
+	private CreditUse applyCredit(UUID financePaymentId, PaymentChannel channel, UUID actingUserId,
+			String receiptNumber) {
+		ApplyCreditToPaymentUseCase.CreditApplicationResult result = applyCreditToPaymentUseCase.applyCredit(
+				new ApplyCreditToPaymentUseCase.ApplyCreditCommand(financePaymentId, channel, actingUserId,
+						receiptNumber));
+		CreatePaymentUseCase.PaymentResult payment = result.payment();
+		return new CreditUse(result.creditApplied(), payment.amountDue(), payment.amountPaid(),
+				payment.status() == CreatePaymentUseCase.PaymentSnapshotStatus.PAID
+						|| payment.status() == CreatePaymentUseCase.PaymentSnapshotStatus.EXEMPT);
+	}
+
+	@Override
 	public FichaQuote quoteForProgram(UUID financePaymentId, String conceptCode, UUID programId) {
 		return priced(() -> toQuote(changeChargeProgramUseCase.previewReassign(financePaymentId, conceptCode,
 				programId)));
 	}
 
 	@Override
-	public void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId) {
+	public void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId, UUID periodId,
+			UUID generationId) {
 		priced(() -> {
-			changeChargeProgramUseCase.reassign(financePaymentId, conceptCode, programId);
+			changeChargeProgramUseCase.reassign(financePaymentId, conceptCode, programId, periodId, generationId);
 			return null;
 		});
 	}
@@ -142,7 +212,7 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 	public ProgramChangeAmounts rebill(RebillFichaCommand command) {
 		return priced(() -> toAmounts(changeChargeProgramUseCase.rebill(new ChangeChargeProgramUseCase.RebillCommand(
 				command.fromPaymentId(), command.conceptCode(), command.programId(), command.dueAt(),
-				command.reference(), command.actingUserId()))));
+				command.reference(), command.actingUserId(), command.periodId(), command.generationId()))));
 	}
 
 	@Override
@@ -163,7 +233,8 @@ public class FichaPaymentAdapter implements FichaPaymentPort {
 
 	private static ProgramChangeAmounts toAmounts(ChangeChargeProgramUseCase.RebillOutcome outcome) {
 		return new ProgramChangeAmounts(outcome.paymentId(), outcome.newAmount(), outcome.alreadyPaid(),
-				outcome.otherCredit(), outcome.toPay(), outcome.creditLeft());
+				outcome.otherCredit(), outcome.toPay(), outcome.creditLeft(),
+				outcome.tariff() == null ? outcome.newAmount() : outcome.tariff());
 	}
 
 	private static <T> T priced(Supplier<T> call) {

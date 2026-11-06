@@ -3,14 +3,15 @@ package mx.edu.utez.sisa.admission.domain.service;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
+import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyExistsException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
@@ -51,14 +52,21 @@ public class CheckoutSlotClaimer {
 	private final FichaPaymentPort fichaPaymentPort;
 	private final ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 	private final Clock clock;
+	private final CandidateNotificationPort notifications;
+	private final FinanceAlertPort financeAlertPort;
 
 	/** Minutes an open checkout attempt holds a quota place. */
 	private final int checkoutHoldMinutes;
 
+	private final ReceiptNumbers receipts;
+
 	public CheckoutSlotClaimer(AdmissionQuotaPort admissionQuotaPort, CandidateRepository candidateRepository,
 			CheckoutAttemptRepository checkoutAttemptRepository, FichaPaymentPort fichaPaymentPort,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			CandidateNotificationPort notifications, FinanceAlertPort financeAlertPort) {
+		this.notifications = notifications;
+		this.financeAlertPort = financeAlertPort;
 		this.admissionQuotaPort = admissionQuotaPort;
 		this.candidateRepository = candidateRepository;
 		this.checkoutAttemptRepository = checkoutAttemptRepository;
@@ -66,6 +74,7 @@ public class CheckoutSlotClaimer {
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.clock = clock;
 		this.checkoutHoldMinutes = checkoutHoldMinutes;
+		this.receipts = new ReceiptNumbers(fichaPaymentPort, clock);
 	}
 
 	/**
@@ -114,6 +123,114 @@ public class CheckoutSlotClaimer {
 	}
 
 	/**
+	 * {@link #claim} for a ficha that is paid, in whole or in part, with the
+	 * person's saldo a favor (F9, when they choose to use it), or that already
+	 * received part of its price that way on an earlier try.
+	 *
+	 * <p>One transaction under the quota lock: the place is checked first, then
+	 * the saldo is used, then either the ficha is paid or the attempt for the rest
+	 * is opened. If any step fails nothing is kept, so saldo is never spent on a
+	 * ficha that could not get a place.
+	 *
+	 * <p>Once the ficha has received part of its price its numbers are fixed, so
+	 * the attempt carries no snapshot: EVO is asked only for the rest, and the
+	 * confirmation settles the charge with its own numbers.
+	 *
+	 * @param useCredit whether the person asked to use their saldo now
+	 * @return the receipt when the saldo paid it all; otherwise what EVO must
+	 *         collect
+	 * @throws ProgramAdmissionConfigCapacityReachedException if the career is full
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+	public CreditClaim claimUsingCredit(UUID candidateId, String orderId, FichaPaymentPort.FichaQuote price,
+			boolean useCredit) {
+		Candidate candidate = requireCandidate(candidateId);
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		Instant now = Instant.now(clock);
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidateId, FichaPaymentWindow.attemptsHoldingSince(now, checkoutHoldMinutes));
+		if (occupiedByOthers >= quota.maxCandidates()) {
+			throw new ProgramAdmissionConfigCapacityReachedException(quotaReachedMessage());
+		}
+		UUID periodId = requireNoOtherValidCandidateInPeriod(candidate);
+		FichaPaymentPort.FichaCharge charge = requirePendingCharge(candidate);
+
+		BigDecimal paidSoFar = charge.amountPaid() == null ? BigDecimal.ZERO : charge.amountPaid();
+		if (useCredit && fichaPaymentPort.availableOwnCredit(candidateId).signum() > 0) {
+			String receipt = receipts.credit(candidate.getFolio(), false);
+			FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(charge.financePaymentId(), receipt);
+			if (use.settled()) {
+				candidate.markPaid(periodId);
+				candidateRepository.save(candidate);
+				notifyCreditPayment(candidate, charge.referenceNumber(), receipt, use, null, false);
+				return new CreditClaim(receipt, BigDecimal.ZERO);
+			}
+			paidSoFar = use.amountPaid();
+		}
+
+		if (paidSoFar.signum() == 0) {
+			checkoutAttemptRepository.save(new CheckoutAttempt(orderId, price.financePaymentId(), candidateId, null,
+					price.amountDue(), now, price.rateId(), price.originalAmount(), price.discountAmount(),
+					price.benefitId()));
+			return new CreditClaim(null, price.amountDue());
+		}
+		BigDecimal rest = price.amountDue().subtract(paidSoFar);
+		checkoutAttemptRepository.save(new CheckoutAttempt(orderId, charge.financePaymentId(), candidateId, null,
+				rest, now, null, null, null, null));
+		return new CreditClaim(null, rest);
+	}
+
+	/**
+	 * @param receipt   the receipt when the saldo paid the whole ficha, else {@code null}
+	 * @param toCollect what EVO has to collect; zero when the saldo paid it all
+	 */
+	public record CreditClaim(String receipt, BigDecimal toCollect) {
+
+		public boolean paidWithCredit() {
+			return receipt != null;
+		}
+	}
+
+	/**
+	 * Uses the person's saldo a favor on the difference a career change left,
+	 * when they choose to (F9). No quota: a paid candidate already holds a
+	 * place. When it covers the difference the new career's charge becomes the
+	 * ficha, exactly as a captured payment of the difference does.
+	 *
+	 * @return the saldo used and whether the difference is paid; {@code null}
+	 *         when the person has no saldo
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public FichaPaymentPort.CreditUse payDifferenceWithCredit(UUID candidateId, UUID differencePaymentId) {
+		Candidate candidate = requireCandidate(candidateId);
+		if (fichaPaymentPort.availableOwnCredit(candidateId).signum() <= 0) {
+			return null;
+		}
+		String receipt = receipts.credit(candidate.getFolio(), true);
+		FichaPaymentPort.CreditUse use = fichaPaymentPort.applyCredit(differencePaymentId, receipt);
+		if (use.settled()) {
+			FichaPaymentPort.FichaCharge previous = candidate.getFichaPaymentId() == null ? null
+					: fichaPaymentPort.findCharge(candidate.getFichaPaymentId()).orElse(null);
+			candidate.adoptFichaPayment(differencePaymentId);
+			candidateRepository.save(candidate);
+			String reference = fichaPaymentPort.findCharge(differencePaymentId)
+					.map(FichaPaymentPort.FichaCharge::referenceNumber).orElse(null);
+			notifyCreditPayment(candidate, reference, receipt, use, previous, true);
+		}
+		return use;
+	}
+
+	/** F3/E6: the receipt of a charge the saldo a favor finished paying. */
+	private void notifyCreditPayment(Candidate candidate, String reference, String receipt,
+			FichaPaymentPort.CreditUse use, FichaPaymentPort.FichaCharge previous, boolean programChange) {
+		BigDecimal before = use.amountPaid().subtract(use.applied()).max(BigDecimal.ZERO);
+		notifications.paymentConfirmed(new ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult(candidate.getId(),
+				candidate.getFolio(), candidate.getStatus(), reference, use.applied(), Instant.now(clock), receipt,
+				use.amountPaid(), before, previous == null ? null : previous.receiptNumber(),
+				previous == null ? null : previous.paidAt(), programChange));
+	}
+
+	/**
 	 * Opens the checkout attempt for the difference a career change left to pay.
 	 * No quota check: a paid candidate already holds a place, and the change
 	 * itself checked the new career had one. The attempt carries no price
@@ -146,22 +263,16 @@ public class CheckoutSlotClaimer {
 				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + candidate.getAdmissionConfigId()));
-		String receipt = exemptionReceipt(candidate.getFolio());
+		String receipt = receipts.exemption(candidate.getFolio());
 		fichaPaymentPort.settle(new FichaPaymentPort.SettleFichaCommand(price.financePaymentId(), price.charged(),
 				false, null, receipt, charge.referenceNumber(), null, EXEMPTION_COLLECTOR));
 		candidate.markPaid(periodId);
 		candidateRepository.save(candidate);
+		// F3: an exemption is a paid ficha too, and gets its receipt at $0.
+		notifications.paymentConfirmed(new ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult(candidate.getId(),
+				candidate.getFolio(), candidate.getStatus(), charge.referenceNumber(), BigDecimal.ZERO,
+				Instant.now(clock), receipt));
 		return receipt;
-	}
-
-	/**
-	 * {@code EXE-{yyyyMMdd}-{folioSeq}} — the discount-backed "receipt", distinct
-	 * in prefix from the {@code REC-} a bank payment mints.
-	 */
-	private String exemptionReceipt(String folio) {
-		String seq = folio.substring(folio.lastIndexOf('-') + 1);
-		String today = LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE);
-		return String.format("EXE-%s-%s", today, seq);
 	}
 
 	/**
@@ -178,6 +289,50 @@ public class CheckoutSlotClaimer {
 			attempt.close(reason, Instant.now(clock));
 			checkoutAttemptRepository.save(attempt);
 		});
+	}
+
+	/**
+	 * E4: whether a capture that arrived after its attempt stopped holding a place may
+	 * still settle the ficha. If not, the money is kept as saldo a favor of the person
+	 * and the attempt is closed, both committed here so the caller can refuse the
+	 * confirmation without losing them.
+	 *
+	 * <p>Only the ficha itself competes for a place. A difference left by a career change
+	 * is collected from someone whose ficha already occupies one, and an attempt still
+	 * inside the hold is holding its own.
+	 *
+	 * <p>Checked under the quota lock, like {@link #claim}. The confirmation commits a
+	 * moment later in its own transaction, so two late captures racing for the final place
+	 * could both pass: an accepted risk for a case that needs a payment outliving its hold
+	 * on a full career, and the result would be one place over, never lost money.
+	 *
+	 * @return {@code true} when the capture may settle the ficha as usual
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+	public boolean placeForLateCapture(UUID candidateId, CheckoutAttempt attempt, BigDecimal captured) {
+		Candidate candidate = requireCandidate(candidateId);
+		Instant holdingSince = FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes);
+		if (!attempt.getPaymentId().equals(candidate.getFichaPaymentId())
+				|| !attempt.getCreatedAt().isBefore(holdingSince)) {
+			return true;
+		}
+		AdmissionQuotaPort.QuotaState quota = admissionQuotaPort.lockQuota(candidate.getAdmissionConfigId());
+		long occupiedByOthers = admissionQuotaPort.countOccupiedExcluding(candidate.getAdmissionConfigId(),
+				candidateId, holdingSince);
+		if (occupiedByOthers < quota.maxCandidates()) {
+			return true;
+		}
+		fichaPaymentPort.registerOverpayment(attempt.getPaymentId(), attempt.getOrderId(), captured);
+		financeAlertPort.raise(FinanceAlertPort.Kind.PAID_WITHOUT_QUOTA, candidateId, attempt.getPaymentId(),
+				attempt.getOrderId(), captured, "El banco cobró después de que venció el apartado del lugar y la "
+						+ "carrera ya estaba llena. El monto quedó como saldo a favor; revisar con la persona.");
+		checkoutAttemptRepository.findByOrderId(attempt.getOrderId()).ifPresent(row -> {
+			if (row.isOpen()) {
+				row.close(CheckoutAttemptCloseReason.CAPTURED, Instant.now(clock));
+				checkoutAttemptRepository.save(row);
+			}
+		});
+		return false;
 	}
 
 	/** Stores the hosted-checkout session EVO opened on the attempt. */
@@ -209,7 +364,7 @@ public class CheckoutSlotClaimer {
 		return charge;
 	}
 
-	private void requireNoOtherValidCandidateInPeriod(Candidate candidate) {
+	private UUID requireNoOtherValidCandidateInPeriod(Candidate candidate) {
 		UUID periodId = programAdmissionConfigQueryPort.findById(candidate.getAdmissionConfigId())
 				.map(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo::periodId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
@@ -218,6 +373,7 @@ public class CheckoutSlotClaimer {
 			throw new CandidateAlreadyExistsException(
 					"Este CURP ya tiene una candidatura válida en este proceso de admisión.");
 		}
+		return periodId;
 	}
 
 	/**

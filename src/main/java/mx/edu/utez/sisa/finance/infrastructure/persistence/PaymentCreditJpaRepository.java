@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,4 +33,14 @@ public interface PaymentCreditJpaRepository extends JpaRepository<PaymentCredit,
 	List<PaymentCredit> findByCandidateIdAndStatusOrderByCreatedAtAsc(UUID candidateId, CreditStatus status);
 
 	List<PaymentCredit> findByStudentIdAndStatusOrderByCreatedAtAsc(UUID studentId, CreditStatus status);
+
+	Optional<PaymentCredit> findByExternalOrderId(String externalOrderId);
+
+	/** Every credit of these candidate records (the fichas of one person), newest first. */
+	List<PaymentCredit> findByCandidateIdInOrderByCreatedAtDesc(Collection<UUID> candidateIds);
+
+	/** The credits in {@code status} of these candidate records, oldest first. */
+	List<PaymentCredit> findByCandidateIdInAndStatusOrderByCreatedAtAsc(Collection<UUID> candidateIds,
+			CreditStatus status);
+
 }

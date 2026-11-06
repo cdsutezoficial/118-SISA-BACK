@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{titulo}} — Ficha de Admisión UTEZ</title>
+  </head>
+  <!--
+    Aviso de la ficha (cambio de carrera: diferencia por pagar o saldo a favor).
+    Mismo armazón que el comprobante; las filas y el enlace los arma el servicio
+    con los valores ya escapados.
+  -->
+  <body style="margin:0; padding:0; background-color:#F8F9FA; -webkit-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8F9FA" style="background-color:#F8F9FA;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:600px; max-width:600px; background-color:#FFFFFF; border:1px solid #E5E7EB; border-radius:8px;">
+
+            <!-- Encabezado: logo sobre blanco + etiqueta a la derecha -->
+            <tr>
+              <td style="padding:24px 32px 20px 32px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="left" valign="middle">
+                      {{logo}}
+                    </td>
+                    <td align="right" valign="middle" style="font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#6B7280; line-height:18px;">
+                      Aviso de<br />tu ficha
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Banda -->
+            <tr>
+              <td bgcolor="{{color}}" style="background-color:{{color}}; padding:28px 32px; text-align:center;">
+                <p style="margin:0 0 8px 0; font-family:Arial,Helvetica,sans-serif; font-size:22px; line-height:28px; font-weight:bold; color:#FFFFFF;">
+                  {{titulo}}
+                </p>
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#FFFFFF;">
+                  {{subtitulo}}
+                </p>
+              </td>
+            </tr>
+
+            <!-- Detalle -->
+            <tr>
+              <td style="padding:24px 32px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8F9FA" style="background-color:#F8F9FA; border:1px solid #E5E7EB; border-radius:6px;">
+                  <tr>
+                    <td style="padding:12px 20px 6px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280; width:45%;">
+                      Tu folio
+                    </td>
+                    <td style="padding:12px 20px 6px 20px; font-family:'Courier New',Courier,monospace; font-size:13px; line-height:20px; color:#333333;">
+                      {{folio}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                      Carrera
+                    </td>
+                    <td style="padding:6px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#333333;">
+                      {{carrera}}
+                    </td>
+                  </tr>
+                  {{filas}}
+                </table>
+              </td>
+            </tr>
+
+            <!-- Mensaje -->
+            <tr>
+              <td style="padding:0 32px 24px 32px;">
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:20px; color:#6B7280;">
+                  Hola {{nombre}}, {{mensaje}}
+                </p>
+                {{enlace}}
+              </td>
+            </tr>
+
+            <!-- Pie -->
+            <tr>
+              <td style="padding:20px 32px 24px 32px; border-top:1px solid #E5E7EB;">
+                <p style="margin:0 0 6px 0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; color:#9CA3AF;">
+                  El PDF que descargas en el portal es una copia sin validez oficial; la ficha oficial es la que expide la Universidad.
+                </p>
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:18px; color:#9CA3AF;">
+                  Universidad Tecnológica de la Zona de UTEZ<br />
+                  SISA — Sistema Integral de Servicios Académicos
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

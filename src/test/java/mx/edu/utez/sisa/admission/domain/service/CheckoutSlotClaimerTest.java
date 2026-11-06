@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
@@ -89,6 +90,12 @@ class CheckoutSlotClaimerTest {
 	private FichaPaymentPort fichaPaymentPort;
 
 	@Mock
+	private CandidateNotificationPort notifications;
+
+	@Mock
+	private mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort;
+
+	@Mock
 	private ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort;
 
 	private CheckoutSlotClaimer claimer;
@@ -98,7 +105,8 @@ class CheckoutSlotClaimerTest {
 	@BeforeEach
 	void setUp() {
 		claimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository, checkoutAttemptRepository,
-				fichaPaymentPort, programAdmissionConfigQueryPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES);
+				fichaPaymentPort, programAdmissionConfigQueryPort, Clock.fixed(NOW, ZONE), HOLD_MINUTES, notifications,
+				financeAlertPort);
 		candidate = new Candidate(ADMISSION_CONFIG_ID, "ADM-2026-000001", true, true, null);
 		candidate.setCurp("PEGJ900101HMSRRN09");
 		candidate.linkFichaPayment(CHARGE_ID);
@@ -144,6 +152,152 @@ class CheckoutSlotClaimerTest {
 		assertThat(attempt.getCreatedAt()).isEqualTo(NOW);
 		assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.STARTED);
 		assertThat(attempt.isOpen()).isTrue();
+	}
+
+	// -- late capture (E4) --
+
+	private static CheckoutAttempt attemptOpenedAgo(long minutes, UUID chargeId) {
+		return FichaTestData.attempt(ORDER_ID, chargeId, CANDIDATE_ID, CHECKOUT_AMOUNT,
+				NOW.minusSeconds(minutes * 60));
+	}
+
+	@Test
+	void aCaptureInsideItsHoldKeepsItsPlaceWithoutCounting() {
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(5, CHARGE_ID), CHECKOUT_AMOUNT))
+				.isTrue();
+
+		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
+	@Test
+	void aLateCaptureWithRoomLeftSettlesAsUsual() {
+		occupiedByOthers(MAX_CANDIDATES - 1);
+
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(90, CHARGE_ID), CHECKOUT_AMOUNT))
+				.isTrue();
+
+		verify(fichaPaymentPort, never()).registerOverpayment(any(), any(), any());
+	}
+
+	@Test
+	void aLateCaptureOnAFullCareerBecomesSaldoAndClosesTheAttempt() {
+		occupiedByOthers(MAX_CANDIDATES);
+		CheckoutAttempt attempt = attemptOpenedAgo(90, CHARGE_ID);
+		when(checkoutAttemptRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(attempt));
+
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attempt, CHECKOUT_AMOUNT)).isFalse();
+
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, CHECKOUT_AMOUNT);
+		verify(financeAlertPort).raise(org.mockito.ArgumentMatchers.eq(
+				mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.Kind.PAID_WITHOUT_QUOTA),
+				org.mockito.ArgumentMatchers.eq(CANDIDATE_ID), org.mockito.ArgumentMatchers.eq(CHARGE_ID),
+				org.mockito.ArgumentMatchers.eq(ORDER_ID), org.mockito.ArgumentMatchers.eq(CHECKOUT_AMOUNT),
+				any());
+		assertThat(attempt.getCloseReason()).isEqualTo(CheckoutAttemptCloseReason.CAPTURED);
+		verify(checkoutAttemptRepository).save(attempt);
+	}
+
+	/** A career-change difference is owed by someone whose ficha already holds a place. */
+	@Test
+	void aLateCaptureOfADifferenceDoesNotCompeteForAPlace() {
+		assertThat(claimer.placeForLateCapture(CANDIDATE_ID, attemptOpenedAgo(90, UUID.randomUUID()),
+				CHECKOUT_AMOUNT)).isTrue();
+
+		verify(admissionQuotaPort, never()).lockQuota(any());
+	}
+
+	// -- saldo a favor (F9) --
+
+	@Test
+	void saldoThatCoversTheFichaPaysItWithoutAnAttempt() {
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("800.00"));
+		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, CHECKOUT_AMOUNT, true));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.paidWithCredit()).isTrue();
+		assertThat(claim.receipt()).isEqualTo("SAF-20260925-000001");
+		assertThat(claim.toCollect()).isEqualByComparingTo("0.00");
+		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
+		verify(fichaPaymentPort).applyCredit(CHARGE_ID, "SAF-20260925-000001");
+		verify(checkoutAttemptRepository, never()).save(any());
+	}
+
+	@Test
+	void saldoThatFallsShortLeavesOnlyTheRestForEvo() {
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("200.00"));
+		when(fichaPaymentPort.applyCredit(eq(CHARGE_ID), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				new BigDecimal("200.00"), CHECKOUT_AMOUNT, new BigDecimal("200.00"), false));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.paidWithCredit()).isFalse();
+		assertThat(claim.toCollect()).isEqualByComparingTo("350.00");
+		assertThat(candidate.getStatus()).isNotEqualTo(CandidateStatus.PAID);
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		// The price is fixed once part of it was paid: no snapshot, EVO asks for the rest.
+		assertThat(saved.getValue().getAmount()).isEqualByComparingTo("350.00");
+		assertThat(saved.getValue().hasSnapshot()).isFalse();
+	}
+
+	@Test
+	void aFullCareerRefusesBeforeAnySaldoIsSpent() {
+		occupiedByOthers(MAX_CANDIDATES);
+
+		assertThatThrownBy(() -> claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true))
+				.isInstanceOf(ProgramAdmissionConfigCapacityReachedException.class);
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+	}
+
+	@Test
+	void withoutSaldoTheAttemptKeepsItsSnapshot() {
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, true);
+
+		assertThat(claim.toCollect()).isEqualByComparingTo(CHECKOUT_AMOUNT);
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+		ArgumentCaptor<CheckoutAttempt> saved = ArgumentCaptor.forClass(CheckoutAttempt.class);
+		verify(checkoutAttemptRepository).save(saved.capture());
+		assertThat(saved.getValue().hasSnapshot()).isTrue();
+	}
+
+	@Test
+	void saldoThatPaysTheDifferenceMakesTheNewChargeTheFicha() {
+		UUID difference = UUID.randomUUID();
+		candidate.markPaid();
+		candidate.awaitProgramChangePayment(difference);
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(new BigDecimal("500.00"));
+		when(fichaPaymentPort.applyCredit(eq(difference), any())).thenReturn(new FichaPaymentPort.CreditUse(
+				new BigDecimal("50.00"), new BigDecimal("1800.00"), new BigDecimal("1800.00"), true));
+
+		FichaPaymentPort.CreditUse use = claimer.payDifferenceWithCredit(CANDIDATE_ID, difference);
+
+		assertThat(use.settled()).isTrue();
+		assertThat(candidate.getFichaPaymentId()).isEqualTo(difference);
+		assertThat(candidate.getProgramChangePaymentId()).isNull();
+		verify(fichaPaymentPort).applyCredit(difference, "SAF-20260925-000001-C");
+	}
+
+	@Test
+	void withoutSaldoTheDifferenceIsLeftAsItWas() {
+		when(fichaPaymentPort.availableOwnCredit(CANDIDATE_ID)).thenReturn(BigDecimal.ZERO);
+
+		assertThat(claimer.payDifferenceWithCredit(CANDIDATE_ID, UUID.randomUUID())).isNull();
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
+	}
+
+	@Test
+	void aFichaPartlyPaidOnAnEarlierTryOnlyCollectsTheRest() {
+		when(fichaPaymentPort.findCharge(CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));
+
+		CheckoutSlotClaimer.CreditClaim claim = claimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, QUOTE, false);
+
+		assertThat(claim.toCollect()).isEqualByComparingTo("350.00");
+		verify(fichaPaymentPort, never()).applyCredit(any(), any());
 	}
 
 	@Test
@@ -230,6 +384,12 @@ class CheckoutSlotClaimerTest {
 		assertThat(settled.getValue().charged().amountDue()).isEqualByComparingTo("0.00");
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
 		verify(candidateRepository).save(candidate);
+		// F3: an exemption gets its receipt too.
+		ArgumentCaptor<mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult> sent =
+				ArgumentCaptor.forClass(mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase.ConfirmPaymentResult.class);
+		verify(notifications).paymentConfirmed(sent.capture());
+		assertThat(sent.getValue().receiptNumber()).isEqualTo(receipt);
+		assertThat(sent.getValue().amount()).isEqualByComparingTo("0.00");
 	}
 
 	// -- closing = releasing --

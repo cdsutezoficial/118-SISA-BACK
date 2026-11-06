@@ -22,4 +22,10 @@ public interface PaymentEntryRepository {
 	 * so two concurrent abonos cannot both read the same stale total.
 	 */
 	BigDecimal sumAmountByPaymentId(UUID paymentId);
+
+	/** Whether some abono was already booked from this gateway order. */
+	boolean existsByExternalOrderId(String externalOrderId);
+
+	/** Whether an abono already carries this receipt number. */
+	boolean existsByReceiptNumber(String receiptNumber);
 }

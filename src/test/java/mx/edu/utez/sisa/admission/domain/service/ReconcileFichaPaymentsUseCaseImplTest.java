@@ -1,7 +1,10 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +22,7 @@ import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseC
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
+import mx.edu.utez.sisa.admission.shared.exception.AdmissionPaidWithoutQuotaException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
@@ -48,6 +52,8 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 	private static final String ORDER_ID = "TESTUTEZ-ADM-2026-000001";
 
+	private static final String SECOND_ORDER_ID = "TESTUTEZ-ADM-2026-000001-2";
+
 	private static final BigDecimal QUOTED = new BigDecimal("500.00");
 
 	private static final Instant OPENED = Instant.parse("2026-09-30T12:00:00Z");
@@ -65,6 +71,9 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 	private static final UUID OTHER_CHARGE_ID = UUID.randomUUID();
 
+	/** The charge a career change left to pay, after the ficha was paid. */
+	private static final UUID DIFFERENCE_CHARGE_ID = UUID.randomUUID();
+
 	@Mock
 	private EvoPaymentsGatewayPort evoPaymentsGateway;
 
@@ -74,12 +83,128 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 	@Mock
 	private ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase;
 
+	@Mock
+	private mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort;
+
 	private ReconcileFichaPaymentsUseCaseImpl useCase;
 
 	@BeforeEach
 	void setUp() {
 		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
-				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clockAt(OPENED.plus(
+						Duration.ofMinutes(30))), HOLD_MINUTES, financeAlertPort);
+	}
+
+	private static final int HOLD_MINUTES = 60;
+
+	private static Clock clockAt(Instant now) {
+		return Clock.fixed(now, ZoneOffset.UTC);
+	}
+
+	/** The sweep as it runs {@code elapsed} after the attempts were opened. */
+	private void runningAfter(Duration elapsed) {
+		useCase = new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase,
+				clockAt(OPENED.plus(elapsed)), HOLD_MINUTES, financeAlertPort);
+	}
+
+	/** What EVO answers for a session nobody finished: no capture, nothing authorized. */
+	private static EvoPaymentsGatewayPort.EvoOrderStatus tookNothing() {
+		return new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "PENDING", QUOTED, BigDecimal.ZERO,
+				BigDecimal.ZERO, null, null, null, null, null);
+	}
+
+	private static EvoPaymentsGatewayPort.EvoOrderStatus authorizedOnly() {
+		return new EvoPaymentsGatewayPort.EvoOrderStatus(ORDER_ID, "PENDING", QUOTED, QUOTED, BigDecimal.ZERO,
+				null, null, null, null, null);
+	}
+
+	/** D10: past the hour with nothing taken, the session is closed and the place freed. */
+	@Test
+	void anAbandonedSessionPastTheHourIsClosedAsOrderExpired() {
+		runningAfter(Duration.ofMinutes(61));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.releasedSlots()).isEqualTo(1);
+		assertThat(result.heldAttempts()).isZero();
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.ORDER_EXPIRED);
+	}
+
+	@Test
+	void anAbandonedSessionInsideTheHourIsStillWaitedOn() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.heldAttempts()).isEqualTo(1);
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** E4: an authorization is waited on however old; past three days only an alert is raised. */
+	@Test
+	void anAuthorizationIsNeverClosedEvenAfterThreeDays() {
+		runningAfter(Duration.ofDays(4));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(authorizedOnly());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.heldAttempts()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+		verify(financeAlertPort).raise(eq(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.Kind.AUTHORIZED_NOT_CAPTURED),
+				eq(CANDIDATE_ID), eq(CHARGE_ID), eq(ORDER_ID), eq(QUOTED), anyString());
+	}
+
+	/** An authorization younger than three days is waited on without an alert. */
+	@Test
+	void aRecentAuthorizationRaisesNoAlert() {
+		runningAfter(Duration.ofDays(1));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(authorizedOnly());
+
+		useCase.reconcile();
+
+		verify(financeAlertPort, never()).raise(any(), any(), any(), any(), any(), any());
+	}
+
+	/** An abandoned sibling must not free the place while another attempt is authorized. */
+	@Test
+	void anAbandonedSiblingDoesNotFreeThePlaceWhileAnotherIsAuthorized() {
+		runningAfter(Duration.ofHours(2));
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID), openAttempt(SECOND_ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(tookNothing());
+		when(evoPaymentsGateway.retrieveOrder(SECOND_ORDER_ID)).thenReturn(authorizedOnly());
+
+		var result = useCase.reconcile();
+
+		assertThat(result.releasedSlots()).isZero();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** E4: a late capture that found the career full is an outcome, not tomorrow's error. */
+	@Test
+	void aLateCaptureWithoutAPlaceIsNotCountedAsAFailure() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(captured());
+		when(confirmFichaPaymentVerifiedUseCase.confirm(CANDIDATE_ID, ORDER_ID))
+				.thenThrow(new AdmissionPaidWithoutQuotaException("sin cupo"));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.failedAttempts()).isZero();
+		assertThat(result.settledCaptures()).isZero();
+		assertThat(result.closedRows()).isEqualTo(1);
 	}
 
 	private static UUID chargeOf(UUID candidateId) {
@@ -240,7 +365,9 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 
 		assertThat(result.closedRows()).isEqualTo(1);
 		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
-		// The browser got there in the seconds between the query and this write.
+		// The browser got there in the seconds between the query and this write, so this
+		// order is the one that paid: finance books no saldo a favor for it.
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED);
 		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
 	}
 
@@ -592,5 +719,130 @@ class ReconcileFichaPaymentsUseCaseImplTest {
 		assertThat(result.failedAttempts()).isEqualTo(1);
 		assertThat(result.releasedSlots()).isEqualTo(1);
 		assertThat(result.heldAttempts()).isEqualTo(1);
+	}
+
+	/**
+	 * E3: the career-change case. Ana abandoned a ficha attempt and paid the ficha with
+	 * another; after a career change she paid the difference and lost connection before
+	 * the browser confirmed it. Tonight both rows are open: the abandoned one of the paid
+	 * ficha and the captured one of the difference.
+	 *
+	 * <p>"Already paid" used to be read from the first row's charge, so with the ficha's
+	 * row first the difference was closed as captured and never applied: the bank took
+	 * her money and SISA still showed it owed.
+	 */
+	@Test
+	void aCapturedDifferenceIsSettledWhenThePaidFichaAttemptComesFirst() {
+		String abandoned = "TESTUTEZ-ADM-2026-000001-A";
+		String difference = "TESTUTEZ-ADM-2026-000001-C";
+		givenOpenAttempts(openAttempt(abandoned, CANDIDATE_ID),
+				FichaTestData.attempt(difference, DIFFERENCE_CHARGE_ID, CANDIDATE_ID, QUOTED, OPENED));
+		givenCareerChangeOwed();
+		when(evoPaymentsGateway.retrieveOrder(abandoned)).thenReturn(
+				new EvoPaymentsGatewayPort.EvoOrderStatus(abandoned, "FAILURE", null));
+		when(evoPaymentsGateway.retrieveOrder(difference))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(difference, "SUCCESS", QUOTED));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, difference);
+		verify(checkoutSlotClaimer).closeAttempt(abandoned, CheckoutAttemptCloseReason.REJECTED);
+	}
+
+	/** The same pair the other way round: query order must not decide whose charge is read. */
+	@Test
+	void aCapturedDifferenceIsSettledWhenItComesFirst() {
+		String abandoned = "TESTUTEZ-ADM-2026-000001-A";
+		String difference = "TESTUTEZ-ADM-2026-000001-C";
+		givenOpenAttempts(FichaTestData.attempt(difference, DIFFERENCE_CHARGE_ID, CANDIDATE_ID, QUOTED, OPENED),
+				openAttempt(abandoned, CANDIDATE_ID));
+		givenCareerChangeOwed();
+		when(evoPaymentsGateway.retrieveOrder(abandoned)).thenReturn(
+				new EvoPaymentsGatewayPort.EvoOrderStatus(abandoned, "FAILURE", null));
+		when(evoPaymentsGateway.retrieveOrder(difference))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(difference, "SUCCESS", QUOTED));
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		assertThat(result.releasedSlots()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, difference);
+	}
+
+	/**
+	 * E1: a capture on a charge that was cancelled (a later career change replaced the
+	 * difference, or the ficha expired) settles nothing. The money is booked as saldo a
+	 * favor of the person and the row is closed, so it neither fails every night nor
+	 * disappears.
+	 */
+	@Test
+	void aCaptureOnACancelledChargeBecomesSaldoAFavor() {
+		givenOpenAttempts(openAttempt(ORDER_ID, CANDIDATE_ID));
+		givenPayment(FichaTestData.cancelledCharge(CHARGE_ID));
+		when(evoPaymentsGateway.retrieveOrder(ORDER_ID)).thenReturn(captured());
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED)).thenReturn(true);
+
+		var result = useCase.reconcile();
+
+		assertThat(result.failedAttempts()).isZero();
+		assertThat(result.heldAttempts()).isZero();
+		verify(confirmFichaPaymentVerifiedUseCase, never()).confirm(any(), anyString());
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, ORDER_ID, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(ORDER_ID, CheckoutAttemptCloseReason.CAPTURED);
+	}
+
+	/**
+	 * E1: two tabs, two payments. The ficha was paid by the first; the second capture is
+	 * money the bank holds and the ficha does not need. It used to be closed as captured
+	 * and forgotten; now it is saldo a favor tied to its order.
+	 */
+	@Test
+	void aSecondCaptureOfAPaidFichaBecomesSaldoAFavor() {
+		String second = "TESTUTEZ-ADM-2026-000001-B";
+		givenOpenAttempts(openAttempt(second, CANDIDATE_ID));
+		givenPayment(paidPayment());
+		when(evoPaymentsGateway.retrieveOrder(second))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(second, "SUCCESS", QUOTED));
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, second, QUOTED)).thenReturn(true);
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isZero();
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, second, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(second, CheckoutAttemptCloseReason.CAPTURED);
+	}
+
+	/**
+	 * E1: both captures arrive the same night. The first pays the ficha; the second is
+	 * already an overpayment in that same run, not tomorrow.
+	 */
+	@Test
+	void twoCapturesTheSameNightLeaveOnePaymentAndOneCredit() {
+		String first = "TESTUTEZ-ADM-2026-000001-A";
+		String second = "TESTUTEZ-ADM-2026-000001-B";
+		givenOpenAttempts(openAttempt(first, CANDIDATE_ID), openAttempt(second, CANDIDATE_ID));
+		givenPayment(pendingPayment());
+		when(evoPaymentsGateway.retrieveOrder(first))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(first, "SUCCESS", QUOTED));
+		when(evoPaymentsGateway.retrieveOrder(second))
+				.thenReturn(new EvoPaymentsGatewayPort.EvoOrderStatus(second, "SUCCESS", QUOTED));
+		when(fichaPaymentPort.registerOverpayment(CHARGE_ID, second, QUOTED)).thenReturn(true);
+
+		var result = useCase.reconcile();
+
+		assertThat(result.settledCaptures()).isEqualTo(1);
+		verify(confirmFichaPaymentVerifiedUseCase).confirm(CANDIDATE_ID, first);
+		verify(fichaPaymentPort, never()).registerOverpayment(CHARGE_ID, first, QUOTED);
+		verify(fichaPaymentPort).registerOverpayment(CHARGE_ID, second, QUOTED);
+		verify(checkoutSlotClaimer).closeAttempt(second, CheckoutAttemptCloseReason.CAPTURED);
+	}
+
+	/** The ficha is paid and the difference a career change left is still owed. */
+	private void givenCareerChangeOwed() {
+		givenPayment(paidPayment());
+		when(fichaPaymentPort.findCharge(DIFFERENCE_CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.pendingCharge(DIFFERENCE_CHARGE_ID)));
 	}
 }

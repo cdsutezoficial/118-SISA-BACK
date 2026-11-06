@@ -7,6 +7,7 @@ import mx.edu.utez.sisa.admission.domain.model.CandidateProgramChange;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase.Mode;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase.ProgramChangePreview;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
@@ -15,6 +16,8 @@ import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateProgramChangeNotAllowedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,6 +62,11 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private static final UUID OLD_CONFIG = UUID.randomUUID();
 	private static final UUID NEW_CONFIG = UUID.randomUUID();
 	private static final UUID NEW_PROGRAM = UUID.randomUUID();
+
+	/** F5: the new career's period and generation travel to its charge. */
+	private static final UUID NEW_PERIOD = UUID.randomUUID();
+
+	private static final UUID NEW_GENERATION = UUID.randomUUID();
 	private static final UUID FICHA_PAYMENT = UUID.randomUUID();
 	private static final UUID NEW_PAYMENT = UUID.randomUUID();
 	private static final UUID ACTOR = UUID.randomUUID();
@@ -88,11 +96,14 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 	private Candidate candidate;
 
+	@Mock
+	private CandidateNotificationPort notifications;
+
 	@BeforeEach
 	void setUp() {
 		useCase = new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
-				programChangeRepository, CLOCK, 10, 15);
+				programChangeRepository, CLOCK, 10, 15, notifications);
 		candidate = new Candidate(OLD_CONFIG, "ADM-2026-000001", true, true, null);
 		ReflectionTestUtils.setField(candidate, "id", CANDIDATE_ID);
 		ReflectionTestUtils.setField(candidate, "registeredAt", Instant.parse("2026-10-25T18:00:00Z"));
@@ -104,7 +115,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 				UUID.randomUUID(), "Ingeniería", 40)));
 		lenient().when(programAdmissionConfigQueryPort.findById(NEW_CONFIG))
 				.thenReturn(Optional.of(config(NEW_CONFIG, NEW_PROGRAM, "Licenciatura", 40)));
-		lenient().when(fichaAmountResolver.resolveConcept(eq(NEW_PROGRAM), any())).thenReturn(
+		lenient().when(fichaAmountResolver.resolveConceptForProgramChange(eq(NEW_PROGRAM), any())).thenReturn(
 				new PaymentConceptQueryPort.FichaConcept(UUID.randomUUID(), "FICHA_LIC", "Ficha", null, null));
 		lenient().when(checkoutAttemptRepository.findOpenAttemptsByCandidateId(CANDIDATE_ID)).thenReturn(List.of());
 	}
@@ -117,7 +128,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR);
 
-		verify(fichaPaymentPort).reassignProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM);
+		verify(fichaPaymentPort).reassignProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM, NEW_PERIOD, NEW_GENERATION);
 		verify(fichaPaymentPort, never()).rebill(any());
 		verifyNoInteractions(admissionQuotaPort);
 		assertThat(candidate.getAdmissionConfigId()).isEqualTo(NEW_CONFIG);
@@ -127,6 +138,17 @@ class ChangeCandidateProgramUseCaseImplTest {
 		verify(programChangeRepository).save(audit.capture());
 		assertThat(audit.getValue().isWasPaid()).isFalse();
 		assertThat(audit.getValue().getChangedBy()).isEqualTo(ACTOR);
+	}
+
+	@Test
+	void aFichaWithSaldoAppliedAndTheRestUnpaidCannotChangeCareer() {
+		when(fichaPaymentPort.findCharge(FICHA_PAYMENT))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(FICHA_PAYMENT, new BigDecimal("200.00"))));
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(CandidateProgramChangeNotAllowedException.class)
+				.hasMessageContaining("saldo a favor");
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -145,6 +167,8 @@ class ChangeCandidateProgramUseCaseImplTest {
 		verify(fichaPaymentPort).rebill(command.capture());
 		assertThat(command.getValue().fromPaymentId()).isEqualTo(FICHA_PAYMENT);
 		assertThat(command.getValue().reference()).isEqualTo("REF-ADM-2026-000001-C1");
+		assertThat(command.getValue().periodId()).isEqualTo(NEW_PERIOD);
+		assertThat(command.getValue().generationId()).isEqualTo(NEW_GENERATION);
 		// Mismo plazo de la ficha (10 días) contado desde el cambio.
 		assertThat(command.getValue().dueAt().atZone(CLOCK.getZone()).toLocalDate())
 				.isEqualTo(LocalDate.of(2026, 11, 7));
@@ -153,6 +177,10 @@ class ChangeCandidateProgramUseCaseImplTest {
 		assertThat(candidate.collectingPaymentId()).isEqualTo(NEW_PAYMENT);
 		assertThat(candidate.getStatus()).isEqualTo(CandidateStatus.PAID);
 		assertThat(candidate.getAdmissionConfigId()).isEqualTo(NEW_CONFIG);
+		// F3: the applicant is told about the difference without opening the portal.
+		verify(notifications).programChangeLeftDifference(CANDIDATE_ID, new BigDecimal("1750.00"),
+				new BigDecimal("1420.00"), new BigDecimal("330.00"), command.getValue().dueAt());
+		verify(notifications, never()).programChangeLeftCredit(any(), any());
 	}
 
 	@Test
@@ -168,6 +196,9 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		assertThat(candidate.getFichaPaymentId()).isEqualTo(NEW_PAYMENT);
 		assertThat(candidate.getProgramChangePaymentId()).isNull();
+		// F3: what was left over is saldo a favor, and the applicant is told.
+		verify(notifications).programChangeLeftCredit(CANDIDATE_ID, new BigDecimal("400.00"));
+		verify(notifications, never()).programChangeLeftDifference(any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -229,7 +260,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
 				.isInstanceOf(CandidateProgramChangeNotAllowedException.class);
-		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any());
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
 		assertThat(useCase.blockedReason(CANDIDATE_ID)).hasValueSatisfying(r -> assertThat(r).contains("en curso"));
 	}
 
@@ -274,21 +305,39 @@ class ChangeCandidateProgramUseCaseImplTest {
 	}
 
 	@Test
-	void unpaidPreviewWarnsWhenTheNewCareerWindowAlreadyClosed() {
+	void aCareerWhoseSalesAlreadyClosedIsRefused() {
 		charge(false);
-		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(
-				NEW_CONFIG, ProgramAdmissionConfigStatus.OPEN, NEW_PROGRAM, "Licenciatura", null, null, UUID.randomUUID(), null,
-				Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-10-20T05:00:00Z"), 40)));
-		when(fichaPaymentPort.quote(FICHA_PAYMENT)).thenReturn(quote("1120.00", "0.00"));
-		when(fichaPaymentPort.quoteForProgram(FICHA_PAYMENT, "FICHA_LIC", NEW_PROGRAM))
-				.thenReturn(quote("1650.00", "825.00"));
+		newConfig(ProgramAdmissionConfigStatus.OPEN, "2026-09-01T00:00:00Z", "2026-10-20T05:00:00Z");
 
-		ProgramChangePreview preview = useCase.preview(CANDIDATE_ID, NEW_CONFIG);
+		assertThatThrownBy(() -> useCase.preview(CANDIDATE_ID, NEW_CONFIG))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class).hasMessageContaining("cerró el 19/10/2026");
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class);
+		verify(fichaPaymentPort, never()).reassignProgram(any(), any(), any(), any(), any());
+	}
 
-		assertThat(preview.mode()).isEqualTo(Mode.UNPAID);
-		assertThat(preview.newAmount()).isEqualByComparingTo("825.00");
-		assertThat(preview.toPay()).isEqualByComparingTo("825.00");
-		assertThat(preview.paymentWindowClosed()).isTrue();
+	@Test
+	void aCareerWhoseSalesHaveNotOpenedIsRefused() {
+		charge(false);
+		newConfig(ProgramAdmissionConfigStatus.OPEN, "2026-11-10T06:00:00Z", "2026-12-15T05:00:00Z");
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigSalesClosedException.class).hasMessageContaining("abre el 10/11/2026");
+	}
+
+	@Test
+	void aCareerWhoseConfigIsNotOpenIsRefused() {
+		charge(false);
+		newConfig(ProgramAdmissionConfigStatus.CLOSED, "2026-09-01T00:00:00Z", "2026-12-15T05:00:00Z");
+
+		assertThatThrownBy(() -> useCase.change(CANDIDATE_ID, NEW_CONFIG, ACTOR))
+				.isInstanceOf(ProgramAdmissionConfigNotOpenException.class);
+	}
+
+	private void newConfig(ProgramAdmissionConfigStatus status, String opensAt, String closesAt) {
+		when(programAdmissionConfigQueryPort.findById(NEW_CONFIG)).thenReturn(Optional.of(
+				new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(NEW_CONFIG, status, NEW_PROGRAM,
+						"Licenciatura", null, null, NEW_PERIOD, null, Instant.parse(opensAt), Instant.parse(closesAt), 40)));
 	}
 
 	@Test
@@ -336,7 +385,7 @@ class ChangeCandidateProgramUseCaseImplTest {
 	private static ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config(UUID id, UUID programId, String name,
 			int max) {
 		return new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(id, ProgramAdmissionConfigStatus.OPEN,
-				programId, name, null, null, UUID.randomUUID(), null, Instant.parse("2026-09-01T00:00:00Z"),
-				Instant.parse("2026-12-15T05:00:00Z"), max);
+				programId, name, null, null, NEW_PERIOD, null, Instant.parse("2026-09-01T00:00:00Z"),
+				Instant.parse("2026-12-15T05:00:00Z"), max, NEW_GENERATION);
 	}
 }

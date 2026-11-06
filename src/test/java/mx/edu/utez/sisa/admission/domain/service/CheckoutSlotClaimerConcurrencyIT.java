@@ -26,6 +26,7 @@ import mx.edu.utez.sisa.academic_config.infrastructure.persistence.ProgramAdmiss
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
+import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.AdmissionQuotaAdapter;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateJpaRepository;
 import mx.edu.utez.sisa.admission.infrastructure.persistence.CandidateRepositoryAdapter;
@@ -242,8 +243,12 @@ class CheckoutSlotClaimerConcurrencyIT {
 	}
 
 	private UUID saveCandidateWithPendingFicha(UUID admissionConfigId) {
-		Candidate candidate = candidateJpaRepository
-				.save(new Candidate(admissionConfigId, "FOLIO-" + UUID.randomUUID(), false, true, null));
+		Candidate candidate = new Candidate(admissionConfigId, "FOLIO-" + UUID.randomUUID(), false, true, null);
+		// Cada uno con su CURP: la regla de una candidatura por periodo no entra aquí.
+		candidate.setCurp("CURP" + UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase());
+		candidate.setFirstName("Prueba");
+		candidate.setLastName1("Concurrencia");
+		candidate = candidateJpaRepository.save(candidate);
 				Payment charge = paymentJpaRepository.save(new Payment(candidate.getId(), null, "FICHA-ING", null,
 						null, null, null, null, null, PaymentStatus.PENDING, PaymentOrigin.ADMISSION,
 						TODAY.plusDays(5).atStartOfDay(ZONE).toInstant(), NOW));
@@ -260,6 +265,28 @@ class CheckoutSlotClaimerConcurrencyIT {
 		@Bean
 		Clock clock() {
 			return Clock.fixed(NOW, ZONE);
+		}
+
+		/** Every config is in the same period; only the period id is read. */
+		@Bean
+		ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort() {
+			ProgramAdmissionConfigQueryPort port = Mockito.mock(ProgramAdmissionConfigQueryPort.class);
+			UUID periodId = UUID.randomUUID();
+			Mockito.when(port.findById(ArgumentMatchers.any())).thenAnswer(call -> Optional.of(
+					new ProgramAdmissionConfigQueryPort.AdmissionConfigInfo(call.getArgument(0), null, null, null,
+							null, null, periodId, null, null, null, 0)));
+			return port;
+		}
+
+		/** No mail and no alert in a race about the quota. */
+		@Bean
+		mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort candidateNotificationPort() {
+			return Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort.class);
+		}
+
+		@Bean
+		mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort financeAlertPort() {
+			return Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.class);
 		}
 
 		/** Every ficha here is pending; the race is about the quota, not the charge. */

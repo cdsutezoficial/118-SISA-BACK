@@ -13,7 +13,12 @@ import mx.edu.utez.sisa.admission.domain.port.in.ListCandidatesUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.RegisterCandidateUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateHighSchoolTypeUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.UpdateOutreachChannelUseCase;
+import mx.edu.utez.sisa.admission.domain.port.in.CollectCashPaymentUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmAdmissionPaymentUseCase;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateAuditPort;
+import mx.edu.utez.sisa.admission.domain.port.out.StaffDirectoryPort;
+import mx.edu.utez.sisa.admission.domain.service.CollectCashPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.FichaPaymentGate;
 import mx.edu.utez.sisa.admission.domain.port.in.ConfirmFichaPaymentVerifiedUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ReconcileFichaPaymentsUseCase;
 import mx.edu.utez.sisa.admission.domain.port.in.ExpireStaleFichaPaymentsUseCase;
@@ -46,6 +51,7 @@ import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
 import mx.edu.utez.sisa.admission.domain.service.AccessFichaPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeHighSchoolTypeStatusUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ChangeOutreachChannelStatusUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.CapturedPaymentSettler;
 import mx.edu.utez.sisa.admission.domain.service.CheckoutSlotClaimer;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmAdmissionPaymentUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ConfirmFichaPaymentVerifiedUseCaseImpl;
@@ -55,6 +61,9 @@ import mx.edu.utez.sisa.admission.domain.service.FichaDisplayPrice;
 import mx.edu.utez.sisa.admission.domain.service.FichaAmountResolver;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateEditFormUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetCandidateFichaUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
+import mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort;
+import mx.edu.utez.sisa.admission.domain.service.SettleCheckoutsBeforeCandidateUpdate;
 import mx.edu.utez.sisa.admission.domain.service.UpdateCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetFichaAmountUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.CreateHighSchoolTypeUseCaseImpl;
@@ -62,6 +71,7 @@ import mx.edu.utez.sisa.admission.domain.service.CreateOutreachChannelUseCaseImp
 import mx.edu.utez.sisa.admission.domain.service.GetHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.GetOutreachChannelUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.InitiateFichaPaymentUseCaseImpl;
+import mx.edu.utez.sisa.admission.domain.service.PendingCheckoutGuard;
 import mx.edu.utez.sisa.admission.domain.service.ReleaseFichaPaymentSlotUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListHighSchoolTypesUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.ListOutreachChannelsUseCaseImpl;
@@ -70,8 +80,10 @@ import mx.edu.utez.sisa.admission.domain.service.OrderIdBuilder;
 import mx.edu.utez.sisa.admission.domain.service.RegisterCandidateUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateHighSchoolTypeUseCaseImpl;
 import mx.edu.utez.sisa.admission.domain.service.UpdateOutreachChannelUseCaseImpl;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Configuration;
 
 import java.net.URI;
@@ -237,20 +249,44 @@ public class UseCaseConfig {
 	@Bean
 	public ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
-			CheckoutAttemptRepository checkoutAttemptRepository,
-			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CandidateNotificationPort candidateNotificationPort,
+			AdmissionQuotaPort admissionQuotaPort, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			Clock clock, @Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
 		return new ConfirmAdmissionPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
-				checkoutAttemptRepository, programAdmissionConfigQueryPort);
+				checkoutAttemptRepository, candidateNotificationPort, admissionQuotaPort,
+				programAdmissionConfigQueryPort, clock, checkoutHoldMinutes);
+	}
+
+	/** F1: cobro en efectivo en caja; mismas ventanas que el pago en línea. */
+	@Bean
+	public CollectCashPaymentUseCase collectCashPaymentUseCase(CandidateRepository candidateRepository,
+			FichaPaymentPort fichaPaymentPort, ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort,
+			FichaAmountResolver fichaAmountResolver, Clock clock,
+			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
+			PendingCheckoutGuard pendingCheckoutGuard, AdmissionQuotaPort admissionQuotaPort,
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase, StaffDirectoryPort staffDirectoryPort,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+		return new CollectCashPaymentUseCaseImpl(candidateRepository, fichaPaymentPort,
+				new FichaPaymentGate(programAdmissionConfigQueryPort, fichaAmountResolver, clock, fichaDeadlineDays),
+				pendingCheckoutGuard, admissionQuotaPort, confirmAdmissionPaymentUseCase, staffDirectoryPort, clock,
+				checkoutHoldMinutes);
 	}
 
 	@Bean
 	public ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase(CandidateRepository candidateRepository,
 			FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway,
-			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase,
-			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer) {
+			CheckoutAttemptRepository checkoutAttemptRepository, CheckoutSlotClaimer checkoutSlotClaimer,
+			CapturedPaymentSettler capturedPaymentSettler) {
 		return new ConfirmFichaPaymentVerifiedUseCaseImpl(candidateRepository, fichaPaymentPort,
-				evoPaymentsGateway, confirmAdmissionPaymentUseCase, checkoutAttemptRepository, checkoutSlotClaimer);
+				evoPaymentsGateway, checkoutAttemptRepository, checkoutSlotClaimer, capturedPaymentSettler);
+	}
+
+	/** The locked half of confirming a capture; its own bean so the transaction is proxied. */
+	@Bean
+	public CapturedPaymentSettler capturedPaymentSettler(FichaPaymentPort fichaPaymentPort,
+			ConfirmAdmissionPaymentUseCase confirmAdmissionPaymentUseCase) {
+		return new CapturedPaymentSettler(fichaPaymentPort, confirmAdmissionPaymentUseCase);
 	}
 
 	/**
@@ -268,9 +304,9 @@ public class UseCaseConfig {
 	public ExpireStaleFichaPaymentsUseCase expireStaleFichaPaymentsUseCase(CandidateRepository candidateRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int deadlineDays,
-			FichaPaymentPort fichaPaymentPort) {
+			FichaPaymentPort fichaPaymentPort, CheckoutAttemptRepository checkoutAttemptRepository) {
 		return new ExpireStaleFichaPaymentsUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort, clock,
-				deadlineDays, fichaPaymentPort);
+				deadlineDays, fichaPaymentPort, checkoutAttemptRepository);
 	}
 
 	@Bean
@@ -320,9 +356,12 @@ public class UseCaseConfig {
 			FichaPaymentPort fichaPaymentPort,
 			EvoPaymentsGatewayPort evoPaymentsGateway,
 			CheckoutSlotClaimer checkoutSlotClaimer,
-			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase) {
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			FinanceAlertPort financeAlertPort) {
 		return new ReconcileFichaPaymentsUseCaseImpl(checkoutAttemptRepository, fichaPaymentPort,
-				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase);
+				evoPaymentsGateway, checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock,
+				checkoutHoldMinutes, financeAlertPort);
 	}
 
 	@Bean
@@ -332,7 +371,7 @@ public class UseCaseConfig {
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
-			CheckoutSlotClaimer checkoutSlotClaimer,
+			CheckoutSlotClaimer checkoutSlotClaimer, PendingCheckoutGuard pendingCheckoutGuard,
 			@Value("${sisa.evo.allowed-return-paths:/portal/registro/ficha,/portal/ficha/pago}") String allowedReturnPaths,
 			@Value("${sisa.security.password-reset.frontend-base-url:}") String frontendBaseUrl) {
 		String frontendBasePath = frontendBasePath(frontendBaseUrl);
@@ -342,7 +381,18 @@ public class UseCaseConfig {
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				evoPaymentsGateway, orderIdBuilder, evoConfig.currency(), evoConfig.returnUrl(),
 				evoConfig.cancelUrl(), evoConfig.checkoutJsUrl(), allowlist, programAdmissionConfigQueryPort,
-				fichaAmountResolver, fichaPaymentPort, clock, fichaDeadlineDays, checkoutSlotClaimer);
+				fichaAmountResolver, fichaPaymentPort, clock, fichaDeadlineDays, checkoutSlotClaimer,
+				pendingCheckoutGuard);
+	}
+
+	@Bean
+	public PendingCheckoutGuard pendingCheckoutGuard(CheckoutAttemptRepository checkoutAttemptRepository,
+			EvoPaymentsGatewayPort evoPaymentsGateway, FichaPaymentPort fichaPaymentPort,
+			CheckoutSlotClaimer checkoutSlotClaimer,
+			ConfirmFichaPaymentVerifiedUseCase confirmFichaPaymentVerifiedUseCase, Clock clock,
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes) {
+		return new PendingCheckoutGuard(checkoutAttemptRepository, evoPaymentsGateway, fichaPaymentPort,
+				checkoutSlotClaimer, confirmFichaPaymentVerifiedUseCase, clock, checkoutHoldMinutes);
 	}
 
 	/** {@code https://host/SGA/} → {@code /SGA}; no path or unparseable → {@code ""}. */
@@ -365,10 +415,12 @@ public class UseCaseConfig {
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			CandidateProgramChangeRepository candidateProgramChangeRepository, Clock clock,
 			@Value("${sisa.admission.payment.deadline-days:10}") int fichaDeadlineDays,
-			@Value("${sisa.admission.payment.checkout-hold-minutes:15}") int checkoutHoldMinutes) {
+			@Value("${sisa.admission.payment.checkout-hold-minutes:60}") int checkoutHoldMinutes,
+			CandidateNotificationPort candidateNotificationPort) {
 		return new ChangeCandidateProgramUseCaseImpl(candidateRepository, programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, admissionQuotaPort, checkoutAttemptRepository,
-				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes);
+				candidateProgramChangeRepository, clock, fichaDeadlineDays, checkoutHoldMinutes,
+				candidateNotificationPort);
 	}
 
 	@Bean
@@ -388,13 +440,29 @@ public class UseCaseConfig {
 				candidateProgramChangeRepository, programAdmissionConfigQueryPort);
 	}
 
+	/**
+	 * The transactional save of an edited ficha. Not injected on its own: callers get
+	 * {@link #updateCandidateUseCase}, which settles open checkouts first (E5).
+	 */
 	@Bean
-	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
-			OutreachChannelRepository outreachChannelRepository,
-			HighSchoolTypeRepository highSchoolTypeRepository,
-			ChangeCandidateProgramUseCase changeCandidateProgramUseCase) {
+	public UpdateCandidateUseCaseImpl transactionalUpdateCandidateUseCase(CandidateRepository candidateRepository,
+			OutreachChannelRepository outreachChannelRepository, HighSchoolTypeRepository highSchoolTypeRepository,
+			ChangeCandidateProgramUseCase changeCandidateProgramUseCase, CandidateAuditPort candidateAuditPort) {
 		return new UpdateCandidateUseCaseImpl(candidateRepository, outreachChannelRepository,
-				highSchoolTypeRepository, changeCandidateProgramUseCase);
+				highSchoolTypeRepository, changeCandidateProgramUseCase, candidateAuditPort);
+	}
+
+	/**
+	 * E5: asks the bank about open checkouts before a career change, outside the
+	 * update's transaction, then delegates to the transactional save.
+	 */
+	@Bean
+	@Primary
+	public UpdateCandidateUseCase updateCandidateUseCase(CandidateRepository candidateRepository,
+			PendingCheckoutGuard pendingCheckoutGuard,
+			@Qualifier("transactionalUpdateCandidateUseCase") UpdateCandidateUseCase transactionalUpdate) {
+		return new SettleCheckoutsBeforeCandidateUpdate(candidateRepository, pendingCheckoutGuard,
+				transactionalUpdate);
 	}
 
 	@Bean

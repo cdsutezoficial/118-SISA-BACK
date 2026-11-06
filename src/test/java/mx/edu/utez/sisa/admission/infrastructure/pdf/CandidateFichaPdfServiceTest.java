@@ -272,6 +272,33 @@ class CandidateFichaPdfServiceTest {
 		return fullFicha(LocalDate.of(2026, 3, 3));
 	}
 
+	/** F6: the same ficha with a career-change difference still to pay. */
+	private static FichaData withDifference(FichaData f, FichaData.PendingDifference d) {
+		return new FichaData(f.candidateId(), f.folio(), f.candidateStatus(), f.registeredAt(),
+				f.admissionConfigId(), f.programName(), f.divisionName(), f.curp(), f.firstName(), f.lastName1(),
+				f.lastName2(), f.email(), f.homePhone(), f.mobilePhone(), f.referenceNumber(), f.amount(),
+				f.registrationDeadline(), f.paymentClosesOn(), f.paymentDeadline(), f.paymentStatus(),
+				f.receiptNumber(), f.paidAt(), f.orderId(), f.datosGenerales(), f.domicilio(),
+				f.informacionComplementaria(), f.ingresos(), f.seleccionCarrera(), f.antecedentesEscolares(),
+				f.inductionPayment(), f.originalAmount(), f.discountAmount(), f.discountReason(), f.conceptName(), d);
+	}
+
+	@Test
+	void withAPendingDifferencePrintsTheNewCareersPriceAndWhatIsLeft() throws Exception {
+		FichaData ficha = withDifference(fullFicha(), new FichaData.PendingDifference(new BigDecimal("1850.00"),
+				new BigDecimal("1750.00"), new BigDecimal("100.00"), "REF-ADM-2026-000001-C1",
+				Instant.parse("2026-11-08T05:59:59Z")));
+
+		try (PdfReader reader = new PdfReader(service.render(ficha))) {
+			String text = text(reader);
+			assertTrue(text.contains("Costo de la carrera"));
+			assertTrue(text.contains("Pagado anteriormente"));
+			assertTrue(text.contains("Diferencia por pagar"));
+			assertTrue(text.contains("REF-ADM-2026-000001-C1"));
+			assertFalse(text.contains("Monto a pagar"));
+		}
+	}
+
 	/** Same fixture as {@link #fullFicha()} but with a chosen visible payment deadline. */
 	private static FichaData fichaWithPaymentDeadline(LocalDate paymentDeadline) {
 		return fullFicha(paymentDeadline);

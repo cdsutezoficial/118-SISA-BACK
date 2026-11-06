@@ -11,6 +11,7 @@ import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.EvoPaymentsGatewayPort;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.ProgramAdmissionConfigQueryPort;
+import mx.edu.utez.sisa.admission.shared.exception.PaymentInProgressException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateAlreadyPaidException;
 import mx.edu.utez.sisa.admission.shared.exception.CandidateNotFoundException;
 import mx.edu.utez.sisa.admission.shared.exception.EvoPaymentGatewayException;
@@ -151,6 +152,9 @@ class InitiateFichaPaymentUseCaseImplTest {
 	@Mock
 	private CheckoutSlotClaimer checkoutSlotClaimer;
 
+	@Mock
+	private PendingCheckoutGuard pendingCheckoutGuard;
+
 	/** The ficha's finance charge: frozen at the click, settled at confirmation. */
 	@Mock
 	private FichaPaymentPort fichaPaymentPort;
@@ -174,7 +178,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 						LocalDate.of(2026, 9, 30).atStartOfDay(ZONE).toInstant(), 40)));
 		useCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway, orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(),
 				programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE),
-				DEADLINE_DAYS, checkoutSlotClaimer);
+				DEADLINE_DAYS, checkoutSlotClaimer, pendingCheckoutGuard);
 	}
 
 	private static Candidate candidate() {
@@ -273,7 +277,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateFichaPaymentUseCaseImpl realBuilderUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				evoPaymentsGateway, new OrderIdBuilder("TESTUTEZ", 32), "MXN", RETURN,
 				CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
-				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
+				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer, pendingCheckoutGuard);
 
 		String first = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
 		String second = realBuilderUseCase.initiateCheckout(CANDIDATE_ID, null).orderId();
@@ -297,7 +301,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		InitiateFichaPaymentUseCaseImpl customUseCase = new InitiateFichaPaymentUseCaseImpl(candidateRepository,
 				evoPaymentsGateway, orderIdBuilder, "MXN", returnWithQuery, CANCEL,
 				SDK_URL, Set.of(), programAdmissionConfigQueryPort, fichaAmountResolver, fichaPaymentPort,
-				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer);
+				Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer, pendingCheckoutGuard);
 		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
 		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
 				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "OK", "df66ca1b01"));
@@ -421,7 +425,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 				orderIdBuilder, "MXN", RETURN, cancelBase, SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
 				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS,
-				checkoutSlotClaimer);
+				checkoutSlotClaimer, pendingCheckoutGuard);
 	}
 
 	private void givenPayableCandidate() {
@@ -520,7 +524,7 @@ class InitiateFichaPaymentUseCaseImplTest {
 		new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, "", SDK_URL,
 				Set.of("/portal/registro/ficha", "/portal/ficha/pago"), programAdmissionConfigQueryPort,
-				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer).initiateCheckout(CANDIDATE_ID,
+				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, checkoutSlotClaimer, pendingCheckoutGuard).initiateCheckout(CANDIDATE_ID,
 						"/portal/ficha/pago");
 
 		String expected = "http://localhost:5173/portal/ficha/pago" + "?id=" + CANDIDATE_ID
@@ -773,10 +777,13 @@ class InitiateFichaPaymentUseCaseImplTest {
 	private InitiateFichaPaymentUseCaseImpl useCaseWithRealClaimer(OrderIdBuilder orderIdBuilder) {
 		CheckoutSlotClaimer realClaimer = new CheckoutSlotClaimer(admissionQuotaPort, candidateRepository,
 				checkoutAttemptRepository, fichaPaymentPort, programAdmissionConfigQueryPort,
-				Clock.fixed(NOW_AT_NOON, ZONE), 15);
+				Clock.fixed(NOW_AT_NOON, ZONE), 15,
+				org.mockito.Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort.class),
+				org.mockito.Mockito.mock(mx.edu.utez.sisa.admission.domain.port.out.FinanceAlertPort.class));
 		return new InitiateFichaPaymentUseCaseImpl(candidateRepository, evoPaymentsGateway,
 				orderIdBuilder, "MXN", RETURN, CANCEL, SDK_URL, Set.of(), programAdmissionConfigQueryPort,
-				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer);
+				fichaAmountResolver, fichaPaymentPort, Clock.fixed(NOW_AT_NOON, ZONE), DEADLINE_DAYS, realClaimer,
+				pendingCheckoutGuard);
 	}
 
 	@Test
@@ -921,6 +928,57 @@ class InitiateFichaPaymentUseCaseImplTest {
 		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
 	}
 
+	// ── Saldo a favor (F9) ───────────────────────────────────────────────────
+
+	@Test
+	void saldoThatPaysTheWholeFichaOpensNoSession() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, true))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim("SAF-20260925-000001", BigDecimal.ZERO));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isTrue();
+		assertThat(result.sessionId()).isNull();
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
+	}
+
+	@Test
+	void saldoThatFallsShortAsksEvoOnlyForTheRest() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, true))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim(null, new BigDecimal("350.00")));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+						"df66ca1b01"));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isFalse();
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				new BigDecimal("350.00").compareTo(order.amount()) == 0));
+	}
+
+	@Test
+	void aFichaPartlyPaidKeepsItsPriceAndIsNotFrozenAgain() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		when(fichaPaymentPort.findCharge(CHARGE_ID))
+				.thenReturn(Optional.of(FichaTestData.partlyPaidCharge(CHARGE_ID, new BigDecimal("200.00"))));
+		when(fichaPaymentPort.quote(CHARGE_ID)).thenReturn(LIVE_QUOTE);
+		when(checkoutSlotClaimer.claimUsingCredit(CANDIDATE_ID, ORDER_ID, LIVE_QUOTE, false))
+				.thenReturn(new CheckoutSlotClaimer.CreditClaim(null, new BigDecimal("350.00")));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0001BR", "TESTUTEZ", "AAAA/BRAVO/SUCCESS0001",
+						"df66ca1b01"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null);
+
+		verify(fichaPaymentPort, never()).freeze(any());
+		verify(evoPaymentsGateway).initiateCheckoutSession(argThat(order ->
+				new BigDecimal("350.00").compareTo(order.amount()) == 0));
+	}
+
 	// ── Diferencia por cambio de carrera ────────────────────────────────────
 
 	private static final UUID DIFFERENCE_ID = UUID.randomUUID();
@@ -936,6 +994,42 @@ class InitiateFichaPaymentUseCaseImplTest {
 		return new FichaPaymentPort.ProgramChangeCharge(DIFFERENCE_ID, FichaTestData.REFERENCE + "-C1",
 				new BigDecimal("1750.00"), new BigDecimal("1420.00"), new BigDecimal("330.00"), dueAt, false, false,
 				null, null);
+	}
+
+	@Test
+	void saldoChosenForTheDifferencePaysItWithoutASession() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.plusSeconds(86_400))));
+		when(checkoutSlotClaimer.payDifferenceWithCredit(CANDIDATE_ID, DIFFERENCE_ID)).thenReturn(
+				new FichaPaymentPort.CreditUse(new BigDecimal("330.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1750.00"), true));
+
+		InitiateCheckoutResult result = useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		assertThat(result.paidWithCredit()).isTrue();
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+		verify(checkoutSlotClaimer, never()).claimProgramChange(any(), any(), any(), any());
+	}
+
+	@Test
+	void saldoThatDoesNotCoverTheDifferenceLeavesTheRestForEvo() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidateOwingADifference()));
+		when(fichaPaymentPort.findProgramChangeCharge(DIFFERENCE_ID))
+				.thenReturn(Optional.of(difference(NOW_AT_NOON.plusSeconds(86_400))))
+				.thenReturn(Optional.of(new FichaPaymentPort.ProgramChangeCharge(DIFFERENCE_ID,
+						FichaTestData.REFERENCE + "-C1", new BigDecimal("1750.00"), new BigDecimal("1620.00"),
+						new BigDecimal("130.00"), NOW_AT_NOON.plusSeconds(86_400), false, false, null, null)));
+		when(checkoutSlotClaimer.payDifferenceWithCredit(CANDIDATE_ID, DIFFERENCE_ID)).thenReturn(
+				new FichaPaymentPort.CreditUse(new BigDecimal("200.00"), new BigDecimal("1750.00"),
+						new BigDecimal("1620.00"), false));
+		when(evoPaymentsGateway.initiateCheckoutSession(any())).thenReturn(
+				new EvoPaymentsGatewayPort.EvoSession("SESSION0002", "TESTUTEZ", "SUCCESS0002", "v1"));
+
+		useCase.initiateCheckout(CANDIDATE_ID, null, true);
+
+		verify(checkoutSlotClaimer).claimProgramChange(CANDIDATE_ID, ORDER_ID, DIFFERENCE_ID,
+				new BigDecimal("130.00"));
 	}
 
 	@Test
@@ -966,6 +1060,22 @@ class InitiateFichaPaymentUseCaseImplTest {
 
 		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
 				.isInstanceOf(FichaPaymentExpiredException.class);
+		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
+	}
+
+	/**
+	 * E1: with an earlier session still unresolved at the bank, no second session is
+	 * opened — no attempt is claimed and EVO is not asked for a new one.
+	 */
+	@Test
+	void aPaymentInFlightPreventsASecondSession() {
+		when(candidateRepository.findById(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+		doThrow(new PaymentInProgressException(
+				"Tienes un pago en proceso con el banco.")).when(pendingCheckoutGuard).requireNoPaymentInFlight(any());
+
+		assertThatThrownBy(() -> useCase.initiateCheckout(CANDIDATE_ID, null))
+				.isInstanceOf(PaymentInProgressException.class);
+		verify(checkoutSlotClaimer, never()).claim(any(), any(), any());
 		verify(evoPaymentsGateway, never()).initiateCheckoutSession(any());
 	}
 }

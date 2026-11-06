@@ -35,6 +35,27 @@ class PermissionRegistryTest {
 		assertThat(PermissionRegistry.resolve("GET", "/candidates/2f1c0e2e-0000-0000-0000-000000000000")).isEmpty();
 	}
 
+	// ── F1 / F7 ───────────────────────────────────────────────────────────────
+
+	@Test
+	void cashPaymentNeedsTheCashierPermission() {
+		String path = "/candidates/2f1c0e2e-0000-0000-0000-000000000000/cash-payment";
+		assertThat(PermissionRegistry.resolve("GET", path)).contains("PAYMENT_WINDOW_CONFIRM");
+		assertThat(PermissionRegistry.resolve("POST", path)).contains("PAYMENT_WINDOW_CONFIRM");
+	}
+
+	@Test
+	void ratesAreWrittenWithPutAndTheirOwnPermission() {
+		assertThat(PermissionRegistry.resolve("PUT", "/payment-concepts/abc/rates")).contains("PAYMENT_RATES_CREATE");
+		assertThat(PermissionRegistry.resolve("PUT", "/payment-concepts/abc")).contains("PAYMENT_CONCEPTS_UPDATE");
+	}
+
+	@Test
+	void configurationStatisticsHaveTheirOwnPermission() {
+		assertThat(PermissionRegistry.resolve("GET", "/config-academica/statistics"))
+				.contains("CONFIG_STATISTICS_READ");
+	}
+
 	// ── matching rules ────────────────────────────────────────────────────────
 
 	@Test

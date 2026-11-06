@@ -48,6 +48,15 @@ public interface FichaPaymentPort {
 	/** The ficha's header as finance holds it; empty when the charge does not exist. */
 	Optional<FichaCharge> findCharge(UUID financePaymentId);
 
+	/**
+	 * {@link #findCharge}, locking the charge until the caller's transaction ends:
+	 * two confirmations of the same charge run one after the other.
+	 */
+	Optional<FichaCharge> lockCharge(UUID financePaymentId);
+
+	/** Whether an abono already carries this receipt number. */
+	boolean receiptInUse(String receiptNumber);
+
 	/** The charge priced live; nothing is written. */
 	FichaQuote quote(UUID financePaymentId);
 
@@ -64,13 +73,63 @@ public interface FichaPaymentPort {
 	/** Cancels the charge if it is still open and unpaid; no-op otherwise. */
 	void cancel(UUID financePaymentId);
 
+	/**
+	 * Books as saldo a favor what an order captured without settling anything
+	 * (a second capture of a paid charge, or one on a cancelled charge).
+	 * Idempotent by order.
+	 *
+	 * @return {@code true} when the order has its saldo a favor, now or from an
+	 *         earlier run; {@code false} when the order is the one that paid the
+	 *         charge, so nothing was left over
+	 */
+	boolean registerOverpayment(UUID financePaymentId, String orderId, BigDecimal amount);
+
+	// ── Saldo a favor (F9) ───────────────────────────────────────────────────
+
+	/** The saldo a favor the person behind this candidate can use today, from any of their fichas. */
+	BigDecimal availableCredit(UUID candidateId);
+
+	/**
+	 * The saldo a favor born on this very ficha. The public portal shows and uses only
+	 * this: it is opened with folio + CURP, so the person's saldo from other fichas is
+	 * used at caja or by Finanzas, who check who is paying.
+	 */
+	BigDecimal availableOwnCredit(UUID candidateId);
+
+	/**
+	 * Uses the person's saldo a favor on the charge, oldest first, up to what is
+	 * left to pay, with one {@code CREDIT} abono. Joins the caller's transaction.
+	 *
+	 * @param receiptNumber the receipt of the abono, kept when the saldo settles
+	 *                      the charge on its own
+	 */
+	CreditUse applyCredit(UUID financePaymentId, String receiptNumber);
+
+	/** The same, used at the cashier's window by staff: the abono is booked to that cashier. */
+	CreditUse applyCreditAtCashier(UUID financePaymentId, String receiptNumber, UUID collectorId);
+
+	/**
+	 * @param applied    the saldo used now
+	 * @param amountDue  what the charge costs
+	 * @param amountPaid what it has received, this saldo included
+	 * @param settled    the charge is paid in full
+	 */
+	record CreditUse(BigDecimal applied, BigDecimal amountDue, BigDecimal amountPaid, boolean settled) {
+	}
+
 	// ── Cambio de carrera ────────────────────────────────────────────────────
 
 	/** Sin pagar: el precio vivo que tendría el mismo cargo en la carrera nueva (no escribe). */
 	FichaQuote quoteForProgram(UUID financePaymentId, String conceptCode, UUID programId);
 
 	/** Sin pagar: el mismo cargo pasa a la carrera nueva y conserva su descuento. */
-	void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId);
+	default void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId) {
+		reassignProgram(financePaymentId, conceptCode, programId, null, null);
+	}
+
+	/** F5: también con el periodo y la generación de la carrera nueva ({@code null} conserva el actual). */
+	void reassignProgram(UUID financePaymentId, String conceptCode, UUID programId, UUID periodId,
+			UUID generationId);
 
 	/** Pagada: los números de {@link #rebill} sin escribir nada. */
 	ProgramChangeAmounts previewRebill(UUID fromPaymentId, String conceptCode, UUID programId);
@@ -92,19 +151,32 @@ public interface FichaPaymentPort {
 	 * @param actingUserId  quién hizo el cambio
 	 */
 	record RebillFichaCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt,
-			String reference, UUID actingUserId) {
+			String reference, UUID actingUserId, UUID periodId, UUID generationId) {
+
+		public RebillFichaCommand(UUID fromPaymentId, String conceptCode, UUID programId, Instant dueAt,
+				String reference, UUID actingUserId) {
+			this(fromPaymentId, conceptCode, programId, dueAt, reference, actingUserId, null, null);
+		}
 	}
 
 	/**
 	 * @param financePaymentId el cargo nuevo; {@code null} en la vista previa
-	 * @param newAmount        tarifa de la carrera nueva, sin descuento
+	 * @param newAmount        lo que cuesta la carrera nueva: tarifa menos el
+	 *                         descuento que viaja (D6)
 	 * @param alreadyPaid      lo que había recibido el cargo que se deja
-	 * @param otherCredit      saldo a favor que ya tenía y también se aplica
+	 * @param otherCredit      saldo a favor que ya tenía; <b>no</b> se aplica, la
+	 *                         persona elige usarlo al pagar la diferencia
 	 * @param toPay            lo que falta pagar ("debe pagar más")
-	 * @param creditLeft       lo que sobra como saldo a favor
+	 * @param creditLeft       lo que sobra de lo pagado, como saldo a favor
+	 * @param tariff           tarifa de la carrera nueva antes del descuento
 	 */
 	record ProgramChangeAmounts(UUID financePaymentId, BigDecimal newAmount, BigDecimal alreadyPaid,
-			BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft) {
+			BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft, BigDecimal tariff) {
+
+		public ProgramChangeAmounts(UUID financePaymentId, BigDecimal newAmount, BigDecimal alreadyPaid,
+				BigDecimal otherCredit, BigDecimal toPay, BigDecimal creditLeft) {
+			this(financePaymentId, newAmount, alreadyPaid, otherCredit, toPay, creditLeft, newAmount);
+		}
 
 		public boolean settled() {
 			return toPay.signum() == 0;
@@ -132,8 +204,12 @@ public interface FichaPaymentPort {
 	 * @param referenceNumber the reference the applicant pays with
 	 */
 	record RaiseFichaDebtCommand(UUID candidateId, String conceptCode, UUID programId, Instant dueAt,
-			String referenceNumber) {
+			String referenceNumber, UUID periodId, UUID generationId) {
 
+		public RaiseFichaDebtCommand(UUID candidateId, String conceptCode, UUID programId, Instant dueAt,
+				String referenceNumber) {
+			this(candidateId, conceptCode, programId, dueAt, referenceNumber, null, null);
+		}
 	}
 
 	/**
@@ -145,10 +221,24 @@ public interface FichaPaymentPort {
 	 * @param dueAt         the ficha's deadline (end of day, admission zone)
 	 * @param paidAt        when the money (or the exemption) was booked
 	 * @param receiptNumber the receipt of that booking
+	 * @param amountPaid    what the charge has received so far; above zero on an
+	 *                      unpaid ficha means the person used part of their saldo
+	 *                      a favor and the rest is still owed
 	 */
 	record FichaCharge(UUID financePaymentId, String referenceNumber,
 			AdmissionPaymentStatus status, boolean cancelled,
-			Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber) {
+			Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber, BigDecimal amountPaid) {
+
+		public FichaCharge(UUID financePaymentId, String referenceNumber, AdmissionPaymentStatus status,
+				boolean cancelled, Instant dueAt, Instant createdAt, Instant paidAt, String receiptNumber) {
+			this(financePaymentId, referenceNumber, status, cancelled, dueAt, createdAt, paidAt, receiptNumber,
+					BigDecimal.ZERO);
+		}
+
+		/** Unpaid, with part of the price already received: its price is fixed and only the rest is collected. */
+		public boolean isPartlyPaid() {
+			return !isPaid() && amountPaid != null && amountPaid.signum() > 0;
+		}
 
 		public boolean isPaid() {
 			return status == AdmissionPaymentStatus.PAID;

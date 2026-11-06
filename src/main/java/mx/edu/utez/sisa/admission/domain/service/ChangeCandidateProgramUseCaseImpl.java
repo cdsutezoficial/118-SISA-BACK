@@ -1,11 +1,13 @@
 package mx.edu.utez.sisa.admission.domain.service;
 
+import mx.edu.utez.sisa.academic_config.domain.model.ProgramAdmissionConfigStatus;
 import mx.edu.utez.sisa.admission.domain.model.Candidate;
 import mx.edu.utez.sisa.admission.domain.model.CandidateProgramChange;
 import mx.edu.utez.sisa.admission.domain.model.CandidateStatus;
 import mx.edu.utez.sisa.admission.domain.port.in.ChangeCandidateProgramUseCase;
 import mx.edu.utez.sisa.admission.domain.port.out.AdmissionQuotaPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateProgramChangeRepository;
+import mx.edu.utez.sisa.admission.domain.port.out.CandidateNotificationPort;
 import mx.edu.utez.sisa.admission.domain.port.out.CandidateRepository;
 import mx.edu.utez.sisa.admission.domain.port.out.FichaPaymentPort;
 import mx.edu.utez.sisa.admission.domain.port.out.PaymentConceptQueryPort;
@@ -16,6 +18,8 @@ import mx.edu.utez.sisa.admission.shared.exception.FichaPaymentConceptNotFoundEx
 import mx.edu.utez.sisa.admission.shared.exception.InvalidCandidateFichaDataException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigCapacityReachedException;
 import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotFoundException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigNotOpenException;
+import mx.edu.utez.sisa.admission.shared.exception.ProgramAdmissionConfigSalesClosedException;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +28,15 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
 
 public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgramUseCase {
 
 	private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+
+	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private final CandidateRepository candidateRepository;
 
@@ -51,12 +58,15 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 
 	private final int checkoutHoldMinutes;
 
+	private final CandidateNotificationPort notifications;
+
 	public ChangeCandidateProgramUseCaseImpl(CandidateRepository candidateRepository,
 			ProgramAdmissionConfigQueryPort programAdmissionConfigQueryPort, FichaAmountResolver fichaAmountResolver,
 			FichaPaymentPort fichaPaymentPort, AdmissionQuotaPort admissionQuotaPort,
 			CheckoutAttemptRepository checkoutAttemptRepository,
 			CandidateProgramChangeRepository programChangeRepository, Clock clock, int fichaDeadlineDays,
-			int checkoutHoldMinutes) {
+			int checkoutHoldMinutes, CandidateNotificationPort notifications) {
+		this.notifications = notifications;
 		this.candidateRepository = candidateRepository;
 		this.programAdmissionConfigQueryPort = programAdmissionConfigQueryPort;
 		this.fichaAmountResolver = fichaAmountResolver;
@@ -98,8 +108,9 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		if (to.id().equals(candidate.getAdmissionConfigId())) {
 			throw new InvalidCandidateFichaDataException("El candidato ya está en esa carrera.");
 		}
-		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConcept(to.programId(),
-				LocalDate.now(clock));
+		requireOnSale(to);
+		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConceptForProgramChange(
+				to.programId(), LocalDate.now(clock));
 		LocalDate today = LocalDate.now(clock);
 
 		if (!charge.isPaid()) {
@@ -120,7 +131,8 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 				FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes));
 		return new ProgramChangePreview(candidate.getId(), candidate.getAdmissionConfigId(), programName(from),
 				to.id(), to.programName(), Mode.PAID, currentAmount(fromPaymentId), amounts.alreadyPaid(),
-				amounts.otherCredit(), amounts.newAmount(), ZERO, amounts.newAmount(), amounts.toPay(),
+				amounts.otherCredit(), amounts.tariff(), amounts.tariff().subtract(amounts.newAmount()),
+				amounts.newAmount(), amounts.toPay(),
 				amounts.creditLeft(), occupied < to.maxCandidates(),
 				amounts.settled() ? null : differenceDeadline(today), false);
 	}
@@ -134,14 +146,16 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		}
 		FichaPaymentPort.FichaCharge charge = requireAllowed(candidate);
 		ProgramAdmissionConfigQueryPort.AdmissionConfigInfo to = requireConfig(admissionConfigId);
-		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConcept(to.programId(),
-				LocalDate.now(clock));
+		requireOnSale(to);
+		PaymentConceptQueryPort.FichaConcept concept = fichaAmountResolver.resolveConceptForProgramChange(
+				to.programId(), LocalDate.now(clock));
 		UUID fromConfigId = candidate.getAdmissionConfigId();
 		Instant now = Instant.now(clock);
 
 		if (!charge.isPaid()) {
 			BigDecimal previous = currentAmount(charge.financePaymentId());
-			fichaPaymentPort.reassignProgram(charge.financePaymentId(), concept.code(), to.programId());
+			fichaPaymentPort.reassignProgram(charge.financePaymentId(), concept.code(), to.programId(),
+					to.periodId(), to.targetGenerationId());
 			candidate.changeAdmissionConfig(to.id());
 			rebaseValidPeriod(candidate, to.periodId());
 			candidateRepository.save(candidate);
@@ -167,7 +181,8 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 				.toInstant();
 		FichaPaymentPort.ProgramChangeAmounts amounts = fichaPaymentPort.rebill(
 				new FichaPaymentPort.RebillFichaCommand(fromPaymentId, concept.code(), to.programId(), dueAt,
-						charge.referenceNumber() + "-C" + (changes + 1), actingUserId));
+						charge.referenceNumber() + "-C" + (changes + 1), actingUserId, to.periodId(),
+						to.targetGenerationId()));
 		if (amounts.settled()) {
 			candidate.adoptFichaPayment(amounts.financePaymentId());
 		} else {
@@ -179,6 +194,15 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		programChangeRepository.save(new CandidateProgramChange(candidate.getId(), fromConfigId, to.id(), true,
 				fromPaymentId, amounts.financePaymentId(), previous, amounts.alreadyPaid(), amounts.newAmount(),
 				amounts.toPay(), amounts.creditLeft(), actingUserId, now));
+
+		// F3: the applicant learns of a difference, or of saldo left over, without
+		// opening the portal. Sent after the change commits.
+		if (!amounts.settled()) {
+			notifications.programChangeLeftDifference(candidate.getId(), amounts.newAmount(), amounts.alreadyPaid(),
+					amounts.toPay(), dueAt);
+		} else if (amounts.creditLeft() != null && amounts.creditLeft().signum() > 0) {
+			notifications.programChangeLeftCredit(candidate.getId(), amounts.creditLeft());
+		}
 	}
 
 	/**
@@ -196,6 +220,12 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		if (candidate.getStatus() == CandidateStatus.PAYMENT_EXPIRED || charge == null || charge.cancelled()) {
 			throw new CandidateProgramChangeNotAllowedException(
 					"La ficha venció sin pago: la carrera ya no se puede cambiar.");
+		}
+		if (charge.isPartlyPaid()) {
+			// The ficha used part of the person's saldo a favor and its price is fixed;
+			// moving it would leave that money on a charge priced for the old career.
+			throw new CandidateProgramChangeNotAllowedException(
+					"La ficha ya tiene saldo a favor aplicado y falta pagar el resto: termina el pago para cambiar la carrera.");
 		}
 		if (checkoutInProgress(candidate, charge)) {
 			throw new CandidateProgramChangeNotAllowedException(
@@ -247,6 +277,30 @@ public class ChangeCandidateProgramUseCaseImpl implements ChangeCandidateProgram
 		return programAdmissionConfigQueryPort.findById(admissionConfigId)
 				.orElseThrow(() -> new ProgramAdmissionConfigNotFoundException(
 						"No existe la configuración de admisión: " + admissionConfigId));
+	}
+
+	/**
+	 * Solo se cambia a una carrera con la venta de fichas abierta (F6): el selector
+	 * del front ya las filtra, pero la regla vive aquí para que no dependa de él.
+	 * Mismos límites inclusivos que el registro.
+	 */
+	private void requireOnSale(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo to) {
+		if (to.status() != ProgramAdmissionConfigStatus.OPEN) {
+			throw new ProgramAdmissionConfigNotOpenException("La venta de fichas de esa carrera no está abierta.");
+		}
+		Instant now = Instant.now(clock);
+		if (to.opensAt() != null && now.isBefore(to.opensAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException(
+					"La venta de fichas de esa carrera abre el " + formatDate(to.opensAt()) + ".");
+		}
+		if (to.closesAt() != null && now.isAfter(to.closesAt())) {
+			throw new ProgramAdmissionConfigSalesClosedException(
+					"La venta de fichas de esa carrera cerró el " + formatDate(to.closesAt()) + ".");
+		}
+	}
+
+	private String formatDate(Instant instant) {
+		return DATE_FORMAT.format(instant.atZone(clock.getZone()).toLocalDate());
 	}
 
 	private static String programName(ProgramAdmissionConfigQueryPort.AdmissionConfigInfo config) {

@@ -80,7 +80,7 @@ public interface ProgramAdmissionConfigJpaRepository extends JpaRepository<Progr
 	 * place is taken by a candidate of the config whose ficha charge
 	 * ({@code finance.payment}, linked by {@code Candidate.fichaPaymentId}) is
 	 * {@code PAID}/{@code EXEMPT}, or who has a {@code STARTED} checkout attempt
-	 * opened at or after {@code :attemptsOpenedSince} (now − 15 min, see
+	 * opened at or after {@code :attemptsOpenedSince} (now − the hold, 60 min, see
  * {@code sisa.admission.payment.checkout-hold-minutes}). Keyed by config, not by program,
 	 * so a full old cycle never blocks the same program's new one.
 	 */

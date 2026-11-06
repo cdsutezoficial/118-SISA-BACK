@@ -39,4 +39,14 @@ public class PaymentEntryRepositoryAdapter implements PaymentEntryRepository {
 		BigDecimal sum = jpaRepository.sumAmountByPaymentId(paymentId);
 		return sum == null ? ZERO : sum;
 	}
+
+	@Override
+	public boolean existsByExternalOrderId(String externalOrderId) {
+		return jpaRepository.existsByExternalOrderId(externalOrderId);
+	}
+
+	@Override
+	public boolean existsByReceiptNumber(String receiptNumber) {
+		return jpaRepository.existsByReceiptNumber(receiptNumber);
+	}
 }

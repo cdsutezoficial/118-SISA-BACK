@@ -85,7 +85,7 @@ final class FinanceResponseMapper {
 	static CreditResponse toCredit(PaymentCredit credit) {
 		return new CreditResponse(credit.getId(), credit.getCandidateId(), credit.getStudentId(),
 				credit.getOriginPaymentId(), credit.getBenefitId(), credit.getAmount(), credit.getStatus(),
-				credit.getAppliedToPaymentId(), credit.getCreatedAt());
+				credit.getAppliedToPaymentId(), credit.getCreatedAt(), credit.getExternalOrderId());
 	}
 
 	static DiscountReportResponse toReport(DiscountReport report) {

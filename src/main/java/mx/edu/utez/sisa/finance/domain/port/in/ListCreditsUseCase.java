@@ -16,6 +16,9 @@ public interface ListCreditsUseCase {
 
 	List<CreditView> listByCandidate(UUID candidateId);
 
+	/** The available saldo born on this very ficha: what the public portal may use. */
+	List<CreditView> listAvailableOwnByCandidate(UUID candidateId);
+
 	record CreditView(UUID id, BigDecimal amount, CreditStatus status, UUID originPaymentId,
 			UUID appliedToPaymentId, Instant createdAt) {
 	}

@@ -92,6 +92,23 @@ class GetCandidateAccountUseCaseImplTest {
 	}
 
 	@Test
+	void aCreditFromAnotherFichaOfThePersonKeepsItsReference() {
+		candidate.adoptFichaPayment(SECOND);
+		UUID otherFicha = UUID.randomUUID();
+		when(candidateAccountPort.findCharges(CANDIDATE_ID)).thenReturn(List.of(
+				charge(SECOND, "REF-ADM-2026-000002", "1500.00", "2026-10-29T21:17:00Z")));
+		when(candidateAccountPort.findCredits(CANDIDATE_ID)).thenReturn(List.of(
+				new CandidateAccountPort.Credit(new BigDecimal("300.00"), "AVAILABLE", otherFicha, null,
+						Instant.parse("2026-09-01T10:00:00Z"), "REF-ADM-2025-000777", null)));
+		when(programChangeRepository.findByCandidateId(CANDIDATE_ID)).thenReturn(List.of());
+
+		CandidateAccount account = useCase.get(CANDIDATE_ID);
+
+		assertThat(account.credits().get(0).originReference()).isEqualTo("REF-ADM-2025-000777");
+		assertThat(account.credits().get(0).appliedToReference()).isNull();
+	}
+
+	@Test
 	void aPendingDifferenceComesFirst() {
 		candidate.adoptFichaPayment(FIRST);
 		candidate.awaitProgramChangePayment(SECOND);

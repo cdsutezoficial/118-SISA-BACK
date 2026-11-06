@@ -28,5 +28,15 @@ public record CheckoutInitiationRequest(
 		 * In-app path to return to, e.g. {@code /portal/ficha/pago}. Blank
 		 * or absent means "use the configured default".
 		 */
-		@Pattern(regexp = "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9/_-]*$", message = "Ruta de retorno inválida") String returnPath) {
+		@Pattern(regexp = "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9/_-]*$", message = "Ruta de retorno inválida") String returnPath,
+
+		/**
+		 * The person chose to pay with their saldo a favor (F9). Absent means
+		 * no: the saldo is only used when asked.
+		 */
+		Boolean useCredit) {
+
+	public CheckoutInitiationRequest(String returnPath) {
+		this(returnPath, null);
+	}
 }

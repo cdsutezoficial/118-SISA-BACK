@@ -90,6 +90,10 @@ public final class PermissionRegistry {
 			e("PATCH", "/generations/**", "GENERATIONS_CHANGE_STATUS"),
 			// academic_config — groups
 			e("GET", "/groups/**", "GROUPS_READ"),
+			// Tablero de configuración académica: solo conteos (F7).
+			e("GET", "/config-academica/statistics", "CONFIG_STATISTICS_READ"),
+			// audit — consulta del log (RF-AUD-003); ningún rol lo trae, ADMIN pasa por encima.
+			e("GET", "/audit-log", "AUDIT_LOG_READ"),
 			e("POST", "/groups", "GROUPS_CREATE"),
 			// El bulk comparte clave con el alta individual: son la misma operación
 			// de escritura sobre la misma tabla, sólo que en lote. Hace falta su
@@ -101,7 +105,10 @@ public final class PermissionRegistry {
 			e("PATCH", "/groups/**", "GROUPS_CHANGE_STATUS"),
 			// academic_config — payment concepts (ADMIN/PERSONAL_FINANZAS in coarse)
 			e("GET", "/payment-concepts/**", "PAYMENT_CONCEPTS_READ"),
-			e("POST", "/payment-concepts/*/rates", "PAYMENT_RATES_CREATE"),
+			// Las tarifas se escriben como conjunto con PUT (el POST se retiró).
+			// Va antes de PUT /payment-concepts/** para que el first-match le dé
+			// su permiso y no el de editar el concepto.
+			e("PUT", "/payment-concepts/*/rates", "PAYMENT_RATES_CREATE"),
 			e("POST", "/payment-concepts", "PAYMENT_CONCEPTS_CREATE"),
 			e("PUT", "/payment-concepts/**", "PAYMENT_CONCEPTS_UPDATE"),
 			e("PATCH", "/payment-concepts/**", "PAYMENT_CONCEPTS_CHANGE_STATUS"),
@@ -129,6 +136,9 @@ public final class PermissionRegistry {
 			e("GET", "/candidates/*/edit", "CANDIDATES_UPDATE"),
 			e("GET", "/candidates/*/program-change-preview", "CANDIDATES_UPDATE"),
 			e("PUT", "/candidates/*", "CANDIDATES_UPDATE"),
+			// F1: cobro en efectivo en caja (vista previa y cobro).
+			e("GET", "/candidates/*/cash-payment", "PAYMENT_WINDOW_CONFIRM"),
+			e("POST", "/candidates/*/cash-payment", "PAYMENT_WINDOW_CONFIRM"),
 			// admission — outreach channels
 			e("GET", "/outreach-channels/**", "OUTREACH_CHANNELS_READ"),
 			e("POST", "/outreach-channels", "OUTREACH_CHANNELS_CREATE"),
@@ -160,6 +170,9 @@ public final class PermissionRegistry {
 			e("POST", "/finance/benefits", "BENEFITS_CREATE"),
 			e("PUT", "/finance/benefits/**", "BENEFITS_UPDATE"),
 			e("PATCH", "/finance/benefits/*/cancel", "BENEFITS_CANCEL"),
+			// finance — alertas de pago para revisión manual (E4).
+			e("GET", "/finance/alerts", "FINANCE_ALERTS_READ"),
+			e("PATCH", "/finance/alerts/*/resolve", "FINANCE_ALERTS_RESOLVE"),
 			e("GET", "/finance/credits", "PAYMENTS_READ"),
 			e("GET", "/finance/discounts/report", "BENEFITS_REPORT"),
 			e("POST", "/finance/payments/*/entries", "PAYMENTS_SETTLE"),

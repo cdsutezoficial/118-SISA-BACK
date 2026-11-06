@@ -59,6 +59,54 @@ Rama: `feat/dashboard-admision`.
 
 ---
 
+## [2026-11-05] Correcciones de pago de ficha y cambio de carrera
+
+Rama: `fix/correcciones-pagos-ficha`. Plan: `118-SISA-CLAUDE/docs/design/pendientes/pagos/2026-10-30-correcciones-ficha-cambio-carrera.md`.
+
+### Dinero
+- **E3:** la conciliación decide por el cargo de cada intento, no por el primero de la lista.
+- **E1:** antes de abrir otra sesión se consulta al banco por los intentos abiertos; un cobro que no
+  liquida nada queda como saldo a favor, idempotente por `orderId`. `GET /finance/credits/overpayments`
+  trae persona, CURP y referencias.
+- **E2:** el descuento no usado viaja a la carrera nueva y se recalcula; el retroactivo se aplica al cargo pagado.
+- **E4:** no vence una ficha con un pago sin respuesta; intentos abandonados se cierran a la hora;
+  captura tardía sin cupo → saldo a favor. Tabla `finance_alert` + correo a Finanzas
+  (`SISA_FINANCE_ALERTS_RECIPIENTS`) y `GET/PATCH /finance/alerts`.
+- **E5:** el cambio de carrera consulta al banco por intentos abiertos antes de mover el cargo.
+- **E6/F3:** comprobante dividido por cargo; correos después del commit desde todos los caminos de pago.
+
+- **E1, dos pagos casi simultáneos:** la confirmación bloquea el cargo (`SELECT … FOR UPDATE` con
+  `refresh`, en `READ_COMMITTED`) y vuelve a leerlo. Si otra orden ya lo pagó, la captura queda como
+  saldo a favor + alerta `OVERPAYMENT` y responde 409 `ADMISSION_PAID_TWICE`, en vez de un segundo abono.
+  IT `PaymentLockReadsCurrentRowIT`.
+
+### Saldo a favor (F9)
+- `payment_credit.person_id`: el saldo es de la persona y lo ve cualquier ficha suya.
+- La persona elige usarlo al pagar la ficha o la diferencia; retención del checkout de 60 minutos.
+
+### Caja (F1, F7)
+- Rol `CAJA` (cuenta `caja@utez.edu.mx`) y permiso `PAYMENT_WINDOW_CONFIRM`.
+- `GET/POST /candidates/{id}/cash-payment`: vista previa y cobro en efectivo con candado de cupo y
+  monto esperado (409 `ADMISSION_CASH_AMOUNT_CHANGED`).
+- **Caja usa el saldo a favor:** la vista previa trae `availableCredit`; el `POST` acepta
+  `useCredit`. Se aplica primero el saldo (abono `CREDIT` por caja, a nombre de quien cobra) y en
+  efectivo solo lo que falta; `expectedAmount` es esa parte (0 si el saldo cubre todo, recibo `SAF-`).
+  Todo en la misma transacción.
+- `PermissionRegistryCoverageTest`: toda ruta de personal necesita permiso fino o excepción documentada.
+
+### Trazabilidad (F4, F5, F6)
+- Módulo `audit` (`audit_entry`, solo agrega) y `GET /audit-log` (solo ADMIN). Editar la ficha registra
+  cada campo cambiado con antes y después.
+- El cargo de la ficha guarda periodo y generación y cambian con la carrera. Cargos viejos: script
+  `sql/f5-periodo-generacion-cargos.sql` en CLAUDE (no se ha corrido).
+- Cambio de carrera: el back exige venta abierta, acepta el concepto fuera de vigencia con su última
+  tarifa y el PDF muestra la diferencia pendiente.
+
+### Pruebas
+- 2205 unitarias. ITs nuevas sobre `sisa_it`: `AuditEntryRepositoryAdapterIT`, `CashPaymentQuotaConcurrencyIT`.
+
+---
+
 ## [2026-10-28] Servicios Escolares edita la ficha del candidato
 
 Rama: `feat/editar-ficha-candidato`. Plan: `118-SISA-CLAUDE/docs/design/pendientes/editar-ficha-candidato/`.

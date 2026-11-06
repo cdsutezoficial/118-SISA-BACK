@@ -3,6 +3,7 @@ package mx.edu.utez.sisa.finance.infrastructure.config;
 import mx.edu.utez.sisa.finance.domain.port.in.ApplyCreditToPaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.ChangeChargeProgramUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.ListCreditsUseCase;
+import mx.edu.utez.sisa.finance.domain.port.in.RegisterOverpaymentUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CancelBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreateBenefitUseCase;
 import mx.edu.utez.sisa.finance.domain.port.in.CreatePaymentUseCase;
@@ -35,6 +36,7 @@ import mx.edu.utez.sisa.finance.domain.service.CreateBenefitUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.CreatePaymentUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetAccountStatementUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.ListCreditsUseCaseImpl;
+import mx.edu.utez.sisa.finance.domain.service.RegisterOverpaymentUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.GetDiscountReportUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.ListBenefitsUseCaseImpl;
 import mx.edu.utez.sisa.finance.domain.service.PaymentQuoter;
@@ -56,6 +58,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
+import mx.edu.utez.sisa.finance.domain.port.out.FinanceAlertNotifier;
+import mx.edu.utez.sisa.finance.domain.port.out.FinanceAlertRepository;
+import mx.edu.utez.sisa.finance.domain.service.FinanceAlertService;
 
 /**
  * Composition root wiring {@code finance}'s interactors as Spring beans
@@ -153,8 +158,9 @@ public class UseCaseConfig {
 	}
 
 	@Bean
-	public CancelDebtUseCase cancelDebtUseCase(PaymentRepository paymentRepository) {
-		return new CancelDebtUseCaseImpl(paymentRepository);
+	public CancelDebtUseCase cancelDebtUseCase(PaymentRepository paymentRepository,
+			PaymentCreditRepository paymentCreditRepository, Clock clock) {
+		return new CancelDebtUseCaseImpl(paymentRepository, paymentCreditRepository, clock);
 	}
 
 	@Bean
@@ -240,9 +246,25 @@ public class UseCaseConfig {
 				paymentBenefitRepository, paymentSettlementDecider, clock);
 	}
 
+
 	@Bean
 	public ListCreditsUseCase listCreditsUseCase(PaymentCreditRepository paymentCreditRepository) {
 		return new ListCreditsUseCaseImpl(paymentCreditRepository);
+	}
+
+	/** Raising and reviewing Finanzas alerts (E4); one bean behind both ports. */
+	@Bean
+	public FinanceAlertService financeAlertService(FinanceAlertRepository financeAlertRepository,
+			FinanceAlertNotifier financeAlertNotifier, Clock clock) {
+		return new FinanceAlertService(financeAlertRepository, financeAlertNotifier, clock);
+	}
+
+	@Bean
+	public RegisterOverpaymentUseCase registerOverpaymentUseCase(PaymentRepository paymentRepository,
+			PaymentEntryRepository paymentEntryRepository, PaymentCreditRepository paymentCreditRepository,
+			Clock clock) {
+		return new RegisterOverpaymentUseCaseImpl(paymentRepository, paymentEntryRepository, paymentCreditRepository,
+				clock);
 	}
 
 	@Bean

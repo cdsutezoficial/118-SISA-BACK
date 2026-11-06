@@ -263,6 +263,15 @@ public class PaymentBenefit {
 		}
 	}
 
+	/**
+	 * Moves the discount to another charge of the same person. A career change
+	 * on a paid ficha creates a new charge, and the discount the person has goes
+	 * with them to the new career (D6), so it has to follow that charge.
+	 */
+	public void moveToPayment(UUID paymentId) {
+		this.paymentId = paymentId;
+	}
+
 	public UUID getPaymentId() {
 		return paymentId;
 	}
