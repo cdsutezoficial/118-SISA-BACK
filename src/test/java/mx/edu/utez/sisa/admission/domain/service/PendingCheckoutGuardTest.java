@@ -26,6 +26,7 @@ import mx.edu.utez.sisa.finance.domain.model.CheckoutAttempt;
 import mx.edu.utez.sisa.finance.domain.model.CheckoutAttemptCloseReason;
 import mx.edu.utez.sisa.finance.domain.port.out.CheckoutAttemptRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -230,6 +231,32 @@ class PendingCheckoutGuardTest {
 
 		assertThatCode(() -> guard.settleBeforeProgramChange(candidate())).doesNotThrowAnyException();
 		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	/** 4a: the person opened the online payment and walked to the window. Caja collects, with a warning. */
+	@Test
+	void beforeCash_aSessionThatTookNothingDoesNotBlockButIsReported() {
+		givenYoungAttempt(tookNothing(YOUNG_ORDER));
+
+		assertThat(guard.settleBeforeCashPayment(candidate())).isTrue();
+		verify(checkoutSlotClaimer, never()).closeAttempt(anyString(), any());
+	}
+
+	@Test
+	void beforeCash_anAuthorizationBlocks() {
+		givenOldAttempt(new EvoPaymentsGatewayPort.EvoOrderStatus(OLD_ORDER, "SUCCESS", AMOUNT, AMOUNT, null, null,
+				null, null, null, null));
+
+		assertThatThrownBy(() -> guard.settleBeforeCashPayment(candidate()))
+				.isInstanceOf(PaymentInProgressException.class);
+	}
+
+	@Test
+	void beforeCash_nothingOpenReportsNoSession() {
+		givenOldAttempt(tookNothing(OLD_ORDER));
+
+		assertThat(guard.settleBeforeCashPayment(candidate())).isFalse();
+		verify(checkoutSlotClaimer).closeAttempt(OLD_ORDER, CheckoutAttemptCloseReason.ORDER_EXPIRED);
 	}
 
 	private void givenOldAttempt(EvoPaymentsGatewayPort.EvoOrderStatus answer) {

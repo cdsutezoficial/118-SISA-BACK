@@ -77,12 +77,15 @@ public class CollectCashPaymentUseCaseImpl implements CollectCashPaymentUseCase 
 
 	@Override
 	public CashPaymentPreview preview(UUID candidateId) {
-		CashPaymentPreview due = due(settledCandidate(candidateId));
+		// F1/4a: an online session that took nothing does not block the cash desk; the
+		// cashier is warned that if it still captures, that money becomes saldo a favor.
+		boolean onlineSessionOpen = pendingCheckoutGuard.settleBeforeCashPayment(requireCandidate(candidateId));
+		CashPaymentPreview due = due(requireCandidate(candidateId));
 		// The saldo a favor the cashier can use first; it is applied, if chosen, when collecting.
 		BigDecimal credit = fichaPaymentPort.availableCredit(candidateId);
 		return new CashPaymentPreview(due.candidateId(), due.folio(), due.referenceNumber(), due.programChange(),
 				due.total(), due.alreadyPaid(), due.toCollect(), due.dueAt(),
-				credit == null ? BigDecimal.ZERO : credit.max(BigDecimal.ZERO));
+				credit == null ? BigDecimal.ZERO : credit.max(BigDecimal.ZERO), onlineSessionOpen);
 	}
 
 	@Override

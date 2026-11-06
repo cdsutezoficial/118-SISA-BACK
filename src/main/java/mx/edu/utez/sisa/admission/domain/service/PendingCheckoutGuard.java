@@ -149,36 +149,53 @@ public class PendingCheckoutGuard {
 	 * @throws PaymentInProgressException if a session can still capture
 	 */
 	public void settleBeforeProgramChange(Candidate candidate) {
-		if (settleOpenAttempts(candidate)) {
+		OpenSessions open = settleOpenAttempts(candidate);
+		if (open.mayCapture() || open.sessionOpen()) {
 			throw new PaymentInProgressException("Hay un pago en línea en curso para esta ficha. "
 					+ "Espera a que el banco lo confirme o lo libere para cambiar la carrera.");
 		}
 	}
 
 	/**
-	 * F1: the same settlement before the cash desk takes money, for the same reason as a
-	 * career change: an online session that can still capture would charge the ficha a
-	 * second time. A capture that already landed is applied, so the caller re-reads the
-	 * ficha and finds it paid instead of collecting again.
+	 * F1: the same settlement before the cash desk takes money. A capture that already
+	 * landed is applied, so the caller re-reads the ficha and finds it paid instead of
+	 * collecting again.
 	 *
-	 * @throws PaymentInProgressException if a session can still capture
+	 * <p>Only money the bank already holds blocks the cash desk: an authorized amount not
+	 * yet captured. A session that took nothing (the person opened the online payment and
+	 * walked to the window) does not: if it still captured after the cash payment, that
+	 * capture would settle nothing and become the person's saldo a favor, so no money is
+	 * lost. The caller is told such a session is open, to warn the cashier.
+	 *
+	 * @return {@code true} when an online session that took nothing is still within its hold
+	 * @throws PaymentInProgressException if the bank holds an authorized amount
 	 */
-	public void settleBeforeCashPayment(Candidate candidate) {
-		if (settleOpenAttempts(candidate)) {
-			throw new PaymentInProgressException("El candidato tiene un pago en línea en curso. "
-					+ "No cobres en caja hasta que el banco lo confirme o lo libere.");
+	public boolean settleBeforeCashPayment(Candidate candidate) {
+		OpenSessions open = settleOpenAttempts(candidate);
+		if (open.mayCapture()) {
+			throw new PaymentInProgressException("El banco tiene un monto autorizado de un pago en línea de este "
+					+ "candidato. No cobres en caja hasta que el banco lo cobre o lo libere.");
 		}
+		return open.sessionOpen();
 	}
 
-	/** @return {@code true} when a session may still capture */
-	private boolean settleOpenAttempts(Candidate candidate) {
+	/**
+	 * What is still open after asking the bank: {@code mayCapture} when the bank holds money
+	 * for an order (authorized, not captured), {@code sessionOpen} when a session within its
+	 * hold took nothing yet, or could not be asked about.
+	 */
+	private record OpenSessions(boolean mayCapture, boolean sessionOpen) {
+	}
+
+	private OpenSessions settleOpenAttempts(Candidate candidate) {
 		Instant holdingSince = FichaPaymentWindow.attemptsHoldingSince(Instant.now(clock), checkoutHoldMinutes);
-		boolean inFlight = false;
+		boolean mayCapture = false;
+		boolean sessionOpen = false;
 		for (CheckoutAttempt attempt : checkoutAttemptRepository.findOpenAttemptsByCandidateId(candidate.getId())) {
 			boolean insideHold = attempt.getCreatedAt().isAfter(holdingSince);
 			Optional<EvoPaymentsGatewayPort.EvoOrderStatus> answer = ask(attempt);
 			if (answer.isEmpty()) {
-				inFlight |= insideHold;
+				sessionOpen |= insideHold;
 				continue;
 			}
 			switch (OrderSettlementDecider.decide(answer.get())) {
@@ -186,15 +203,17 @@ public class PendingCheckoutGuard {
 				case RELEASEABLE -> checkoutSlotClaimer.closeAttempt(attempt.getOrderId(),
 						CheckoutAttemptCloseReason.REJECTED);
 				case HELD_UNKNOWN -> {
-					if (OrderSettlementDecider.tookNothing(answer.get()) && !insideHold) {
-						checkoutSlotClaimer.closeAttempt(attempt.getOrderId(), CheckoutAttemptCloseReason.ORDER_EXPIRED);
+					if (!OrderSettlementDecider.tookNothing(answer.get())) {
+						mayCapture = true;
+					} else if (insideHold) {
+						sessionOpen = true;
 					} else {
-						inFlight = true;
+						checkoutSlotClaimer.closeAttempt(attempt.getOrderId(), CheckoutAttemptCloseReason.ORDER_EXPIRED);
 					}
 				}
 			}
 		}
-		return inFlight;
+		return new OpenSessions(mayCapture, sessionOpen);
 	}
 
 	private static boolean authorizedNotCaptured(EvoPaymentsGatewayPort.EvoOrderStatus answer) {

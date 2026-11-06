@@ -118,6 +118,15 @@ class CollectCashPaymentUseCaseImplTest {
 		verify(pendingCheckoutGuard).settleBeforeCashPayment(candidate);
 	}
 
+	/** 4a: an online session that took nothing does not block; the cashier is warned. */
+	@Test
+	void preview_warnsAboutAnOpenOnlineSession() {
+		stubOwedFicha(PRICE, 9);
+		when(pendingCheckoutGuard.settleBeforeCashPayment(candidate)).thenReturn(true);
+
+		assertThat(useCase.preview(candidateId).onlineSessionOpen()).isTrue();
+	}
+
 	@Test
 	void preview_showsTheSaldoAFavorTheCashierCanUse() {
 		stubOwedFicha(PRICE, 9);

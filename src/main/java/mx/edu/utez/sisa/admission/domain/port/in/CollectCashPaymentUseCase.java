@@ -34,13 +34,14 @@ public interface CollectCashPaymentUseCase {
 	 * @param dueAt         the last day it can be paid, when it has one
 	 */
 	record CashPaymentPreview(UUID candidateId, String folio, String referenceNumber, boolean programChange,
-			BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt, BigDecimal availableCredit) {
+			BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt, BigDecimal availableCredit,
+			boolean onlineSessionOpen) {
 
-		/** Without the saldo a favor. */
+		/** Without the saldo a favor nor an open online session. */
 		public CashPaymentPreview(UUID candidateId, String folio, String referenceNumber, boolean programChange,
 				BigDecimal total, BigDecimal alreadyPaid, BigDecimal toCollect, Instant dueAt) {
 			this(candidateId, folio, referenceNumber, programChange, total, alreadyPaid, toCollect, dueAt,
-					BigDecimal.ZERO);
+					BigDecimal.ZERO, false);
 		}
 	}
 }
