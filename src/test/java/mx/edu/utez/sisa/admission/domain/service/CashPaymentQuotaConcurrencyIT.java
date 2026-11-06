@@ -49,7 +49,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,13 +67,12 @@ import org.springframework.transaction.annotation.Transactional;
  * {@link CheckoutSlotClaimerConcurrencyIT}: cada hilo necesita su propia
  * conexión y su propio commit.
  *
- * <h2>Cuidado: esta clase recrea el esquema al que apunta</h2>
- * {@code ddl-auto=create-drop}: apunta {@code DB_URL} a una base desechable.
+ * <p>El esquema lo reconstruyen las migraciones de Flyway al arrancar el contexto,
+ * sobre la base local desechable que exige {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import({ AdmissionQuotaAdapter.class, CandidateRepositoryAdapter.class, CheckoutAttemptRepositoryAdapter.class,
 		CashPaymentQuotaConcurrencyIT.Wiring.class })
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CashPaymentQuotaConcurrencyIT {
 

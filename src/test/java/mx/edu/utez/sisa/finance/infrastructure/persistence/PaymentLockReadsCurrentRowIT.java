@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * copia que Hibernate guardaba de la primera lectura. Con esa copia, las dos
  * confirmaciones registraron un abono.
  *
- * <h2>Aviso: esta clase recrea el esquema al que apunta</h2>
- * Correrla solo con {@code DB_URL} apuntando a {@code sisa_it}.
+ * <p>El esquema lo reconstruyen las migraciones de Flyway al arrancar el contexto,
+ * sobre la base local desechable que exige {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(PaymentRepositoryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentLockReadsCurrentRowIT {
 

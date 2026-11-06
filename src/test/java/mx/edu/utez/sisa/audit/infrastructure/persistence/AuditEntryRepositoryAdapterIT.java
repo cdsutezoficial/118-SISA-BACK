@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.TestPropertySource;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,12 +18,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * La consulta del log contra MySQL real: cada filtro es opcional y {@code to} es
  * exclusivo.
  *
- * <h2>Cuidado: esta clase recrea el esquema al que apunta</h2>
- * {@code ddl-auto=create-drop}: apunta {@code DB_URL} a una base desechable.
+ * <p>El esquema lo reconstruyen las migraciones de Flyway al arrancar el contexto,
+ * sobre la base local desechable que exige {@code IntegrationTestDatabaseGuard}.
  */
 @DataJpaTest
 @Import(AuditEntryRepositoryAdapter.class)
-@TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class AuditEntryRepositoryAdapterIT {
 
 	private static final Instant DAY1 = Instant.parse("2026-11-01T12:00:00Z");
