@@ -49,8 +49,9 @@ class StateControllerIT {
 	}
 
 	@Test
-	void unauthenticatedListReturns401() throws Exception {
-		mockMvc.perform(get("/states")).andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.status").value(401));
+	void anonymousCanList() throws Exception {
+		// Publico a proposito: el asistente de registro sin sesion resuelve el estado
+		// (ver SecurityFilterConfig).
+		mockMvc.perform(get("/states")).andExpect(status().isOk()).andExpect(jsonPath("$.items").isNotEmpty());
 	}
 }

@@ -442,7 +442,11 @@ class ProgramAdmissionConfigOptionsQueryIT {
 	}
 
 	private Candidate saveCandidate(UUID admissionConfigId) {
-		return candidateJpaRepository.save(new Candidate(admissionConfigId,
-				"FOLIO-" + UUID.randomUUID(), false, true, null));
+		Candidate candidate = new Candidate(admissionConfigId, "FOLIO-" + UUID.randomUUID(), false, true, null);
+		// CURP, nombre y primer apellido son obligatorios en la tabla candidate.
+		candidate.setCurp("CURP" + UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase());
+		candidate.setFirstName("Aspirante");
+		candidate.setLastName1("Prueba");
+		return candidateJpaRepository.save(candidate);
 	}
 }

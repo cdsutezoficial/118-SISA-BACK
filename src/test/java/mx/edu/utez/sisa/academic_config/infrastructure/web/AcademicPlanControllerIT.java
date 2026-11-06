@@ -218,7 +218,7 @@ class AcademicPlanControllerIT {
 	}
 
 	@Test
-	void addLevelWithLevelNumberOutsideTotalLevelsRangeReturns400() throws Exception {
+	void addLevelAcceptsALevelNumberAboveTotalLevels() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		String version = "LVL-" + UUID.randomUUID().toString().substring(0, 6);
 		var createResult = mockMvc
@@ -232,12 +232,12 @@ class AcademicPlanControllerIT {
 
 		mockMvc.perform(post("/plans/" + planId + "/levels").header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Fuera de rango"))))
-				.andExpect(status().isBadRequest());
+				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Numeracion propia"))))
+				.andExpect(status().isCreated());
 	}
 
 	@Test
-	void updateLevelWithLevelNumberOutsideTotalLevelsRangeReturns400() throws Exception {
+	void updateLevelAcceptsALevelNumberAboveTotalLevels() throws Exception {
 		String token = tokenFor(RoleType.ADMIN);
 		String version = "UPD-LVL-" + UUID.randomUUID().toString().substring(0, 6);
 		var createResult = mockMvc
@@ -259,8 +259,8 @@ class AcademicPlanControllerIT {
 
 		mockMvc.perform(put("/plans/" + planId + "/levels/" + levelId).header("Authorization", "Bearer " + token)
 				.contentType("application/json")
-				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Fuera de rango"))))
-				.andExpect(status().isBadRequest());
+				.content(objectMapper.writeValueAsString(new AddLevelBody(99, "REGULAR", "Numeracion propia"))))
+				.andExpect(status().isOk());
 	}
 
 	@Test

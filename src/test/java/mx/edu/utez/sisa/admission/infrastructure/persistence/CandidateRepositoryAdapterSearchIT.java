@@ -94,8 +94,16 @@ class CandidateRepositoryAdapterSearchIT {
 	}
 
 	/** {@code Person.curp} is {@code length = 18, unique}; this is exactly 18 and unique per call. */
+	/**
+	 * Solo letras: la busqueda libre tambien mira la CURP, y una CURP con digitos
+	 * ({@code CURP00000000000001}) haria que buscar el folio "000001" la encontrara.
+	 */
 	private String nextCurp() {
-		return String.format("CURP%014d", seq.incrementAndGet());
+		StringBuilder curp = new StringBuilder();
+		for (int n = seq.incrementAndGet(); curp.length() < 14; n /= 26) {
+			curp.append((char) ('A' + n % 26));
+		}
+		return "CURP" + curp;
 	}
 
 	private Candidate newCandidate(UUID configId, String folio, String curp, String firstName, String lastName1,
